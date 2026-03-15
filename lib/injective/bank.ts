@@ -7,7 +7,6 @@ import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { BigNumberInBase } from '@injectivelabs/utils'
 import { NETWORK, DENOMS } from './constants'
 import { BalanceState, PayrollOutput } from './types'
-import { getWalletAddress } from './wallet'
 
 const endpoints = getNetworkEndpoints(NETWORK)
 const bankApi = new ChainGrpcBankApi(endpoints.grpc)

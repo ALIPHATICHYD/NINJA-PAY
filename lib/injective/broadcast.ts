@@ -1,19 +1,18 @@
-import { MsgBroadcaster } from '@injectivelabs/sdk-ts'
 import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK, CHAIN_ID } from './constants'
+import { NETWORK } from './constants'
 import { getWalletStrategy } from './wallet'
-
-const endpoints = getNetworkEndpoints(NETWORK)
 
 /**
  * Broadcast a transaction message to the Injective chain
- * Handles fee estimation, signing, and streaming
+ * Dynamically imports MsgBroadcaster to avoid SSR issues
  */
 export async function broadcastTxMessage(
   msg: any,
   userAddress: string
 ): Promise<string> {
   try {
+    // Dynamic import to avoid SSR issues
+    const { MsgBroadcaster } = await import('@injectivelabs/sdk-ts')
     const walletStrategy = getWalletStrategy()
 
     const msgBroadcaster = new MsgBroadcaster({
@@ -54,6 +53,7 @@ export async function estimateGas(
   userAddress: string
 ): Promise<number> {
   try {
+    const { MsgBroadcaster } = await import('@injectivelabs/sdk-ts')
     const walletStrategy = getWalletStrategy()
 
     const msgBroadcaster = new MsgBroadcaster({
@@ -85,6 +85,7 @@ export async function simulateTx(
   userAddress: string
 ): Promise<boolean> {
   try {
+    const { MsgBroadcaster } = await import('@injectivelabs/sdk-ts')
     const walletStrategy = getWalletStrategy()
 
     const msgBroadcaster = new MsgBroadcaster({
@@ -105,22 +106,5 @@ export async function simulateTx(
   } catch (error) {
     console.error('Transaction simulation failed:', error)
     return false
-  }
-}
-
-/**
- * Get transaction status by hash
- */
-export async function getTxStatus(txHash: string): Promise<any> {
-  try {
-    // This would require an indexer query
-    // For now, return a placeholder
-    return {
-      status: 'pending',
-      hash: txHash,
-    }
-  } catch (error) {
-    console.error('Failed to fetch transaction status:', error)
-    throw error
   }
 }

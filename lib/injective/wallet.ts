@@ -1,47 +1,55 @@
-import {
-  WalletStrategy,
-  Wallet as InjectiveWallet,
-  WalletStrategyArguments,
-} from '@injectivelabs/wallet-ts'
-import { ChainGrpcBankApi } from '@injectivelabs/sdk-ts'
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK, CHAIN_ID } from './constants'
-import { BalanceState } from './types'
+// This module should only be used in client components
+// Import with 'use client' at the top of your component
 
-let walletStrategy: WalletStrategy | null = null
+let walletStrategy: any = null
 
 /**
- * Initialize wallet strategy for Keplr or Leap wallet
+ * Initialize wallet strategy - must be called from a 'use client' component
  */
 export async function initWalletStrategy(
   walletType: 'keplr' | 'leap'
-): Promise<WalletStrategy> {
-  const wallet =
-    walletType === 'keplr' ? InjectiveWallet.Keplr : InjectiveWallet.Leap
-
-  const args: WalletStrategyArguments = {
-    chainId: CHAIN_ID,
-    wallet: wallet,
+): Promise<any> {
+  if (typeof window === 'undefined') {
+    throw new Error('Wallet initialization requires browser environment')
   }
 
-  walletStrategy = new WalletStrategy(args)
-
-  // Attempt to get addresses to verify connection
   try {
-    await walletStrategy.getAddresses()
+    // Dynamic import inside function to avoid SSR issues
+    const { WalletStrategy, Wallet: InjectiveWallet } = await import(
+      '@injectivelabs/wallet-ts'
+    )
+    const { ChainId } = await import('@injectivelabs/ts-types')
+
+    const wallet =
+      walletType === 'keplr'
+        ? InjectiveWallet.Keplr
+        : InjectiveWallet.Leap
+
+    const args = {
+      chainId: ChainId.Testnet,
+      wallet: wallet,
+    }
+
+    walletStrategy = new WalletStrategy(args)
+
+    // Attempt to get addresses to verify connection
+    const addresses = await walletStrategy.getAddresses()
+    if (!addresses || addresses.length === 0) {
+      throw new Error('No wallet addresses found')
+    }
+
+    return walletStrategy
   } catch (error) {
     console.error('Failed to initialize wallet:', error)
     walletStrategy = null
     throw error
   }
-
-  return walletStrategy
 }
 
 /**
  * Get the current wallet strategy instance
  */
-export function getWalletStrategy(): WalletStrategy {
+export function getWalletStrategy(): any {
   if (!walletStrategy) {
     throw new Error('Wallet not initialized. Call initWalletStrategy first.')
   }
