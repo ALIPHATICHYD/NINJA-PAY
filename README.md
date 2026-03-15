@@ -1,36 +1,110 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NinjaPay - Africa's Crypto Super-App on Injective
 
-## Getting Started
+**NinjaPay** is a community-first financial super-app built on Injective that lets Africans on-ramp, off-ramp, pay bills, run payroll, and distribute on-chain rewards — all powered by INJ and iUSDT, with zero gas friction.
 
-First, run the development server:
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Configure Environment
+
+Copy `.env.local.example` to `.env.local` and fill in your configuration:
+
+```bash
+cp .env.local.example .env.local
+```
+
+**Required:**
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
+
+### 3. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📱 Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### ✅ Implemented (MVP)
 
-## Learn More
+- **Wallet Connection** - Keplr & Leap integration
+- **Balance Display** - Real-time INJ/USDT with NGN conversion
+- **Send Tokens** - Direct transfers between wallets
+- **Pay Bills** - Airtime, data, electricity, cable
+- **Create Claims** - Shareable reward distributions
+- **Public Claim Links** - No auth required to claim
+- **Batch Payroll** - Pay employees in one transaction
+- **Transaction History** - Track all activity
 
-To learn more about Next.js, take a look at the following resources:
+## 🏗️ Architecture
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Tech Stack:**
+- Next.js 16 + React 19 + Tailwind CSS
+- Injective SDK (`@injectivelabs/sdk-ts`)
+- Supabase (Claims database)
+- Keplr & Leap Wallets
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Zero Gas:** Uses Injective's native zero-fee chain modules
 
-## Deploy on Vercel
+## 💡 How It Works
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Send
+Connect wallet → Enter recipient → Sign MsgSend → Complete
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Bills
+Select provider → Enter identifier → Pay with USDT → Instant delivery
+
+### Claims
+Create pool → Get shareable link → Recipients claim → Backend sends MsgSend
+
+### Payroll
+Add employees → Set amounts → Execute MsgMultiSend → All paid at once
+
+## 📊 Setup Supabase
+
+Create these tables:
+
+```sql
+CREATE TABLE claim_pools (
+  id UUID PRIMARY KEY,
+  creator_address TEXT,
+  total_amount TEXT,
+  claim_type TEXT,
+  shares JSONB,
+  claimed_by JSONB,
+  link_code TEXT UNIQUE,
+  created_at TIMESTAMP
+);
+
+CREATE TABLE transactions (
+  id UUID PRIMARY KEY,
+  user_address TEXT,
+  type TEXT,
+  status TEXT,
+  amount TEXT,
+  recipient TEXT,
+  tx_hash TEXT,
+  created_at TIMESTAMP
+);
+```
+
+## 🎯 Demo Flow
+
+1. Connect Keplr/Leap wallet
+2. View balance in INJ/USDT + NGN
+3. Send tokens to another address
+4. Pay airtime with USDT
+5. Create claim pool & share link
+6. Claim from public link
+7. View transaction history
+
+---
+
+**Built for Africa on Injective ⚡**
