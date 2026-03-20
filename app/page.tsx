@@ -86,6 +86,20 @@ export default function LandingPage() {
     }
   }, [acctNumber, bankName])
 
+  // Scroll Reveal Animations Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active')
+        }
+      })
+    }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' })
+
+    document.querySelectorAll('.reveal, .reveal-left, .reveal-right').forEach(el => observer.observe(el))
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', overflowX: 'hidden' }}>
 
@@ -103,39 +117,42 @@ export default function LandingPage() {
       >
         <div
           style={{
-            maxWidth: '1280px',
+            maxWidth: '1440px',
             margin: '0 auto',
-            padding: '0 24px',
-            height: '62px',
+            padding: '0 32px',
+            height: '72px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
+          {/* Left: Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div
               style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '7px',
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
                 background: 'var(--accent-gradient)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <svg width="18" height="18" viewBox="0 0 15 15" fill="none">
                 <path d="M7.5 1L13 4.5V10.5L7.5 14L2 10.5V4.5L7.5 1Z" stroke="white" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(255,255,255,0.15)" />
                 <circle cx="7.5" cy="7.5" r="2" fill="white" />
               </svg>
             </div>
-            <span style={{ fontWeight: '700', fontSize: '17px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            <span style={{ fontWeight: '800', fontSize: '19px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
               NinjaPay
             </span>
           </div>
-          <Link href="/send" className="btn-primary" style={{ padding: '9px 22px', fontSize: '14px' }}>
+
+          {/* Right: CTA */}
+          <Link href="/send" className="btn-primary" style={{ padding: '10px 24px', fontSize: '14px', borderRadius: '8px' }}>
             Launch App
-            <ArrowRight size={14} />
+            <ArrowRight size={15} />
           </Link>
         </div>
       </nav>
@@ -164,13 +181,14 @@ export default function LandingPage() {
         />
 
         {/* Left: copy */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <div className="hero-badge" style={{ marginBottom: '28px', display: 'inline-flex' }}>
+        <div className="reveal-left" style={{ position: 'relative', zIndex: 1 }}>
+          <div className="hero-badge reveal delay-1" style={{ marginBottom: '28px', display: 'inline-flex' }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)' }} />
-            Built on Injective · Hackathon 2026
+            Built for the Injective Africa Community
           </div>
 
           <h1
+            className="reveal delay-2"
             style={{
               fontSize: 'clamp(38px, 6vw, 66px)',
               fontWeight: '800',
@@ -185,6 +203,7 @@ export default function LandingPage() {
           </h1>
 
           <p
+            className="reveal delay-3"
             style={{
               fontSize: '18px',
               color: 'var(--text-secondary)',
@@ -198,7 +217,7 @@ export default function LandingPage() {
             interface on Injective.
           </p>
 
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="reveal delay-4" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <Link href="/send" className="btn-primary" style={{ padding: '13px 28px', fontSize: '15px' }}>
               Get Started
               <ArrowRight size={16} />
@@ -208,7 +227,7 @@ export default function LandingPage() {
             </a>
           </div>
 
-          <div style={{ display: 'flex', gap: '24px', marginTop: '40px', flexWrap: 'wrap' }}>
+          <div className="reveal delay-4" style={{ display: 'flex', gap: '24px', marginTop: '40px', flexWrap: 'wrap' }}>
             {[
               { label: 'Settlement', value: '< 1 second' },
               { label: 'Network fee', value: '~$0.002' },
@@ -223,7 +242,7 @@ export default function LandingPage() {
         </div>
 
         {/* Right: Off-ramp widget mockup */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
+        <div className="reveal-right" style={{ position: 'relative', zIndex: 1, marginTop: '20px' }}>
           <div
             className="card-glass"
             style={{ borderColor: 'var(--border-light)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}
@@ -374,7 +393,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── Stats strip ─── */}
-      <section style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+      <section className="reveal" style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
         <div
           style={{
             maxWidth: '1280px',
@@ -403,7 +422,7 @@ export default function LandingPage() {
 
       {/* ─── Features ─── */}
       <section style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
-        <div style={{ marginBottom: '52px' }}>
+        <div className="reveal" style={{ marginBottom: '52px' }}>
           <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '12px' }}>
             Features
           </p>
@@ -413,10 +432,10 @@ export default function LandingPage() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-          {FEATURES.map(f => {
+          {FEATURES.map((f, i) => {
             const Icon = f.icon
             return (
-              <div key={f.title} className="feature-card">
+              <div key={f.title} className={`feature-card reveal delay-${(i % 3) + 1}`}>
                 <div className="icon-box" style={{ marginBottom: '18px' }}>
                   <Icon size={18} />
                 </div>
@@ -435,7 +454,7 @@ export default function LandingPage() {
       {/* ─── How it works ─── */}
       <section id="how-it-works" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
-          <div style={{ marginBottom: '52px' }}>
+          <div className="reveal" style={{ marginBottom: '52px' }}>
             <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '12px' }}>
               How It Works
             </p>
@@ -450,8 +469,8 @@ export default function LandingPage() {
               { step: '02', title: 'Choose an action',    desc: 'Send tokens, pay a bill, create a claim pool, or run payroll from the dashboard.' },
               { step: '03', title: 'Sign the transaction',desc: 'Review all details, then sign from your wallet. No private keys ever leave your device.' },
               { step: '04', title: 'Settlement on-chain', desc: 'Transactions settle on Injective in under a second. View them in your history instantly.' },
-            ].map(s => (
-              <div key={s.step}>
+            ].map((s, i) => (
+              <div key={s.step} className={`reveal delay-${(i % 4) + 1}`}>
                 <div
                   style={{
                     display: 'inline-flex',
@@ -490,10 +509,10 @@ export default function LandingPage() {
             { icon: Zap,    title: 'Sub-Second Finality',desc: 'Injective settles transactions faster than any EVM chain.' },
             { icon: Wallet, title: 'Multi-Wallet',       desc: 'Keplr, Leap, and MetaMask — pick whatever you already use.' },
             { icon: CheckCircle2, title: 'Transparent Fees', desc: 'All fees shown upfront. No hidden charges, ever.' },
-          ].map(item => {
+          ].map((item, i) => {
             const Icon = item.icon
             return (
-              <div key={item.title} className="card card-hover">
+              <div key={item.title} className={`card card-hover reveal delay-${(i % 4) + 1}`}>
                 <div className="icon-box" style={{ marginBottom: '16px' }}>
                   <Icon size={18} />
                 </div>
@@ -509,10 +528,41 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ─── Community Ecosystem ─── */}
+      <section style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
+          <div className="reveal" style={{ textAlign: 'center', marginBottom: '52px' }}>
+            <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '12px' }}>
+              Ecosystem
+            </p>
+            <h2 style={{ fontSize: 'clamp(26px, 4vw, 42px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
+              Other Community Products
+            </h2>
+          </div>
+
+          <div className="reveal delay-1" style={{ display: 'flex', justifyContent: 'center' }}>
+            <a
+              href="https://injective-by-examples.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="card card-hover"
+              style={{ textDecoration: 'none', maxWidth: '400px', textAlign: 'center', padding: '32px 24px' }}
+            >
+              <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                Injective By Examples
+              </h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.65' }}>
+                Built for the African Community for onboarding into the Injective ecosystem.
+              </p>
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* ─── FAQ ─── */}
       <section style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
         <div style={{ maxWidth: '720px', margin: '0 auto', padding: '88px 24px' }}>
-          <h2 style={{ fontSize: 'clamp(26px, 4vw, 38px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em', marginBottom: '48px' }}>
+          <h2 className="reveal" style={{ fontSize: 'clamp(26px, 4vw, 38px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em', marginBottom: '48px' }}>
             Frequently asked questions
           </h2>
 
@@ -520,6 +570,7 @@ export default function LandingPage() {
             {FAQS.map((faq, idx) => (
               <div
                 key={idx}
+                className={`reveal delay-${(idx % 4) + 1}`}
                 style={{
                   borderRadius: '11px',
                   border: '1px solid',
@@ -579,7 +630,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CTA ─── */}
-      <section style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
+      <section className="reveal" style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
         <div
           style={{
             background: 'var(--bg-card)',
