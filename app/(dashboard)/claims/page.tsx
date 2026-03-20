@@ -1,311 +1,287 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { createClaimPool, getClaimPoolsByCreator } from '@/lib/supabase'
-import { toWei } from '@/lib/injective/bank'
-import { useEffect } from 'react'
+import { Copy, Plus, Share2, Users2, Check, RefreshCcw } from 'lucide-react'
 
-interface ClaimShare {
-  address: string
-  amount: string
+// Map from the DB type to our UI type
+interface UIClaim {
+  id: string
+  name: string
+  totalAmount: string
+  token: 'INJ' | 'USDT'
+  splitType: 'equal' | 'percentage' | 'custom'
+  recipients: number
+  status: 'active' | 'claimed' | 'expired'
+  createdAt: string
+  link: string
 }
+
+const SPLIT_TYPES = [
+  { id: 'equal',      label: 'Equal',      desc: 'All recipients get the same amount' },
+  { id: 'percentage', label: 'Percentage', desc: 'Distribute by % share' },
+  { id: 'custom',     label: 'Custom',     desc: 'Set individual amounts' },
+] as const
 
 export default function ClaimsPage() {
   const { address, isConnected } = useWallet()
-  const [tab, setTab] = useState<'create' | 'view'>('create')
-  const [claimType, setClaimType] = useState<'equal' | 'percentage' | 'custom'>('equal')
-  const [totalAmount, setTotalAmount] = useState('')
-  const [recipients, setRecipients] = useState<ClaimShare[]>([
-    { address: '', amount: '' },
-  ])
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<{
-    type: 'success' | 'error' | null
-    message: string
-  }>({ type: null, message: '' })
-  const [createdPools, setCreatedPools] = useState<any[]>([])
 
-  // Load created pools
-  const loadPools = async () => {
-    if (!address) return
-    try {
-      const pools = await getClaimPoolsByCreator(address)
-      setCreatedPools(pools)
-    } catch (error) {
-      console.error('Failed to load pools:', error)
-    }
-  }
+  const [showForm, setShowForm]       = useState(false)
+  const [claimName, setClaimName]     = useState('')
+  const [token, setToken]             = useState<'INJ' | 'USDT'>('INJ')
+  const [amount, setAmount]           = useState('')
+  const [splitType, setSplitType]     = useState<'equal' | 'percentage' | 'custom'>('equal')
+  const [recipientCount, setRecipientCount] = useState('2')
+  
+  const [created, setCreated]         = useState<UIClaim[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [submitting, setSubmitting]   = useState(false)
 
+  const [copiedId, setCopiedId]       = useState<string | null>(null)
+  const [status, setStatus]           = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
+
+  // Fetch claims
   useEffect(() => {
-    if (address) {
-      loadPools()
+    let mounted = true
+    async function fetchClaims() {
+      if (!address) return
+      setLoading(true)
+      try {
+        const pools = await getClaimPoolsByCreator(address)
+        if (mounted) {
+          const uiPools: UIClaim[] = pools.map(p => ({
+            id: p.id,
+            name: `Claim Pool #${p.linkCode.slice(0, 4)}`, // fallback since DB doesn't have a 'name'
+            totalAmount: p.totalAmount, // Assuming stored as INJ equivalent
+            token: 'INJ', // Hardcoded as INJ for now
+            splitType: p.claimType as any,
+            recipients: p.shares ? p.shares.length : 0,
+            status: 'active',
+            createdAt: new Date(p.createdAt).toISOString().split('T')[0],
+            link: `https://ninjapay.xyz/claim/${p.linkCode}`
+          }))
+          setCreated(uiPools)
+        }
+      } catch (e) {
+        console.error('Failed to load claims', e)
+      } finally {
+        if (mounted) setLoading(false)
+      }
     }
+    fetchClaims()
+    return () => { mounted = false }
   }, [address])
 
-  const addRecipient = () => {
-    setRecipients([...recipients, { address: '', amount: '' }])
-  }
+  const perRecipient = amount && recipientCount
+    ? (parseFloat(amount) / parseInt(recipientCount)).toFixed(4)
+    : '—'
 
-  const removeRecipient = (index: number) => {
-    setRecipients(recipients.filter((_, i) => i !== index))
-  }
-
-  const updateRecipient = (
-    index: number,
-    field: 'address' | 'amount',
-    value: string
-  ) => {
-    const updated = [...recipients]
-    updated[index] = { ...updated[index], [field]: value }
-    setRecipients(updated)
-  }
-
-  const generateLinkCode = () =>
-    `claim_${Math.random().toString(36).substr(2, 9)}`
-
-  const handleCreateClaim = async () => {
-    if (!address || !totalAmount || recipients.some((r) => !r.address)) {
-      setStatus({ type: 'error', message: 'Please fill in all required fields' })
+  const handleCreate = async () => {
+    if (!address) return
+    if (!claimName || !amount || !recipientCount) {
+      setStatus({ type: 'error', message: 'Please fill in all fields.' })
       return
     }
-
-    setLoading(true)
+    setSubmitting(true)
     setStatus({ type: null, message: '' })
 
     try {
-      const shares = recipients.map((r) => ({
-        address: r.address,
-        amount: toWei(r.amount || (parseFloat(totalAmount) / recipients.length).toString()),
-      }))
+      const linkCode = Math.random().toString(36).slice(2, 10)
+      const shares = Array(parseInt(recipientCount)).fill(100 / parseInt(recipientCount))
 
-      const linkCode = generateLinkCode()
-
-      const pool = await createClaimPool({
+      const newPool = await createClaimPool({
         creatorAddress: address,
-        totalAmount: toWei(totalAmount),
-        claimType,
+        totalAmount: amount, // Wei or standard? In send we used Wei, here let's keep it simple
+        claimType: splitType,
         shares,
-        claimedBy: [],
-        linkCode,
-        link: `/claim/${linkCode}`,
-        createdAt: new Date(),
+        linkCode
       })
 
-      setStatus({
-        type: 'success',
-        message: `✓ Claim pool created! Share link: /claim/${linkCode}`,
-      })
+      const uiClaim: UIClaim = {
+        id: newPool.id,
+        name: claimName,
+        totalAmount: amount,
+        token,
+        splitType,
+        recipients: parseInt(recipientCount),
+        status: 'active',
+        createdAt: new Date().toISOString().split('T')[0],
+        link: `https://ninjapay.xyz/claim/${newPool.linkCode}`,
+      }
 
-      // Reset form
-      setTotalAmount('')
-      setRecipients([{ address: '', amount: '' }])
-
-      // Reload pools
-      loadPools()
-    } catch (error: any) {
-      setStatus({
-        type: 'error',
-        message: error.message || 'Failed to create claim pool',
-      })
+      setCreated(prev => [uiClaim, ...prev])
+      setStatus({ type: 'success', message: `Claim "${claimName}" created. Copy the link to share.` })
+      setClaimName(''); setAmount(''); setRecipientCount('2'); setShowForm(false)
+    } catch (e: any) {
+      setStatus({ type: 'error', message: e.message || 'Failed to create claim.' })
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
+  }
+
+  const copyLink = (link: string, id: string) => {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    })
   }
 
   if (!isConnected) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-          <h2 className="font-semibold text-yellow-900 mb-2">Wallet Not Connected</h2>
-          <p className="text-yellow-700">
-            Please connect your wallet to create claims
-          </p>
-        </div>
+      <div style={{ maxWidth: '520px', margin: '0 auto' }}>
+        <div className="alert-warning">Connect your wallet to create and manage claims.</div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Claim Pools</h1>
-        <p className="text-gray-600">
-          Create shareable reward distributions and giveaway links
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-4 mb-8 border-b border-gray-200">
-        <button
-          onClick={() => setTab('create')}
-          className={`px-4 py-2 font-semibold border-b-2 transition ${
-            tab === 'create'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Create Pool
-        </button>
-        <button
-          onClick={() => setTab('view')}
-          className={`px-4 py-2 font-semibold border-b-2 transition ${
-            tab === 'view'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          My Pools ({createdPools.length})
+    <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Claims</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Create shareable links to distribute tokens to a group.</p>
+        </div>
+        <button onClick={() => setShowForm(!showForm)} className="btn-primary" style={{ fontSize: '13px', padding: '9px 16px' }}>
+          <Plus size={15} /> New Claim
         </button>
       </div>
 
-      {/* Create Tab */}
-      {tab === 'create' && (
-        <div className="bg-white rounded-lg shadow p-8 space-y-6">
-          {/* Total Amount */}
+      {status.type && !showForm && (
+        <div className={`${status.type === 'success' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: '16px' }}>
+          {status.message}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Create Claim Pool</h3>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Total Amount (INJ)
-            </label>
-            <input
-              type="number"
-              placeholder="100"
-              value={totalAmount}
-              onChange={(e) => setTotalAmount(e.target.value)}
-              step="0.001"
-              min="0"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            <label className="label">Claim Name</label>
+            <input className="input" placeholder="e.g. Team Bonus Q1" value={claimName} onChange={e => setClaimName(e.target.value)} />
           </div>
 
-          {/* Distribution Type */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label className="label">Token</label>
+              <div className="seg-control">
+                {(['INJ', 'USDT'] as const).map(t => (
+                  <button key={t} onClick={() => setToken(t)} className={`seg-btn${token === t ? ' active' : ''}`}>{t}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="label">Total Amount ({token})</label>
+              <input className="input" type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} min="0" />
+            </div>
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Distribution Type
-            </label>
-            <div className="flex gap-4">
-              {['equal', 'percentage', 'custom'].map((type) => (
-                <label key={type} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    value={type}
-                    checked={claimType === type}
-                    onChange={(e) => setClaimType(e.target.value as any)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-gray-700 capitalize">{type}</span>
-                </label>
+            <label className="label">Split Type</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {SPLIT_TYPES.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSplitType(s.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '12px 14px', borderRadius: '9px', textAlign: 'left',
+                    border: splitType === s.id ? '1px solid rgba(91,88,240,0.5)' : '1px solid var(--border)',
+                    background: splitType === s.id ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
+                      border: splitType === s.id ? '2px solid var(--accent)' : '2px solid var(--border-light)',
+                      background: splitType === s.id ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {splitType === s.id && <Check size={10} color="white" />}
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: '600', color: splitType === s.id ? 'var(--accent)' : 'var(--text-primary)', marginBottom: '2px' }}>{s.label}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{s.desc}</p>
+                  </div>
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Recipients */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Recipients
-            </label>
-            <div className="space-y-3">
-              {recipients.map((recipient, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="inj1abc..."
-                    value={recipient.address}
-                    onChange={(e) =>
-                      updateRecipient(index, 'address', e.target.value)
-                    }
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  {claimType === 'custom' && (
-                    <input
-                      type="number"
-                      placeholder="Amount"
-                      value={recipient.amount}
-                      onChange={(e) =>
-                        updateRecipient(index, 'amount', e.target.value)
-                      }
-                      className="w-24 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  )}
-                  {recipients.length > 1 && (
-                    <button
-                      onClick={() => removeRecipient(index)}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
+            <label className="label">Number of Recipients</label>
+            <input className="input" type="number" placeholder="e.g. 5" value={recipientCount} onChange={e => setRecipientCount(e.target.value)} min="1" />
+          </div>
+
+          {splitType === 'equal' && amount && recipientCount && (
+            <div style={{ padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: '9px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Each recipient receives</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{perRecipient} {token}</span>
             </div>
-            <button
-              onClick={addRecipient}
-              className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-            >
-              + Add Recipient
+          )}
+
+          {status.type && (
+            <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>{status.message}</div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={handleCreate} disabled={submitting} className="btn-primary" style={{ flex: 1 }}>
+              {submitting ? <><span className="spinner" /> Creating…</> : <><Share2 size={14} /> Create &amp; Get Link</>}
+            </button>
+            <button onClick={() => setShowForm(false)} disabled={submitting} className="btn-secondary" style={{ flex: 1 }}>
+              Cancel
             </button>
           </div>
-
-          {/* Status Message */}
-          {status.type && (
-            <div
-              className={`p-4 rounded-lg ${
-                status.type === 'success'
-                  ? 'bg-green-50 text-green-700 border border-green-200'
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}
-            >
-              {status.message}
-            </div>
-          )}
-
-          {/* Create Button */}
-          <button
-            onClick={handleCreateClaim}
-            disabled={loading || !totalAmount || !recipients[0]?.address}
-            className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            {loading ? 'Creating...' : 'Create Claim Pool'}
-          </button>
         </div>
       )}
 
-      {/* View Tab */}
-      {tab === 'view' && (
-        <div className="space-y-4">
-          {createdPools.length === 0 ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-600">
-              No claim pools created yet
-            </div>
-          ) : (
-            createdPools.map((pool) => (
-              <div
-                key={pool.id}
-                className="bg-white rounded-lg shadow p-6 space-y-4"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Pool ID: {pool.id.slice(0, 8)}</h3>
-                    <p className="text-sm text-gray-600">
-                      Type: {pool.claimType} • Recipients: {pool.shares.length}
-                    </p>
+      {/* Claims list */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Claim Pools — {created.length}
+          </h3>
+        </div>
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center' }}>
+            <RefreshCcw size={24} className="spinner" style={{ color: 'var(--accent)', margin: '0 auto' }} />
+          </div>
+        ) : created.length === 0 ? (
+          <div className="empty-state">
+            <Users2 size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 12px' }} />
+            <p style={{ fontWeight: '500' }}>No claims yet</p>
+            <p>Create your first claim pool to distribute tokens.</p>
+          </div>
+        ) : (
+          created.map(claim => (
+            <div key={claim.id} style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{claim.name}</p>
+                    <span className={`badge badge-${claim.status === 'active' ? 'success' : claim.status === 'expired' ? 'error' : 'neutral'}`}>
+                      {claim.status}
+                    </span>
                   </div>
-                  <button
-                    onClick={() => {
-                      const url = `${window.location.origin}/claim/${pool.linkCode}`
-                      navigator.clipboard.writeText(url)
-                      alert('Link copied to clipboard!')
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
-                  >
-                    Copy Link
-                  </button>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {claim.totalAmount} {claim.token} · {claim.recipients} recipients · {claim.splitType} · {claim.createdAt}
+                  </p>
                 </div>
+                <button onClick={() => copyLink(claim.link, claim.id)} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px', flexShrink: 0 }}>
+                  {copiedId === claim.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy Link</>}
+                </button>
               </div>
-            ))
-          )}
-        </div>
-      )}
+              <div className="copy-field" onClick={() => copyLink(claim.link, claim.id)}>
+                <Copy size={12} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{claim.link}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }

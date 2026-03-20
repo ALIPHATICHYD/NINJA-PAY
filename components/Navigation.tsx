@@ -2,79 +2,219 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { WalletButton } from './WalletButton'
+import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { User } from 'lucide-react'
+
+const NAV_LINKS = [
+  { label: 'Send',          href: '/send' },
+  { label: 'Bills',         href: '/bills' },
+  { label: 'Claims',        href: '/claims' },
+  { label: 'Beneficiaries', href: '/beneficiaries' },
+  { label: 'Payroll',       href: '/payroll' },
+  { label: 'Transactions',  href: '/transactions' },
+  { label: 'Analytics',     href: '/analytics' },
+]
 
 export function Navigation() {
   const pathname = usePathname()
 
-  const isActive = (path: string) => pathname === path
+  const isActive = (href: string) => {
+    if (href === '/') return pathname === '/'
+    return pathname.startsWith(href)
+  }
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-8">
-            <Link href="/dashboard" className="text-2xl font-bold text-blue-600">
-              💎 NinjaPay
-            </Link>
-
-            <div className="hidden md:flex space-x-1">
-              <Link
-                href="/dashboard"
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  isActive('/dashboard')
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/dashboard/send"
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  isActive('/dashboard/send')
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Send
-              </Link>
-              <Link
-                href="/dashboard/bills"
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  isActive('/dashboard/bills')
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Bills
-              </Link>
-              <Link
-                href="/dashboard/claims"
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  isActive('/dashboard/claims')
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Claims
-              </Link>
-              <Link
-                href="/dashboard/payroll"
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  isActive('/dashboard/payroll')
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Payroll
-              </Link>
-            </div>
+    <nav
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        background: 'rgba(8, 10, 14, 0.88)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '0 24px',
+          height: '62px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'relative',
+        }}
+      >
+        {/* Logo */}
+        <Link
+          href="/"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexShrink: 0,
+            textDecoration: 'none',
+          }}
+        >
+          <div
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '7px',
+              background: 'var(--accent-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <path d="M7.5 1L13 4.5V10.5L7.5 14L2 10.5V4.5L7.5 1Z" stroke="white" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(255,255,255,0.15)" />
+              <circle cx="7.5" cy="7.5" r="2" fill="white" />
+            </svg>
           </div>
+          <span
+            style={{
+              fontWeight: '700',
+              fontSize: '17px',
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            NinjaPay
+          </span>
+        </Link>
 
-          <WalletButton />
+        {/* Centered Nav Links — desktop */}
+        <div
+          className="hidden md:flex"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: '2px',
+            alignItems: 'center',
+          }}
+        >
+          {NAV_LINKS.map(link => {
+            const active = isActive(link.href)
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                style={{
+                  position: 'relative',
+                  padding: '6px 11px',
+                  borderRadius: '7px',
+                  fontSize: '13.5px',
+                  fontWeight: active ? '600' : '400',
+                  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  transition: 'color 0.15s, background 0.15s',
+                  textDecoration: 'none',
+                  background: active ? 'rgba(91,88,240,0.12)' : 'transparent',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-primary)'
+                    ;(e.currentTarget as HTMLAnchorElement).style.background = 'var(--bg-hover)'
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-secondary)'
+                    ;(e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
+                  }
+                }}
+              >
+                {link.label}
+                {active && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      bottom: '-1px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: '16px',
+                      height: '2px',
+                      background: 'var(--accent)',
+                      borderRadius: '2px',
+                    }}
+                  />
+                )}
+              </Link>
+            )
+          })}
+        </div>
+
+        {/* Connect Wallet */}
+        <div style={{ flexShrink: 0 }}>
+          <ConnectButton.Custom>
+            {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+              const connected = mounted && account && chain
+              if (!mounted) {
+                return (
+                  <button className="btn-primary" style={{ minWidth: '140px', opacity: 0 }} aria-hidden="true">
+                    Connect Wallet
+                  </button>
+                )
+              }
+              if (!connected) {
+                return (
+                  <button onClick={openConnectModal} className="btn-primary" style={{ minWidth: '140px' }}>
+                    Connect Wallet
+                  </button>
+                )
+              }
+              if (chain.unsupported) {
+                return (
+                  <button onClick={openChainModal} className="alert-error" style={{ border: 'none', cursor: 'pointer', padding: '10px 14px', borderRadius: '8px', fontWeight: '600' }}>
+                    Wrong Network
+                  </button>
+                )
+              }
+              return (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={openAccountModal}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 14px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '8px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      transition: 'border-color 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-muted)'
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-light)'
+                    }}
+                  >
+                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                      <User size={13} strokeWidth={2.5} />
+                    </div>
+                    {account.displayName}
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ color: 'var(--text-muted)', marginLeft: '2px' }}>
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+              )
+            }}
+          </ConnectButton.Custom>
         </div>
       </div>
+
     </nav>
   )
 }

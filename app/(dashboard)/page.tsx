@@ -1,105 +1,353 @@
 'use client'
 
 import Link from 'next/link'
-import { BalanceCard } from '@/components/BalanceCard'
+import {
+  Send,
+  CreditCard,
+  Share2,
+  Users2,
+  BarChart3,
+  ListOrdered,
+  ArrowUpRight,
+  ArrowRight,
+  ArrowLeftRight,
+  Briefcase,
+} from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
+import { useBalance } from '@/hooks/useBalance'
+import { fromWei } from '@/lib/injective/bank'
+import { useState } from 'react'
 
-export default function DashboardPage() {
-  const { address, isConnected } = useWallet()
+const FEATURES = [
+  { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDT to any wallet.',   href: '/send' },
+  { icon: CreditCard,   title: 'Bills',         desc: 'Pay airtime, data, electricity, cable.',href: '/bills' },
+  { icon: Share2,       title: 'Claims',        desc: 'Create shareable token-drop links.',     href: '/claims' },
+  { icon: Users2,       title: 'Beneficiaries', desc: 'Manage saved recipients.',               href: '/beneficiaries' },
+  { icon: Briefcase,    title: 'Payroll',       desc: 'Batch-pay your team in one tx.',         href: '/payroll' },
+  { icon: BarChart3,    title: 'Analytics',     desc: 'Volume, transactions, performance.',     href: '/analytics' },
+  { icon: ListOrdered,  title: 'Transactions',  desc: 'Full on-chain history.',                 href: '/transactions' },
+]
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome to NinjaPay</h1>
-        <p className="text-gray-600">
-          Africa's crypto super-app for bills, payroll, and rewards — powered by Injective
-        </p>
-      </div>
+const RATE_INJ  = 1380
+const RATE_USDT = 1592
 
-      {/* Balance Card */}
-      {isConnected && (
-        <BalanceCard address={address} />
-      )}
+export default function DashboardHome() {
+  const { isConnected, address } = useWallet()
+  const { inj, usdt, loading: balLoading } = useBalance(address)
 
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link
-            href="/dashboard/send"
-            className="bg-white rounded-lg p-6 shadow hover:shadow-lg transition border-l-4 border-blue-600"
+  const injDisplay  = balLoading ? '—' : parseFloat(fromWei(inj)).toFixed(4)
+  const usdtDisplay = balLoading ? '—' : parseFloat(fromWei(usdt)).toFixed(2)
+
+  const [offrampToken, setOfframpToken] = useState<'USDT' | 'INJ'>('USDT')
+  const [offrampAmount, setOfframpAmount] = useState('10')
+  const rate = offrampToken === 'USDT' ? RATE_USDT : RATE_INJ
+  const ngn  = offrampAmount ? (parseFloat(offrampAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
+
+  /* ── Disconnected state ── */
+  if (!isConnected) {
+    return (
+      <div style={{ maxWidth: '760px', margin: '48px auto 0', textAlign: 'center' }}>
+        <div style={{ marginBottom: '48px' }}>
+          <div
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '14px',
+              background: 'var(--accent-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+            }}
           >
-            <div className="text-3xl mb-2">💸</div>
-            <h3 className="font-semibold text-gray-900">Send</h3>
-            <p className="text-sm text-gray-600">Send INJ/USDT to wallets</p>
-          </Link>
-
-          <Link
-            href="/dashboard/bills"
-            className="bg-white rounded-lg p-6 shadow hover:shadow-lg transition border-l-4 border-green-600"
-          >
-            <div className="text-3xl mb-2">📱</div>
-            <h3 className="font-semibold text-gray-900">Pay Bills</h3>
-            <p className="text-sm text-gray-600">Airtime, data, electricity, cable</p>
-          </Link>
-
-          <Link
-            href="/dashboard/claims"
-            className="bg-white rounded-lg p-6 shadow hover:shadow-lg transition border-l-4 border-purple-600"
-          >
-            <div className="text-3xl mb-2">🎁</div>
-            <h3 className="font-semibold text-gray-900">Create Claim</h3>
-            <p className="text-sm text-gray-600">Distribute rewards to users</p>
-          </Link>
-
-          <Link
-            href="/dashboard/payroll"
-            className="bg-white rounded-lg p-6 shadow hover:shadow-lg transition border-l-4 border-orange-600"
-          >
-            <div className="text-3xl mb-2">💼</div>
-            <h3 className="font-semibold text-gray-900">Payroll</h3>
-            <p className="text-sm text-gray-600">Batch pay employees in crypto</p>
-          </Link>
-        </div>
-      </div>
-
-      {/* Features */}
-      <div className="bg-white rounded-lg p-8 shadow">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Why NinjaPay?</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div>
-            <div className="text-4xl font-bold text-blue-600 mb-2">⚡</div>
-            <h3 className="font-semibold text-gray-900 mb-2">Zero Gas Fees</h3>
-            <p className="text-gray-600">
-              On Injective's zero-gas architecture. Every transaction is cheap.
-            </p>
+            <svg width="26" height="26" viewBox="0 0 15 15" fill="none">
+              <path d="M7.5 1L13 4.5V10.5L7.5 14L2 10.5V4.5L7.5 1Z" stroke="white" strokeWidth="1.4" strokeLinejoin="round" fill="rgba(255,255,255,0.15)" />
+              <circle cx="7.5" cy="7.5" r="2" fill="white" />
+            </svg>
           </div>
-          <div>
-            <div className="text-4xl font-bold text-green-600 mb-2">🇳🇬</div>
-            <h3 className="font-semibold text-gray-900 mb-2">African First</h3>
-            <p className="text-gray-600">
-              Built for NGN, GHS, KES. Pay bills directly from your crypto.
-            </p>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-purple-600 mb-2">🔐</div>
-            <h3 className="font-semibold text-gray-900 mb-2">Fully On-Chain</h3>
-            <p className="text-gray-600">
-              Smart contracts, decentralized. No intermediaries.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {!isConnected && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-          <h3 className="font-semibold text-blue-900 mb-2">Ready to get started?</h3>
-          <p className="text-blue-700 mb-4">
-            Connect your Keplr or Leap wallet to begin using NinjaPay
+          <h1
+            style={{
+              fontSize: 'clamp(28px, 5vw, 44px)',
+              fontWeight: '800',
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.03em',
+              lineHeight: '1.12',
+              marginBottom: '16px',
+            }}
+          >
+            Connect your wallet<br />to get started.
+          </h1>
+          <p style={{ fontSize: '16px', color: 'var(--text-secondary)', lineHeight: '1.7', maxWidth: '480px', margin: '0 auto' }}>
+            NinjaPay requires a wallet to access sending, bill payments, claims, and payroll. Use the Connect Wallet button above.
           </p>
         </div>
-      )}
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+            gap: '12px',
+            marginTop: '40px',
+          }}
+        >
+          {FEATURES.map(f => {
+            const Icon = f.icon
+            return (
+              <div key={f.title} className="card-sm" style={{ textAlign: 'left' }}>
+                <div className="icon-box-sm" style={{ marginBottom: '12px' }}>
+                  <Icon size={15} />
+                </div>
+                <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  {f.title}
+                </p>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                  {f.desc}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  /* ── Connected state ── */
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+      {/* Top row: Balance card + Off-ramp widget */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+
+        {/* Balance hero card */}
+        <div className="card" style={{ padding: '28px', background: 'var(--bg-card)', gridColumn: 'span 1' }}>
+          <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px' }}>
+            Wallet Balance
+          </p>
+
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '10px' }}>
+              <span style={{ fontSize: 'clamp(34px, 5vw, 48px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
+                {balLoading ? <span className="skeleton" style={{ display: 'inline-block', width: '120px', height: '42px' }} /> : injDisplay}
+              </span>
+              {!balLoading && <span style={{ fontSize: '16px', color: 'var(--text-muted)', fontWeight: '500' }}>INJ</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '20px', fontWeight: '600', color: 'var(--text-secondary)', letterSpacing: '-0.02em' }}>
+                {balLoading ? <span className="skeleton" style={{ display: 'inline-block', width: '80px', height: '24px' }} /> : usdtDisplay}
+              </span>
+              {!balLoading && <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '500' }}>USDT</span>}
+            </div>
+          </div>
+
+          {/* Address */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                background: 'var(--success-subtle)',
+                border: '1px solid rgba(16,214,122,0.2)',
+                borderRadius: '20px',
+              }}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)' }} />
+              <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: '600' }}>Injective</span>
+            </div>
+            <div
+              className="copy-field"
+              style={{ flex: 1, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
+              onClick={() => navigator.clipboard.writeText(address || '')}
+              title="Click to copy"
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {address?.slice(0, 14)}...{address?.slice(-6)}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick actions */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <Link href="/send" className="btn-primary" style={{ fontSize: '13px', padding: '9px 16px' }}>
+              <Send size={13} /> Send
+            </Link>
+            <Link href="/claims" className="btn-secondary" style={{ fontSize: '13px', padding: '9px 16px' }}>
+              <Share2 size={13} /> Create Claim
+            </Link>
+            <Link href="/bills" className="btn-secondary" style={{ fontSize: '13px', padding: '9px 16px' }}>
+              <CreditCard size={13} /> Pay Bills
+            </Link>
+          </div>
+        </div>
+
+        {/* Off-ramp quick widget */}
+        <div className="card" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+            <div className="icon-box">
+              <ArrowLeftRight size={16} />
+            </div>
+            <div>
+              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Off-Ramp</p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Convert crypto → NGN</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+            {(['USDT', 'INJ'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setOfframpToken(t)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  border: offrampToken === t ? '1px solid rgba(91,88,240,0.4)' : '1px solid var(--border)',
+                  background: offrampToken === t ? 'var(--accent-subtle)' : 'transparent',
+                  color: offrampToken === t ? 'var(--accent)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ position: 'relative', marginBottom: '10px' }}>
+            <input
+              className="input"
+              type="number"
+              value={offrampAmount}
+              onChange={e => setOfframpAmount(e.target.value)}
+              placeholder="0"
+              style={{ paddingRight: '60px' }}
+            />
+            <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>
+              {offrampToken}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '14px', border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>You receive</span>
+            <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>₦{ngn}</span>
+          </div>
+
+          <Link href="/send" className="btn-primary" style={{ width: '100%', padding: '10px', fontSize: '13px' }}>
+            Off-Ramp Now <ArrowRight size={13} />
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+        {[
+          { label: 'Total Sent', value: '—' },
+          { label: 'Transactions', value: '—' },
+          { label: 'Beneficiaries', value: '—' },
+        ].map(s => (
+          <div key={s.label} className="card-sm">
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {s.label}
+            </p>
+            <p style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              {s.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick access grid */}
+      <div>
+        <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>
+          Quick Access
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '10px' }}>
+          {FEATURES.map(f => {
+            const Icon = f.icon
+            return (
+              <Link
+                key={f.title}
+                href={f.href}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px 16px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  transition: 'border-color 0.15s, background 0.15s, transform 0.15s',
+                  textDecoration: 'none',
+                }}
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLAnchorElement
+                  el.style.borderColor = 'var(--border-light)'
+                  el.style.background = 'var(--bg-hover)'
+                  el.style.transform = 'translateY(-1px)'
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLAnchorElement
+                  el.style.borderColor = 'var(--border)'
+                  el.style.background = 'var(--bg-card)'
+                  el.style.transform = 'translateY(0)'
+                }}
+              >
+                <div className="icon-box-sm">
+                  <Icon size={14} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '1px' }}>
+                    {f.title}
+                  </p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.desc}
+                  </p>
+                </div>
+                <ArrowRight size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Recent Transactions */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Recent Transactions</h3>
+          <Link
+            href="/transactions"
+            style={{ fontSize: '13px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            View all <ArrowUpRight size={12} />
+          </Link>
+        </div>
+        <div className="empty-state">
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '12px',
+              background: 'var(--bg-hover)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <ListOrdered size={20} />
+          </div>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: '500' }}>No transactions yet</p>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '6px' }}>
+            Start by sending INJ to another wallet or paying a bill.
+          </p>
+          <Link href="/send" style={{ display: 'inline-block', marginTop: '16px', fontSize: '13px', color: 'var(--accent)' }}>
+            Send your first transaction
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }

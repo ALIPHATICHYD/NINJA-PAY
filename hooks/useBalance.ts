@@ -1,65 +1,30 @@
-import { useState, useCallback, useEffect } from 'react'
-import { fetchBalance } from '@/lib/injective/bank'
-import { BalanceState } from '@/lib/injective/types'
+'use client'
 
-interface UseBalanceReturn extends BalanceState {
-  refetch: () => Promise<void>
+import { useBalance as useWagmiBalance } from 'wagmi'
+
+interface BalanceReturn {
+  inj: string    // raw wei string for native INJ
+  usdt: string   // raw wei string (placeholder 0 for now)
+  loading: boolean
+  error?: string
+  refetch: () => void
 }
 
 /**
- * Hook for fetching and managing INJ/USDT balance
+ * Returns the connected wallet's native INJ balance on the EVM chain.
+ * `inj` is in wei (18 decimals) for backward compat with the rest of the UI.
  */
-export function useBalance(address: string | null): UseBalanceReturn {
-  const [balance, setBalance] = useState<BalanceState>({
-    inj: '0',
-    usdt: '0',
-    loading: true,
+export function useBalance(address: string | null): BalanceReturn {
+  const { data, isLoading, error, refetch } = useWagmiBalance({
+    address: address as `0x${string}` | undefined,
+    query: { enabled: !!address },
   })
 
-  const refetch = useCallback(async () => {
-    if (!address) {
-      setBalance({
-        inj: '0',
-        usdt: '0',
-        loading: false,
-      })
-      return
-    }
-
-    setBalance((prev) => ({
-      ...prev,
-      loading: true,
-    }))
-
-    try {
-      const newBalance = await fetchBalance(address)
-      setBalance(newBalance)
-    } catch (error: any) {
-      console.error('Failed to fetch balance:', error)
-      setBalance({
-        inj: '0',
-        usdt: '0',
-        loading: false,
-        error: error.message || 'Failed to fetch balance',
-      })
-    }
-  }, [address])
-
-  // Fetch balance when address changes
-  useEffect(() => {
-    refetch()
-  }, [address, refetch])
-
-  // Poll balance every 10 seconds
-  useEffect(() => {
-    if (!address) return
-
-    const interval = setInterval(refetch, 10000)
-    return () => clearInterval(interval)
-  }, [address, refetch])
-
   return {
-    ...balance,
+    inj:  data ? data.value.toString() : '0',
+    usdt: '0',  // ERC-20 USDT balance can be added later
+    loading: isLoading,
+    error: error?.message,
     refetch,
   }
 }

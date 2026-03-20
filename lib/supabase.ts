@@ -1,8 +1,25 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_URL, SUPABASE_KEY } from './injective/constants'
 import { ClaimPool } from './injective/types'
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+let _supabase: SupabaseClient | null = null
+
+function getSupabase(): SupabaseClient {
+  if (!_supabase) {
+    if (!SUPABASE_URL) {
+      throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured.')
+    }
+    _supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+  }
+  return _supabase
+}
+
+// Convenience alias so existing code stays the same
+const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getSupabase() as any)[prop]
+  },
+})
 
 /**
  * Create a new claim pool

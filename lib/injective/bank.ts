@@ -16,7 +16,8 @@ const bankApi = new ChainGrpcBankApi(endpoints.grpc)
  */
 export async function fetchBalance(address: string): Promise<BalanceState> {
   try {
-    const balances = await bankApi.fetchBalances(address)
+    const response = await bankApi.fetchBalances(address)
+    const balances = response.balances || []
 
     const injBalance =
       balances.find((b) => b.denom === DENOMS.INJ)?.amount || '0'
@@ -115,5 +116,7 @@ export function toWei(amount: string): string {
  * Convert amount from Wei to human-readable format
  */
 export function fromWei(amountInWei: string): string {
-  return new BigNumberInBase(amountInWei).toBase().toFixed()
+  return new BigNumberInBase(amountInWei)
+    .dividedBy('1000000000000000000')
+    .toFixed()
 }

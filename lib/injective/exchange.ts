@@ -22,8 +22,15 @@ export async function getINJUSDTPrice(): Promise<string> {
       throw new Error('INJ/USDT market not found')
     }
 
-    // Use midPrice from market data
-    return injUsdtMarket.midPrice || '0'
+    const orderbook = await spotApi.fetchOrderbookV2(injUsdtMarket.marketId)
+    const bestBid = orderbook.buys?.[0]?.price
+    const bestAsk = orderbook.sells?.[0]?.price
+
+    if (bestBid && bestAsk) {
+      return ((parseFloat(bestBid) + parseFloat(bestAsk)) / 2).toString()
+    }
+
+    return bestBid || bestAsk || '0'
   } catch (error) {
     console.error('Failed to fetch INJ/USDT price:', error)
     throw error

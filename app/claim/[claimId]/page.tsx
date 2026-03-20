@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { getClaimPoolByLink, markClaimAsClaimed, hasUserClaimed } from '@/lib/supabase'
-import { broadcastTxMessage } from '@/lib/injective/broadcast'
 import { createMsgSendINJ } from '@/lib/injective/bank'
 
 export default function PublicClaimPage({

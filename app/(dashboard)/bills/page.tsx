@@ -3,81 +3,73 @@
 import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
-import { mockPurchaseBill, BILL_SERVICES } from '@/lib/vtpass'
+import { useTokenPrice } from '@/hooks/useTokenPrice'
+import { mockPurchaseBill } from '@/lib/vtpass'
 import { toWei } from '@/lib/injective/bank'
 import { recordTransaction } from '@/lib/supabase'
+import { CreditCard, Phone, Wifi, Zap, Tv } from 'lucide-react'
+
+type BillType = 'airtime' | 'data' | 'electricity' | 'cable'
+
+const BILL_TYPES: { id: BillType; label: string; icon: React.ElementType; desc: string }[] = [
+  { id: 'airtime',     label: 'Airtime',     icon: Phone, desc: 'Top up any number' },
+  { id: 'data',        label: 'Data',        icon: Wifi,  desc: 'Buy data bundles' },
+  { id: 'electricity', label: 'Electricity', icon: Zap,   desc: 'Pay meter bills' },
+  { id: 'cable',       label: 'Cable TV',    icon: Tv,    desc: 'DStv, GOtv, etc.' },
+]
+
+const PROVIDERS: Record<BillType, string[]> = {
+  airtime:     ['MTN', 'Glo', 'Airtel', '9mobile'],
+  data:        ['MTN', 'Glo', 'Airtel', '9mobile'],
+  electricity: ['EKEDC', 'IKEDC', 'PHCN', 'BEDC'],
+  cable:       ['DStv', 'GOtv', 'Startimes'],
+}
+
+const PLACEHOLDERS: Record<BillType, string> = {
+  airtime:     'Phone number (e.g. 08012345678)',
+  data:        'Phone number',
+  electricity: 'Meter number',
+  cable:       'Smart card number',
+}
 
 export default function BillsPage() {
   const { address, isConnected } = useWallet()
-  const { usdt } = useBalance(address)
+  useBalance(address)
+  const { usdtNgn } = useTokenPrice()
 
-  const [billType, setBillType] = useState<'airtime' | 'data' | 'electricity' | 'cable'>(
-    'airtime'
-  )
-  const [provider, setProvider] = useState('')
+  const [billType, setBillType]   = useState<BillType>('airtime')
+  const [provider, setProvider]   = useState('')
   const [identifier, setIdentifier] = useState('')
-  const [amount, setAmount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<{
-    type: 'success' | 'error' | null
-    message: string
-  }>({ type: null, message: '' })
+  const [amount, setAmount]       = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [status, setStatus]       = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
-  const providers: { [key: string]: string[] } = {
-    airtime: ['mtn', 'glo', 'airtel', '9mobile'],
-    data: ['mtn', 'glo', 'airtel', '9mobile'],
-    electricity: ['ekedc', 'ikedc', 'phcn', 'bedc'],
-    cable: ['dstv', 'gotv', 'startimes'],
-  }
-
-  const placeholders: { [key: string]: string } = {
-    airtime: 'Phone number (e.g., 08012345678)',
-    data: 'Phone number (e.g., 08012345678)',
-    electricity: 'Meter number (e.g., 12345678901)',
-    cable: 'Smart card number',
-  }
+  const usdtEquiv = amount ? (parseInt(amount) / usdtNgn).toFixed(4) : '0'
 
   const handlePay = async () => {
     if (!address || !provider || !identifier || !amount) {
-      setStatus({ type: 'error', message: 'Please fill in all fields' })
+      setStatus({ type: 'error', message: 'Please fill in all fields.' })
       return
     }
-
     setLoading(true)
     setStatus({ type: null, message: '' })
-
     try {
-      // Mock bill purchase (in production, use real VTPass API)
-      const result = await mockPurchaseBill(
-        `${billType}-${provider}`,
-        identifier,
-        parseInt(amount)
-      )
-
-      // Record transaction
-      if (result.success && address) {
+      const result = await mockPurchaseBill(`${billType}-${provider.toLowerCase()}`, identifier, parseInt(amount))
+      if (result.status === 'success' && address) {
         await recordTransaction({
           userAddress: address,
           type: 'bills',
           status: 'pending',
-          amount: toWei(amount),
-          recipient: `${provider}-${identifier}`,
+          amount: toWei(usdtEquiv),
+          recipient: `${provider}:${identifier}`,
           txHash: result.transactionId,
         })
       }
-
-      setStatus({
-        type: 'success',
-        message: `✓ Bill payment initiated for ${provider.toUpperCase()}`,
-      })
-
+      setStatus({ type: 'success', message: `Bill payment of ₦${parseInt(amount).toLocaleString()} for ${provider} initiated successfully.` })
       setIdentifier('')
       setAmount('')
     } catch (error: any) {
-      setStatus({
-        type: 'error',
-        message: error.message || 'Failed to process bill payment',
-      })
+      setStatus({ type: 'error', message: error.message || 'Failed to process payment.' })
     } finally {
       setLoading(false)
     }
@@ -85,123 +77,132 @@ export default function BillsPage() {
 
   if (!isConnected) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-          <h2 className="font-semibold text-yellow-900 mb-2">Wallet Not Connected</h2>
-          <p className="text-yellow-700">
-            Please connect your wallet to pay bills
-          </p>
-        </div>
+      <div style={{ maxWidth: '520px', margin: '0 auto' }}>
+        <div className="alert-warning">Connect your wallet to pay bills.</div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Pay Bills</h1>
-        <p className="text-gray-600 mb-8">
-          Pay for airtime, data, electricity, or cable using INJ/USDT
+    <div style={{ maxWidth: '540px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '28px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+          Pay Bills
+        </h1>
+        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+          Pay Nigerian utility bills using your USDT balance.
         </p>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-8 space-y-6">
-        {/* Bill Type */}
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+        {/* Bill type — icon-tile selector */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            Bill Type
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {['airtime', 'data', 'electricity', 'cable'].map((type) => (
-              <button
-                key={type}
-                onClick={() => {
-                  setBillType(type as any)
-                  setProvider('')
-                }}
-                className={`py-2 px-4 rounded-lg font-medium transition capitalize ${
-                  billType === type
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
+          <label className="label">Bill Type</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+            {BILL_TYPES.map(bt => {
+              const Icon = bt.icon
+              const active = billType === bt.id
+              return (
+                <button
+                  key={bt.id}
+                  onClick={() => { setBillType(bt.id); setProvider('') }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '14px 8px',
+                    borderRadius: '10px',
+                    border: active ? '1px solid rgba(91,88,240,0.5)' : '1px solid var(--border)',
+                    background: active ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    color: active ? 'var(--accent)' : 'var(--text-muted)',
+                  }}
+                >
+                  <Icon size={20} />
+                  <span style={{ fontSize: '11px', fontWeight: '600', color: active ? 'var(--accent)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    {bt.label}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </div>
 
         {/* Provider */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Provider
-          </label>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent capitalize"
-          >
-            <option value="">Select provider</option>
-            {providers[billType]?.map((p) => (
-              <option key={p} value={p}>
-                {p.toUpperCase()}
-              </option>
-            ))}
-          </select>
+          <label className="label">Provider</label>
+          <div style={{ position: 'relative' }}>
+            <select className="select" value={provider} onChange={e => setProvider(e.target.value)}>
+              <option value="">Select provider</option>
+              {PROVIDERS[billType].map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}>
+              <path d="M2 4.5L6.5 9L11 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
         </div>
 
         {/* Identifier */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {billType === 'electricity' ? 'Meter Number' : 'Identifier'}
-          </label>
+          <label className="label">{billType === 'electricity' ? 'Meter Number' : 'Identifier'}</label>
           <input
+            className="input"
             type="text"
-            placeholder={placeholders[billType]}
+            placeholder={PLACEHOLDERS[billType]}
             value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            onChange={e => setIdentifier(e.target.value)}
           />
         </div>
 
         {/* Amount */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Amount (NGN)
-          </label>
+          <label className="label">Amount (NGN)</label>
           <input
+            className="input"
             type="number"
-            placeholder="1000"
+            placeholder="e.g. 1000"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={e => setAmount(e.target.value)}
             min="0"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          <p className="text-xs text-gray-500 mt-2">
-            You'll pay with equivalent USDT from your balance
-          </p>
+          {amount && (
+            <div
+              style={{
+                marginTop: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                borderRadius: '7px',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>USDT equivalent</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--usdt-color)' }}>{usdtEquiv} USDT</span>
+            </div>
+          )}
         </div>
 
-        {/* Status Message */}
         {status.type && (
-          <div
-            className={`p-4 rounded-lg ${
-              status.type === 'success'
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-700 border border-red-200'
-            }`}
-          >
+          <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>
             {status.message}
           </div>
         )}
 
-        {/* Pay Button */}
         <button
           onClick={handlePay}
           disabled={loading || !provider || !identifier || !amount}
-          className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          className="btn-primary"
+          style={{ width: '100%', padding: '13px', fontSize: '15px' }}
         >
-          {loading ? 'Processing...' : 'Pay Bill'}
+          {loading
+            ? <><span className="spinner" /> Processing...</>
+            : <><CreditCard size={15} /> Pay Bill</>
+          }
         </button>
       </div>
     </div>

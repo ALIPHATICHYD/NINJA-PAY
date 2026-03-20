@@ -1,65 +1,647 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import {
+  Send,
+  CreditCard,
+  Share2,
+  Users2,
+  BarChart3,
+  ListOrdered,
+  ArrowRight,
+  Shield,
+  Zap,
+  Wallet,
+  ChevronDown,
+  ArrowLeftRight,
+  CheckCircle2,
+} from 'lucide-react'
+import { useTokenPrice } from '@/hooks/useTokenPrice'
+
+const BANKS = [
+  'Access Bank', 'Ecobank', 'Fidelity Bank', 'First Bank', 'GTBank', 
+  'Kuda Bank', 'Moniepoint', 'OPay', 'Palmpay', 'Stanbic IBTC', 
+  'Sterling Bank', 'UBA', 'Wema Bank', 'Zenith Bank'
+]
+
+const FEATURES = [
+  { icon: Send,        title: 'Send',          desc: 'Transfer INJ or USDT to any Injective wallet address instantly.' },
+  { icon: CreditCard,  title: 'Pay Bills',     desc: 'Airtime, data, electricity, and cable — paid with crypto.' },
+  { icon: Share2,      title: 'Claims',        desc: 'Create shareable links to distribute tokens to any group.' },
+  { icon: Users2,      title: 'Payroll',       desc: 'Batch-pay your team or DAO in a single transaction.' },
+  { icon: BarChart3,   title: 'Analytics',     desc: 'Track volume, transaction counts, and performance over time.' },
+  { icon: ListOrdered, title: 'Transactions',  desc: 'Full on-chain history, filterable by type and status.' },
+]
+
+const FAQS = [
+  {
+    q: 'What networks does NinjaPay support?',
+    a: 'NinjaPay runs natively on Injective. Wallet connect supports Keplr and Leap (Cosmos) as well as MetaMask (EVM-compatible via Injective\'s EVM layer).',
+  },
+  {
+    q: 'Is NinjaPay non-custodial?',
+    a: 'Yes. Your wallet keys never leave your device. All on-chain transactions are signed by your wallet and broadcast to Injective directly.',
+  },
+  {
+    q: 'How does off-ramping work?',
+    a: 'You send INJ or USDT to NinjaPay\'s escrow, which triggers an Onboard API disbursement to your Nigerian bank account at the current market rate. The process takes < 60 seconds.',
+  },
+  {
+    q: 'What are the fees?',
+    a: 'Injective charges minimal network fees (~$0.002). NinjaPay adds a 0.5% service fee on off-ramp conversions. All fees are shown before you confirm.',
+  },
+  {
+    q: 'Can I pay Nigerian utility bills with crypto?',
+    a: 'Yes — Airtime, Data, Electricity, and Cable TV are all supported via our VTpass integration. Pay in USDT and the equivalent NGN is disbursed to your provider instantly.',
+  },
+]
+
+export default function LandingPage() {
+  const [openFaq, setOpenFaq]         = useState<number | null>(null)
+  const [offrampToken, setOfframpToken] = useState<'INJ' | 'USDT'>('USDT')
+  const [offrampAmount, setOfframpAmount] = useState('10')
+  const [bankName, setBankName]       = useState('')
+  const [acctNumber, setAcctNumber]   = useState('')
+  const [resolvedName, setResolvedName] = useState('')
+  const [isResolving, setIsResolving]   = useState(false)
+
+  const { injUsd, usdtNgn, loading } = useTokenPrice()
+  const rate    = offrampToken === 'USDT' ? usdtNgn : (injUsd * usdtNgn)
+  const ngn     = offrampAmount ? (parseFloat(offrampAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
+
+  // Mock account name resolution
+  useEffect(() => {
+    if (acctNumber.length === 10 && bankName) {
+      setIsResolving(true)
+      setResolvedName('')
+      const timer = setTimeout(() => {
+        setResolvedName('John Obi Doe') // Mock resolved name
+        setIsResolving(false)
+      }, 1500)
+      return () => clearTimeout(timer)
+    } else {
+      setResolvedName('')
+      setIsResolving(false)
+    }
+  }, [acctNumber, bankName])
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', overflowX: 'hidden' }}>
+
+      {/* ─── Navbar ─── */}
+      <nav
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          background: 'rgba(8,10,14,0.88)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            padding: '0 24px',
+            height: '62px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '7px',
+                background: 'var(--accent-gradient)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M7.5 1L13 4.5V10.5L7.5 14L2 10.5V4.5L7.5 1Z" stroke="white" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(255,255,255,0.15)" />
+                <circle cx="7.5" cy="7.5" r="2" fill="white" />
+              </svg>
+            </div>
+            <span style={{ fontWeight: '700', fontSize: '17px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              NinjaPay
+            </span>
+          </div>
+          <Link href="/send" className="btn-primary" style={{ padding: '9px 22px', fontSize: '14px' }}>
+            Launch App
+            <ArrowRight size={14} />
+          </Link>
+        </div>
+      </nav>
+
+      {/* ─── Hero ─── */}
+      <section
+        style={{
+          position: 'relative',
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '90px 24px 60px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: '64px',
+          alignItems: 'center',
+        }}
+      >
+        {/* Orbs */}
+        <div
+          className="orb"
+          style={{ width: '600px', height: '600px', background: 'rgba(91,88,240,0.12)', top: '-200px', left: '-200px' }}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+        <div
+          className="orb"
+          style={{ width: '400px', height: '400px', background: 'rgba(139,92,246,0.08)', top: '-100px', right: '-100px', animationDelay: '4s' }}
+        />
+
+        {/* Left: copy */}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div className="hero-badge" style={{ marginBottom: '28px', display: 'inline-flex' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)' }} />
+            Built on Injective · Hackathon 2026
+          </div>
+
+          <h1
+            style={{
+              fontSize: 'clamp(38px, 6vw, 66px)',
+              fontWeight: '800',
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.04em',
+              lineHeight: '1.08',
+              marginBottom: '24px',
+            }}
+          >
+            Crypto payments{'\u00A0'}for{' '}
+            <span className="gradient-text">the real world.</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <p
+            style={{
+              fontSize: '18px',
+              color: 'var(--text-secondary)',
+              maxWidth: '520px',
+              lineHeight: '1.75',
+              marginBottom: '40px',
+            }}
+          >
+            Send INJ and USDT, pay utility bills, run crypto payroll, and
+            off-ramp directly to your Nigerian bank — all from one non-custodial
+            interface on Injective.
           </p>
+
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <Link href="/send" className="btn-primary" style={{ padding: '13px 28px', fontSize: '15px' }}>
+              Get Started
+              <ArrowRight size={16} />
+            </Link>
+            <a href="#how-it-works" className="btn-secondary" style={{ padding: '13px 28px', fontSize: '15px' }}>
+              How it works
+            </a>
+          </div>
+
+          <div style={{ display: 'flex', gap: '24px', marginTop: '40px', flexWrap: 'wrap' }}>
+            {[
+              { label: 'Settlement', value: '< 1 second' },
+              { label: 'Network fee', value: '~$0.002' },
+              { label: 'Wallets', value: 'Keplr · Leap · MetaMask' },
+            ].map(s => (
+              <div key={s.label}>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{s.value}</p>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Right: Off-ramp widget mockup */}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div
+            className="card-glass"
+            style={{ borderColor: 'var(--border-light)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {/* Widget header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
+              <div className="icon-box">
+                <ArrowLeftRight size={17} />
+              </div>
+              <div>
+                <p style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Off-Ramp</p>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Convert crypto → NGN instantly</p>
+              </div>
+            </div>
+
+            {/* Token toggle */}
+            <div style={{ marginBottom: '14px' }}>
+              <p className="label">You send</p>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                {(['USDT', 'INJ'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setOfframpToken(t)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '7px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      border: offrampToken === t ? '1px solid rgba(91,88,240,0.4)' : '1px solid var(--border)',
+                      background: offrampToken === t ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
+                      color: offrampToken === t ? 'var(--accent)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input input-lg"
+                  type="number"
+                  value={offrampAmount}
+                  onChange={e => setOfframpAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={{ paddingRight: '70px' }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    right: '14px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: offrampToken === 'USDT' ? 'var(--usdt-color)' : 'var(--inj-color)',
+                  }}
+                >
+                  {offrampToken}
+                </span>
+              </div>
+            </div>
+
+            {/* Rate row */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                background: 'var(--bg-secondary)',
+                borderRadius: '9px',
+                marginBottom: '14px',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Est. Rate</span>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                {loading ? 'Loading...' : `1 ${offrampToken} ≈ ₦${rate.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`}
+              </span>
+            </div>
+
+            {/* NGN output */}
+            <div style={{ marginBottom: '18px' }}>
+              <p className="label">You receive (NGN)</p>
+              <div
+                style={{
+                  padding: '14px 16px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  ₦{ngn}
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>NGN</span>
+              </div>
+            </div>
+
+            {/* Bank field */}
+            <div style={{ marginBottom: '18px' }}>
+              <p className="label">Bank account</p>
+              <select 
+                className="select" 
+                value={bankName} 
+                onChange={e => setBankName(e.target.value)}
+                style={{ marginBottom: '8px' }}
+              >
+                <option value="">Select bank</option>
+                {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <input 
+                className="input input-mono" 
+                type="text"
+                placeholder="0123456789" 
+                value={acctNumber}
+                maxLength={10}
+                onChange={e => setAcctNumber(e.target.value.replace(/\D/g, ''))}
+                style={{ marginBottom: '8px' }}
+              />
+              {isResolving && (
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span className="spinner" style={{ width: '10px', height: '10px', borderWidth: '1px' }} /> Resolving account...
+                </p>
+              )}
+              {resolvedName && !isResolving && (
+                <p style={{ fontSize: '12px', color: 'var(--success)', fontWeight: '500' }}>
+                  ✓ Account verified: {resolvedName}
+                </p>
+              )}
+            </div>
+
+            <Link href="/send" className="btn-primary" style={{ width: '100%', padding: '13px', fontSize: '15px' }}>
+              Off-Ramp Now
+              <ArrowRight size={15} />
+            </Link>
+
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '12px', lineHeight: '1.5' }}>
+              Connect wallet to proceed · Powered by Onboard API
+            </p>
+          </div>
         </div>
-      </main>
+      </section>
+
+      {/* ─── Stats strip ─── */}
+      <section style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+        <div
+          style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            padding: '28px 24px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '24px',
+          }}
+        >
+          {[
+            { label: 'Settlement time',   value: '< 1 second' },
+            { label: 'Network fee',       value: '~$0.002' },
+            { label: 'Wallets supported', value: '3 wallets' },
+            { label: 'Off-ramp currency', value: 'NGN via Onboard' },
+          ].map(stat => (
+            <div key={stat.label} style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
+                {stat.value}
+              </p>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── Features ─── */}
+      <section style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
+        <div style={{ marginBottom: '52px' }}>
+          <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '12px' }}>
+            Features
+          </p>
+          <h2 style={{ fontSize: 'clamp(26px, 4vw, 42px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
+            Everything you need in one place
+          </h2>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+          {FEATURES.map(f => {
+            const Icon = f.icon
+            return (
+              <div key={f.title} className="feature-card">
+                <div className="icon-box" style={{ marginBottom: '18px' }}>
+                  <Icon size={18} />
+                </div>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                  {f.title}
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.65' }}>
+                  {f.desc}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ─── How it works ─── */}
+      <section id="how-it-works" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
+          <div style={{ marginBottom: '52px' }}>
+            <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '12px' }}>
+              How It Works
+            </p>
+            <h2 style={{ fontSize: 'clamp(26px, 4vw, 42px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
+              Get started in minutes
+            </h2>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '40px' }}>
+            {[
+              { step: '01', title: 'Connect your wallet', desc: 'Use Keplr, Leap, or MetaMask to connect your Injective wallet with one click.' },
+              { step: '02', title: 'Choose an action',    desc: 'Send tokens, pay a bill, create a claim pool, or run payroll from the dashboard.' },
+              { step: '03', title: 'Sign the transaction',desc: 'Review all details, then sign from your wallet. No private keys ever leave your device.' },
+              { step: '04', title: 'Settlement on-chain', desc: 'Transactions settle on Injective in under a second. View them in your history instantly.' },
+            ].map(s => (
+              <div key={s.step}>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '9px',
+                    background: 'var(--accent-subtle)',
+                    border: '1px solid rgba(91,88,240,0.25)',
+                    marginBottom: '16px',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  {s.step}
+                </div>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                  {s.title}
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.65' }}>
+                  {s.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Why NinjaPay ─── */}
+      <section style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+          {[
+            { icon: Shield, title: 'Non-Custodial',      desc: 'You hold your keys. NinjaPay never takes custody of your funds.' },
+            { icon: Zap,    title: 'Sub-Second Finality',desc: 'Injective settles transactions faster than any EVM chain.' },
+            { icon: Wallet, title: 'Multi-Wallet',       desc: 'Keplr, Leap, and MetaMask — pick whatever you already use.' },
+            { icon: CheckCircle2, title: 'Transparent Fees', desc: 'All fees shown upfront. No hidden charges, ever.' },
+          ].map(item => {
+            const Icon = item.icon
+            return (
+              <div key={item.title} className="card card-hover">
+                <div className="icon-box" style={{ marginBottom: '16px' }}>
+                  <Icon size={18} />
+                </div>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  {item.title}
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.65' }}>
+                  {item.desc}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ─── FAQ ─── */}
+      <section style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+        <div style={{ maxWidth: '720px', margin: '0 auto', padding: '88px 24px' }}>
+          <h2 style={{ fontSize: 'clamp(26px, 4vw, 38px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em', marginBottom: '48px' }}>
+            Frequently asked questions
+          </h2>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {FAQS.map((faq, idx) => (
+              <div
+                key={idx}
+                style={{
+                  borderRadius: '11px',
+                  border: '1px solid',
+                  borderColor: openFaq === idx ? 'var(--border-light)' : 'var(--border)',
+                  background: openFaq === idx ? 'var(--bg-card)' : 'transparent',
+                  overflow: 'hidden',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <button
+                  onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '18px 20px',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    gap: '16px',
+                  }}
+                >
+                  <span style={{ fontSize: '15px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    {faq.q}
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    style={{
+                      color: 'var(--text-muted)',
+                      flexShrink: 0,
+                      transform: openFaq === idx ? 'rotate(180deg)' : 'rotate(0)',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                </button>
+                {openFaq === idx && (
+                  <div
+                    style={{
+                      padding: '0 20px 18px',
+                      paddingTop: '4px',
+                      fontSize: '14px',
+                      color: 'var(--text-secondary)',
+                      lineHeight: '1.75',
+                      borderTop: '1px solid var(--border)',
+                      paddingBlock: '16px 18px',
+                    }}
+                  >
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── CTA ─── */}
+      <section style={{ maxWidth: '1280px', margin: '0 auto', padding: '88px 24px' }}>
+        <div
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-light)',
+            borderRadius: '20px',
+            padding: '72px 40px',
+            textAlign: 'center',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            className="orb"
+            style={{ width: '400px', height: '400px', background: 'rgba(91,88,240,0.12)', top: '-200px', left: '50%', transform: 'translateX(-50%)' }}
+          />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <h2 style={{ fontSize: 'clamp(26px, 4vw, 44px)', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.03em', marginBottom: '16px' }}>
+              Ready to get started?
+            </h2>
+            <p style={{ fontSize: '16px', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 36px', lineHeight: '1.7' }}>
+              Connect your wallet and access the full NinjaPay suite — no signup, no KYC delay, no waiting.
+            </p>
+            <Link href="/send" className="btn-primary" style={{ padding: '14px 36px', fontSize: '16px' }}>
+              Launch App
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer style={{ borderTop: '1px solid var(--border)' }}>
+        <div
+          style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            padding: '28px 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            © 2026 NinjaPay. Built on Injective.
+          </p>
+          <div style={{ display: 'flex', gap: '20px' }}>
+            {['Terms', 'Privacy', 'Twitter', 'Discord'].map(item => (
+              <a
+                key={item}
+                href="#"
+                style={{ fontSize: '13px', color: 'var(--text-muted)', transition: 'color 0.15s' }}
+                onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-secondary)')}
+                onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)')}
+              >
+                {item}
+              </a>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
-  );
+  )
 }

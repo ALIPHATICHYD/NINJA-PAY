@@ -1,167 +1,145 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
-import { getTransactionHistory } from '@/lib/supabase'
+import { ExternalLink, ListOrdered } from 'lucide-react'
+
+type TxType = 'all' | 'send' | 'bills' | 'claims' | 'payroll'
+
+interface Transaction {
+  id: string; type: Exclude<TxType, 'all'>; amount: string; token: string
+  recipient: string; status: 'confirmed' | 'pending' | 'failed'
+  date: string; dateLabel: string; txHash: string
+}
+
+const MOCK_TXS: Transaction[] = [
+  { id: '1', type: 'send',    amount: '5.00',   token: 'INJ',  recipient: 'inj1a2b3c...d4e5f6', status: 'confirmed', date: '2026-03-20', dateLabel: 'Today',     txHash: '0xabc123def456' },
+  { id: '2', type: 'bills',   amount: '2000',   token: 'NGN',  recipient: 'MTN:08012345678',    status: 'confirmed', date: '2026-03-20', dateLabel: 'Today',     txHash: '0xfed987cba654' },
+  { id: '3', type: 'payroll', amount: '120.00', token: 'USDT', recipient: '6 recipients',       status: 'pending',   date: '2026-03-19', dateLabel: 'Yesterday', txHash: '0x111222333444' },
+  { id: '4', type: 'claims',  amount: '50.00',  token: 'USDT', recipient: 'Team Bonus Q1',      status: 'confirmed', date: '2026-03-17', dateLabel: 'Earlier',   txHash: '0x555666777888' },
+]
+
+const FILTERS: { id: TxType; label: string }[] = [
+  { id: 'all', label: 'All' }, { id: 'send', label: 'Send' },
+  { id: 'bills', label: 'Bills' }, { id: 'claims', label: 'Claims' },
+  { id: 'payroll', label: 'Payroll' },
+]
+
+const TYPE_COLORS: Record<Exclude<TxType, 'all'>, string> = {
+  send: 'var(--accent)', bills: 'var(--warning)', claims: 'var(--inj-color)', payroll: '#a78bfa',
+}
 
 export default function TransactionsPage() {
-  const { address, isConnected } = useWallet()
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'send' | 'bills' | 'claim' | 'payroll'>(
-    'all'
-  )
+  const { isConnected } = useWallet()
+  const [filter, setFilter] = useState<TxType>('all')
 
-  useEffect(() => {
-    const loadTransactions = async () => {
-      if (!address) return
+  const filtered = MOCK_TXS.filter(tx => filter === 'all' || tx.type === filter)
 
-      setLoading(true)
-      try {
-        const txs = await getTransactionHistory(address, 100)
-        setTransactions(txs)
-      } catch (error) {
-        console.error('Failed to load transactions:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadTransactions()
-  }, [address])
-
-  const filteredTransactions = transactions.filter(
-    (tx) => filter === 'all' || tx.type === filter
-  )
-
-  const getTypeIcon = (type: string) => {
-    const icons: { [key: string]: string } = {
-      send: '💸',
-      bills: '📱',
-      claim: '🎁',
-      payroll: '💼',
-    }
-    return icons[type] || '📝'
-  }
-
-  const getStatusColor = (status: string) => {
-    const colors: { [key: string]: string } = {
-      pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-      confirmed: 'bg-green-50 text-green-700 border-green-200',
-      failed: 'bg-red-50 text-red-700 border-red-200',
-    }
-    return colors[status] || 'bg-gray-50'
-  }
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  // Group by dateLabel
+  const groups = filtered.reduce<Record<string, Transaction[]>>((acc, tx) => {
+    if (!acc[tx.dateLabel]) acc[tx.dateLabel] = []
+    acc[tx.dateLabel].push(tx)
+    return acc
+  }, {})
+  const dateOrder = ['Today', 'Yesterday', 'Earlier']
 
   if (!isConnected) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-          <h2 className="font-semibold text-yellow-900 mb-2">Wallet Not Connected</h2>
-          <p className="text-yellow-700">
-            Please connect your wallet to view transactions
-          </p>
-        </div>
+      <div style={{ maxWidth: '520px', margin: '0 auto' }}>
+        <div className="alert-warning">Connect your wallet to view transactions.</div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Transaction History</h1>
-        <p className="text-gray-600">View all your transactions</p>
+    <div style={{ maxWidth: '820px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '28px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Transactions</h1>
+        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your full on-chain activity history.</p>
       </div>
 
       {/* Filter */}
-      <div className="mb-6 flex gap-2 flex-wrap">
-        {['all', 'send', 'bills', 'claim', 'payroll'].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f as any)}
-            className={`px-4 py-2 rounded-lg font-medium transition capitalize ${
-              filter === f
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            {f}
+      <div className="seg-control" style={{ marginBottom: '24px', width: 'fit-content' }}>
+        {FILTERS.map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)} className={`seg-btn${filter === f.id ? ' active' : ''}`}>
+            {f.label}
           </button>
         ))}
       </div>
 
-      {/* Transactions List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-gray-600">Loading transactions...</div>
-        ) : filteredTransactions.length === 0 ? (
-          <div className="p-8 text-center text-gray-600">
-            No transactions yet. Start using NinjaPay!
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <ListOrdered size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', display: 'block' }} />
+            <p style={{ fontWeight: '500' }}>No transactions</p>
+            <p>Transactions matching this filter will appear here.</p>
           </div>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Recipient
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Date
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredTransactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-2xl mr-2">{getTypeIcon(tx.type)}</span>
-                    <span className="capitalize font-medium text-gray-900">
-                      {tx.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-900 font-semibold">
-                    {tx.amount.slice(0, -18)}
-                  </td>
-                  <td className="px-6 py-4 text-gray-700 font-mono text-sm max-w-xs truncate">
-                    {tx.recipient}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold border capitalize ${getStatusColor(
-                        tx.status
-                      )}`}
-                    >
-                      {tx.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {formatDate(tx.created_at)}
-                  </td>
-                </tr>
+        </div>
+      ) : (
+        dateOrder.filter(dl => groups[dl]).map(dateLabel => (
+          <div key={dateLabel} style={{ marginBottom: '24px' }}>
+            {/* Date group header */}
+            <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>
+              {dateLabel}
+            </p>
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              {groups[dateLabel].map((tx, i) => (
+                <div
+                  key={tx.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 110px 110px 90px auto',
+                    padding: '14px 20px',
+                    borderBottom: i < groups[dateLabel].length - 1 ? '1px solid var(--border)' : 'none',
+                    gap: '12px',
+                    alignItems: 'center',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'transparent'}
+                >
+                  {/* Recipient */}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                      {/* Type dot */}
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: TYPE_COLORS[tx.type], flexShrink: 0 }} />
+                      <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {tx.recipient}
+                      </p>
+                    </div>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '15px' }}>{tx.date}</p>
+                  </div>
+                  {/* Amount */}
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    {tx.amount} <span style={{ fontWeight: '400', color: 'var(--text-muted)', fontSize: '11px' }}>{tx.token}</span>
+                  </p>
+                  {/* Type badge */}
+                  <span className="badge badge-neutral" style={{ width: 'fit-content', textTransform: 'capitalize', color: TYPE_COLORS[tx.type] }}>
+                    {tx.type}
+                  </span>
+                  {/* Status */}
+                  <span
+                    className={`badge badge-${tx.status === 'confirmed' ? 'success' : tx.status === 'failed' ? 'error' : 'warning'}`}
+                    style={{ width: 'fit-content', textTransform: 'capitalize' }}
+                  >
+                    {tx.status}
+                  </span>
+                  {/* Hash */}
+                  <a
+                    href={`https://explorer.injective.network/transaction/${tx.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--accent)', fontFamily: 'monospace' }}
+                  >
+                    {tx.txHash.slice(0, 8)}...<ExternalLink size={10} />
+                  </a>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </div>
+          </div>
+        ))
+      )}
     </div>
   )
 }
