@@ -16,7 +16,8 @@ import {
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { fromWei } from '@/lib/injective/bank'
-import { useState } from 'react'
+import { resolveAccountName } from '@/lib/paystack'
+import { useState, useEffect } from 'react'
 
 const FEATURES = [
   { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDT to any wallet.',   href: '/send' },
@@ -30,6 +31,24 @@ const FEATURES = [
 
 const RATE_INJ  = 1380
 const RATE_USDT = 1592
+
+// Bank code mapping for Paystack account resolution
+const BANK_CODES: { [key: string]: string } = {
+  'Access Bank': '044',
+  'Ecobank': '050',
+  'Fidelity Bank': '070',
+  'First Bank': '011',
+  'GTBank': '058',
+  'Kuda Bank': '090267',
+  'Moniepoint': '999991',
+  'OPay': '999992',
+  'Palmpay': '999993',
+  'Stanbic IBTC': '039',
+  'Sterling Bank': '100',
+  'UBA': '033',
+  'Wema Bank': '035',
+  'Zenith Bank': '057',
+}
 
 export default function DashboardHome() {
   const { isConnected, address } = useWallet()
@@ -60,10 +79,16 @@ export default function DashboardHome() {
               margin: '0 auto 20px',
             }}
           >
-            <svg width="26" height="26" viewBox="0 0 15 15" fill="none">
-              <path d="M7.5 1L13 4.5V10.5L7.5 14L2 10.5V4.5L7.5 1Z" stroke="white" strokeWidth="1.4" strokeLinejoin="round" fill="rgba(255,255,255,0.15)" />
-              <circle cx="7.5" cy="7.5" r="2" fill="white" />
-            </svg>
+            <img
+              src="/favicon.png"
+              alt="NinjaPay"
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '10px',
+                objectFit: 'cover',
+              }}
+            />
           </div>
           <h1
             style={{

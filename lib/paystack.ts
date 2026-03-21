@@ -25,6 +25,74 @@ interface PaystackResponse {
   data?: any
 }
 
+interface ResolveAccountResponse {
+  status: boolean
+  message: string
+  data?: {
+    account_number: string
+    account_name: string
+    bank_id: number
+  }
+}
+
+/**
+ * Resolve Nigerian bank account name using Paystack
+ * @param accountNumber - 10-digit account number
+ * @param bankCode - Bank code (e.g., 044 for Access Bank)
+ * @returns Account name or error
+ */
+export async function resolveAccountName(
+  accountNumber: string,
+  bankCode: string
+): Promise<{ accountName: string }> {
+  try {
+    if (!accountNumber || accountNumber.length !== 10) {
+      throw new Error('Account number must be exactly 10 digits')
+    }
+    if (!bankCode) {
+      throw new Error('Bank code is required')
+    }
+
+    if (!PAYSTACK_KEY) {
+      throw new Error('Paystack API key not configured. Please set NEXT_PUBLIC_PAYSTACK_KEY in .env.local')
+    }
+
+    const response = await axios.get<ResolveAccountResponse>(
+      `${PAYSTACK_BASE_URL}/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
+      {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+
+    if (!response.data.status) {
+      throw new Error(response.data.message || 'Account resolution failed')
+    }
+
+    return {
+      accountName: response.data.data?.account_name || '',
+    }
+  } catch (error: any) {
+    // Log full error details for debugging
+    if (error.response?.status === 401) {
+      console.error('❌ Paystack Authentication Failed - Invalid API Key')
+      console.error('Response:', error.response?.data)
+      throw new Error('Invalid Paystack API key. Please verify NEXT_PUBLIC_PAYSTACK_KEY in .env.local')
+    }
+    
+    if (error.response?.status === 422) {
+      console.error('❌ Invalid account or bank code:', error.response?.data)
+      throw new Error(error.response?.data?.message || 'Invalid account number or bank code')
+    }
+
+    const errorMessage = error.response?.data?.message || error.message || 'Failed to resolve account name'
+    console.error('Account resolution error:', errorMessage)
+    throw new Error(errorMessage)
+  }
+}
+
 /**
  * Initialize on-ramp payment via Paystack
  * Returns authorization URL for user to send money

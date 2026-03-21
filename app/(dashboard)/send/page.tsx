@@ -7,6 +7,7 @@ import { useTokenPrice } from '@/hooks/useTokenPrice'
 import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { Send, ArrowLeftRight, ArrowRight, ExternalLink } from 'lucide-react'
+import { resolveAccountName } from '@/lib/paystack'
 
 const BANKS = [
   'Access Bank', 'Ecobank', 'Fidelity Bank', 'First Bank', 'GTBank', 
@@ -50,20 +51,58 @@ export default function SendPage() {
   const rate = orToken === 'USDT' ? usdtNgn : (injUsd * usdtNgn)
   const ngn  = orAmount ? (parseFloat(orAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
 
-  // Mock account name resolution
+  // Bank code mapping (example - expand as needed)
+  const BANK_CODES: { [key: string]: string } = {
+    'Access Bank': '044',
+    'Ecobank': '050',
+    'Fidelity Bank': '070',
+    'First Bank': '011',
+    'GTBank': '058',
+    'Kuda Bank': '090267',
+    'Moniepoint': '999991',
+    'OPay': '999992',
+    'Palmpay': '999993',
+    'Stanbic IBTC': '039',
+    'Sterling Bank': '100',
+    'UBA': '033',
+    'Wema Bank': '035',
+    'Zenith Bank': '057',
+  }
+
+  // Real account name resolution via Paystack
   useEffect(() => {
-    if (acctNumber.length === 10 && bankName) {
-      setIsResolving(true)
-      setResolvedName('')
-      const timer = setTimeout(() => {
-        setResolvedName('John Obi Doe') // Mock resolved name
-        setIsResolving(false)
-      }, 1500)
-      return () => clearTimeout(timer)
-    } else {
-      setResolvedName('')
-      setIsResolving(false)
+    const resolveAccount = async () => {
+      if (acctNumber.length === 10 && bankName) {
+        setIsResolving(true)
+        setResolvedName('')
+        setOrStatus({ type: null, message: '' })
+        
+        try {
+          const bankCode = BANK_CODES[bankName]
+          if (!bankCode) {
+            setOrStatus({ type: 'error', message: 'Bank not supported or not found' })
+            setIsResolving(false)
+            return
+          }
+
+          const result = await resolveAccountName(acctNumber, bankCode)
+          setResolvedName(result.accountName)
+          setOrStatus({ type: 'success', message: `Account verified: ${result.accountName}` })
+        } catch (error: any) {
+          const errorMsg = error.message || 'Failed to resolve account name'
+          setOrStatus({ type: 'error', message: errorMsg })
+          setResolvedName('')
+        } finally {
+          setIsResolving(false)
+        }
+      } else {
+        setResolvedName('')
+        setOrStatus({ type: null, message: '' })
+      }
     }
+
+    const timer = setTimeout(resolveAccount, 800) // Debounce
+    return () => clearTimeout(timer)
   }, [acctNumber, bankName])
 
   const handleSend = () => {
@@ -303,9 +342,14 @@ export default function SendPage() {
                 <span className="spinner" style={{ width: '10px', height: '10px', borderWidth: '1px' }} /> Resolving account...
               </p>
             )}
-            {resolvedName && !isResolving && (
+            {orStatus.type === 'success' && !isResolving && (
               <p style={{ fontSize: '12px', color: 'var(--success)', fontWeight: '500' }}>
-                ✓ Account verified: {resolvedName}
+                ✓ {orStatus.message}
+              </p>
+            )}
+            {orStatus.type === 'error' && !isResolving && (
+              <p style={{ fontSize: '12px', color: 'var(--error)', fontWeight: '500' }}>
+                ✗ {orStatus.message}
               </p>
             )}
           </div>

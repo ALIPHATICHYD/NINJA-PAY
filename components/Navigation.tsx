@@ -58,22 +58,16 @@ export function Navigation() {
             textDecoration: 'none',
           }}
         >
-          <div
+          <img
+            src="/favicon.png"
+            alt="NinjaPay"
             style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '7px',
-              background: 'var(--accent-gradient)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: '6px',
+              objectFit: 'contain',
             }}
-          >
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-              <path d="M7.5 1L13 4.5V10.5L7.5 14L2 10.5V4.5L7.5 1Z" stroke="white" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(255,255,255,0.15)" />
-              <circle cx="7.5" cy="7.5" r="2" fill="white" />
-            </svg>
-          </div>
+          />
           <span
             style={{
               fontWeight: '700',
