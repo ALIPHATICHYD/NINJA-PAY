@@ -1,15 +1,16 @@
 import { useState, useCallback, useEffect } from 'react'
-import { getINJUSDTPrice } from '@/lib/injective/exchange'
+import { getINJUSDCPrice } from '@/lib/injective/exchange'
 
 interface UseExchangeRateReturn {
-  injToUsdtRate: string
+  injToUsdcRate: string
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
 }
 
 /**
- * Hook for fetching live INJ/USDT exchange rate
+ * Hook for fetching live INJ/USDC exchange rate
+ * USDC is Circle's regulated stablecoin via CCTP
  */
 export function useExchangeRate(): UseExchangeRateReturn {
   const [rate, setRate] = useState<string>('0')
@@ -21,7 +22,7 @@ export function useExchangeRate(): UseExchangeRateReturn {
     setError(null)
 
     try {
-      const price = await getINJUSDTPrice()
+      const price = await getINJUSDCPrice()
       setRate(price)
     } catch (err: any) {
       console.error('Failed to fetch exchange rate:', err)
@@ -43,7 +44,7 @@ export function useExchangeRate(): UseExchangeRateReturn {
   }, [refetch])
 
   return {
-    injToUsdtRate: rate,
+    injToUsdcRate: rate,
     loading,
     error,
     refetch,

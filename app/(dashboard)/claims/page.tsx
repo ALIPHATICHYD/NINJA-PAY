@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useWallet } from '@/hooks/useWallet'
+import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { createClaimPool, getClaimPoolsByCreator } from '@/lib/supabase'
-import { Copy, Plus, Share2, Users2, Check, RefreshCcw } from 'lucide-react'
+import { Copy, Plus, Share2, Users2, Check, RefreshCcw, AlertCircle } from 'lucide-react'
 
 // Map from the DB type to our UI type
 interface UIClaim {
   id: string
   name: string
   totalAmount: string
-  token: 'INJ' | 'USDT'
+  token: 'INJ' | 'USDC'
   splitType: 'equal' | 'percentage' | 'custom'
   recipients: number
   status: 'active' | 'claimed' | 'expired'
@@ -26,20 +27,21 @@ const SPLIT_TYPES = [
 
 export default function ClaimsPage() {
   const { address, isConnected } = useWallet()
+  const { injUsdcRate } = useUSDCConversion(1)
 
-  const [showForm, setShowForm]       = useState(false)
-  const [claimName, setClaimName]     = useState('')
-  const [token, setToken]             = useState<'INJ' | 'USDT'>('INJ')
-  const [amount, setAmount]           = useState('')
-  const [splitType, setSplitType]     = useState<'equal' | 'percentage' | 'custom'>('equal')
+  const [showForm, setShowForm] = useState(false)
+  const [claimName, setClaimName] = useState('')
+  const [token, setToken] = useState<'INJ' | 'USDC'>('USDC')
+  const [amount, setAmount] = useState('')
+  const [splitType, setSplitType] = useState<'equal' | 'percentage' | 'custom'>('equal')
   const [recipientCount, setRecipientCount] = useState('2')
   
-  const [created, setCreated]         = useState<UIClaim[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [submitting, setSubmitting]   = useState(false)
+  const [created, setCreated] = useState<UIClaim[]>([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
 
-  const [copiedId, setCopiedId]       = useState<string | null>(null)
-  const [status, setStatus]           = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
   // Fetch claims
   useEffect(() => {
@@ -52,9 +54,9 @@ export default function ClaimsPage() {
         if (mounted) {
           const uiPools: UIClaim[] = pools.map(p => ({
             id: p.id,
-            name: `Claim Pool #${p.linkCode.slice(0, 4)}`, // fallback since DB doesn't have a 'name'
-            totalAmount: p.totalAmount, // Assuming stored as INJ equivalent
-            token: 'INJ', // Hardcoded as INJ for now
+            name: claimName || `Claim Pool #${p.linkCode.slice(0, 4)}`,
+            totalAmount: p.totalAmount,
+            token: token as 'INJ' | 'USDC',
             splitType: p.claimType as any,
             recipients: p.shares ? p.shares.length : 0,
             status: 'active',
@@ -74,7 +76,7 @@ export default function ClaimsPage() {
   }, [address])
 
   const perRecipient = amount && recipientCount
-    ? (parseFloat(amount) / parseInt(recipientCount)).toFixed(4)
+    ? (parseFloat(amount) / parseInt(recipientCount)).toFixed(token === 'USDC' ? 2 : 4)
     : '—'
 
   const handleCreate = async () => {
@@ -88,14 +90,23 @@ export default function ClaimsPage() {
 
     try {
       const linkCode = Math.random().toString(36).slice(2, 10)
-      const shares = Array(parseInt(recipientCount)).fill(100 / parseInt(recipientCount))
+      const count = parseInt(recipientCount)
+      const shareAmount = (parseFloat(amount) / count).toString()
+      
+      // Create shares with placeholder addresses (recipients will fill their own wallet when claiming)
+      const shares = Array(count).fill(null).map((_, i) => ({
+        address: '', // Empty initially - will be filled when recipients claim
+        amount: shareAmount
+      }))
 
       const newPool = await createClaimPool({
         creatorAddress: address,
-        totalAmount: amount, // Wei or standard? In send we used Wei, here let's keep it simple
+        name: claimName,
+        totalAmount: amount,
         claimType: splitType,
         shares,
-        linkCode
+        linkCode,
+        createdAt: new Date()
       })
 
       const uiClaim: UIClaim = {
@@ -166,7 +177,7 @@ export default function ClaimsPage() {
             <div>
               <label className="label">Token</label>
               <div className="seg-control">
-                {(['INJ', 'USDT'] as const).map(t => (
+                {(['INJ', 'USDC'] as const).map(t => (
                   <button key={t} onClick={() => setToken(t)} className={`seg-btn${token === t ? ' active' : ''}`}>{t}</button>
                 ))}
               </div>

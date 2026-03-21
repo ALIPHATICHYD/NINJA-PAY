@@ -1,7 +1,7 @@
 'use client'
 
 import { useBalance } from '@/hooks/useBalance'
-import { useExchangeRate } from '@/hooks/useExchangeRate'
+import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { fromWei } from '@/lib/injective/bank'
 
 interface BalanceCardProps {
@@ -9,16 +9,17 @@ interface BalanceCardProps {
 }
 
 export function BalanceCard({ address }: BalanceCardProps) {
-  const { inj, usdt, loading: balanceLoading } = useBalance(address)
-  const { injToUsdtRate } = useExchangeRate()
+  const { inj, usdc, loading: balanceLoading } = useBalance(address)
+  const { injUsdcRate, loading: priceLoading } = useUSDCConversion(1)
 
   const injAmount = fromWei(inj)
-  const usdtAmount = fromWei(usdt)
+  const usdcAmount = fromWei(usdc)
 
-  const ngnRate = 1500 // 1 USDT ≈ 1500 NGN (mock rate)
+  const ngnRate = 1592 // 1 USDC ≈ 1592 NGN
+  const injUsdcRateNum = parseFloat(injUsdcRate) || 0
   const totalNGN =
-    parseFloat(injAmount) * parseFloat(injToUsdtRate) * ngnRate +
-    parseFloat(usdtAmount) * ngnRate
+    parseFloat(injAmount) * injUsdcRateNum * ngnRate +
+    parseFloat(usdcAmount) * ngnRate
 
   if (!address) {
     return (
@@ -44,16 +45,16 @@ export function BalanceCard({ address }: BalanceCardProps) {
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium text-blue-100">USDT Balance</p>
+          <p className="text-xs font-medium text-blue-100">USDC Balance</p>
           <p className="text-lg font-semibold">
-            {balanceLoading ? '...' : usdtAmount}
+            {balanceLoading ? '...' : usdcAmount}
           </p>
         </div>
       </div>
 
-      {balanceLoading && (
+      {(balanceLoading || priceLoading) && (
         <p className="text-xs text-blue-100 mt-2 animate-pulse">
-          Loading balance...
+          {balanceLoading ? 'Loading balance...' : 'Updating rates...'}
         </p>
       )}
     </div>

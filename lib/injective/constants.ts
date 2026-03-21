@@ -8,17 +8,26 @@ export const CHAIN_ID = ChainId.Testnet
 // Token denominations
 export const DENOMS = {
   INJ: 'inj',
-  // USDT denom depends on network — update based on bridge token used
-  USDT: 'peggy0xdAC17F958D2ee523a2206206994597C13D831ec7', // Mainnet bridged USDT
-  // For testnet, typically: USDT_TESTNET = 'factory/inj1q6zlut7ghrst....'
+  // USDC denom on Injective
+  // Mainnet: canonical USDC address from Circle's Cross-Chain Transfer Protocol (peggy0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)
+  // Testnet: Polygon bridged USDC preview address
+  USDC: 'peggy0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // Testnet USDC
 }
 
 // Exchange market IDs
 export const MARKETS = {
-  INJ_USDT: 'INJ/USDT',
+  INJ_USDC: 'INJ/USDC',
 }
 
-// For testnet, you may need to adjust denoms and market IDs
+// USDC Testnet Configuration
+export const USDC_TESTNET_CONFIG = {
+  // Testnet USDC contract/denom configurations
+  bankDenom: DENOMS.USDC, // Bank native USDC
+  cwTokenAddress: process.env.NEXT_PUBLIC_NUSDC_CONTRACT || 'inj1...', // nUSDC wrapped token (if applicable)
+  decimals: 6,
+}
+
+// For testnet, verify denoms and market IDs
 // Check @injectivelabs/networks for current testnet config
 
 // Backend configuration

@@ -3,8 +3,11 @@
 import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
+import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { fromWei } from '@/lib/injective/bank'
-import { Plus, Trash2, Users2, ChevronRight, CheckCircle2 } from 'lucide-react'
+import { toUSDCChainFormat } from '@/lib/injective/usdc-testnet'
+import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
 
@@ -18,21 +21,22 @@ const STEPS = [
 
 export default function PayrollPage() {
   const { isConnected, address } = useWallet()
-  const { inj, usdt } = useBalance(address)
+  const { inj, usdc } = useBalance(address)
+  const { sendToken, loading: cosmosLoading, error: cosmosError } = useCosmosTransaction()
 
-  const [step, setStep]           = useState<Step>(1)
+  const [step, setStep] = useState<Step>(1)
   const [payrollName, setPayrollName] = useState('')
-  const [token, setToken]         = useState<'INJ' | 'USDT'>('USDT')
+  const [token, setToken] = useState<'INJ' | 'USDC'>('USDC')
   const [recipients, setRecipients] = useState<PayrollRecipient[]>([
     { id: '1', address: '', amount: '', label: '' },
   ])
-  const [loading, setLoading]     = useState(false)
-  const [status, setStatus]       = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
   const totalAmount = recipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(4)
-  const available   = parseFloat(fromWei(token === 'INJ' ? inj : usdt))
+  const available = parseFloat(fromWei(token === 'INJ' ? inj : usdc))
 
-  const addRecipient    = () => setRecipients(prev => [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
+  const addRecipient = () => setRecipients(prev => [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
   const removeRecipient = (id: string) => { if (recipients.length > 1) setRecipients(prev => prev.filter(r => r.id !== id)) }
   const updateRecipient = (id: string, field: keyof PayrollRecipient, value: string) =>
     setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
@@ -44,9 +48,25 @@ export default function PayrollPage() {
     setLoading(true)
     setStatus({ type: null, message: '' })
     try {
-      await new Promise(r => setTimeout(r, 1800))
-      setStatus({ type: 'success', message: `Payroll "${payrollName}" dispatched to ${recipients.length} recipient${recipients.length > 1 ? 's' : ''}. MsgMultiSend broadcast.` })
-      setPayrollName(''); setRecipients([{ id: Date.now().toString(), address: '', amount: '', label: '' }]); setStep(1)
+      // For USDC: convert amounts toche chain format, for INJ: use as-is
+      const recipientsList = recipients.map(r => ({
+        address: r.address,
+        amount: token === 'USDC' ? toUSDCChainFormat(parseFloat(r.amount).toString()) : fromWei(r.amount),
+        label: r.label,
+      }))
+
+      // Dispatch via Cosmos for both tokens
+      for (const recipient of recipients) {
+        await sendToken(recipient.address, token === 'USDC' ? toUSDCChainFormat(parseFloat(recipient.amount).toString()) : fromWei(recipient.amount), token)
+      }
+
+      setStatus({ 
+        type: 'success', 
+        message: `Payroll "${payrollName}" dispatched to ${recipients.length} recipient${recipients.length > 1 ? 's' : ''} in ${token}.` 
+      })
+      setPayrollName('')
+      setRecipients([{ id: Date.now().toString(), address: '', amount: '', label: '' }])
+      setStep(1)
     } catch (e: any) {
       setStatus({ type: 'error', message: e.message || 'Dispatch failed.' })
     } finally {
@@ -105,13 +125,19 @@ export default function PayrollPage() {
           <div>
             <label className="label">Token</label>
             <div className="seg-control">
-              {(['INJ', 'USDT'] as const).map(t => (
+              {(['INJ', 'USDC'] as const).map(t => (
                 <button key={t} onClick={() => setToken(t)} className={`seg-btn${token === t ? ' active' : ''}`}>{t}</button>
               ))}
             </div>
             <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
               Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{available.toFixed(4)} {token}</span>
             </p>
+            {token === 'USDC' && (
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 10px', background: 'rgba(39, 117, 202, 0.1)', borderRadius: '6px', border: '1px solid rgba(39, 117, 202, 0.2)' }}>
+                <AlertCircle size={14} style={{ color: '#2775ca', marginTop: '2px', flexShrink: 0 }} />
+                <span style={{ fontSize: '11px', color: '#2775ca', lineHeight: '1.4' }}>USDC uses Cosmos wallet (Keplr). Make sure to connect above.</span>
+              </div>
+            )}
           </div>
           <button onClick={() => { if (canProceedStep1) setStep(2) }} disabled={!canProceedStep1} className="btn-primary" style={{ width: '100%', padding: '12px' }}>
             Continue to Recipients
@@ -210,15 +236,24 @@ export default function PayrollPage() {
             <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>{status.message}</div>
           )}
 
+          {cosmosError && token === 'USDC' && (
+            <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <span>{cosmosError}</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
-              {loading ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
+            <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+              {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.6' }}>
-            Broadcasts one MsgMultiSend transaction. All recipients receive funds simultaneously.
+            {token === 'USDC' 
+              ? 'Broadcasts via Cosmos transactions. All recipients receive USDC simultaneously.' 
+              : 'Broadcasts one MsgMultiSend transaction. All recipients receive INJ simultaneously.'}
           </p>
         </div>
       )}

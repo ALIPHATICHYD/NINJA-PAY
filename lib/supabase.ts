@@ -32,12 +32,13 @@ export async function createClaimPool(
       .from('claim_pools')
       .insert({
         creator_address: pool.creatorAddress,
+        name: pool.name,
         total_amount: pool.totalAmount,
         claim_type: pool.claimType,
         shares: pool.shares,
         claimed_by: [],
         link_code: pool.linkCode,
-        created_at: new Date(),
+        created_at: new Date().toISOString(),
       })
       .select()
       .single()
@@ -84,6 +85,7 @@ export async function getClaimPoolByLink(
     return {
       id: data.id,
       creatorAddress: data.creator_address,
+      name: data.name,
       totalAmount: data.total_amount,
       claimType: data.claim_type,
       shares: data.shares,
@@ -115,6 +117,7 @@ export async function getClaimPoolsByCreator(
     return (data || []).map((pool) => ({
       id: pool.id,
       creatorAddress: pool.creator_address,
+      name: pool.name,
       totalAmount: pool.total_amount,
       claimType: pool.claim_type,
       shares: pool.shares,
@@ -136,10 +139,10 @@ export async function markClaimAsClaimed(
   claimerAddress: string
 ): Promise<void> {
   try {
-    // Get current claimed_by
+    // Get current claimed_by and shares
     const { data: pool, error: fetchError } = await supabase
       .from('claim_pools')
-      .select('claimed_by')
+      .select('claimed_by, shares')
       .eq('id', poolId)
       .single()
 
@@ -151,9 +154,20 @@ export async function markClaimAsClaimed(
     if (!claimedBy.includes(claimerAddress)) {
       claimedBy.push(claimerAddress)
 
+      // Also update shares - assign to first unclaimed share
+      const shares = pool.shares || []
+      const unclaimedShareIndex = shares.findIndex((s: any) => !s.address || s.address === '')
+      
+      if (unclaimedShareIndex >= 0) {
+        shares[unclaimedShareIndex] = {
+          ...shares[unclaimedShareIndex],
+          address: claimerAddress
+        }
+      }
+
       const { error: updateError } = await supabase
         .from('claim_pools')
-        .update({ claimed_by: claimedBy })
+        .update({ claimed_by: claimedBy, shares })
         .eq('id', poolId)
 
       if (updateError) throw updateError
@@ -206,7 +220,7 @@ export async function recordTransaction(transaction: {
       amount: transaction.amount,
       recipient: transaction.recipient,
       tx_hash: transaction.txHash,
-      created_at: new Date(),
+      created_at: new Date().toISOString(),
     })
 
     if (error) throw error

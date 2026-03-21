@@ -4,10 +4,11 @@ import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useTokenPrice } from '@/hooks/useTokenPrice'
+import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { mockPurchaseBill } from '@/lib/vtpass'
-import { toWei } from '@/lib/injective/bank'
+import { toWei, fromWei } from '@/lib/injective/bank'
 import { recordTransaction } from '@/lib/supabase'
-import { CreditCard, Phone, Wifi, Zap, Tv } from 'lucide-react'
+import { CreditCard, Phone, Wifi, Zap, Tv, AlertCircle } from 'lucide-react'
 
 type BillType = 'airtime' | 'data' | 'electricity' | 'cable'
 
@@ -34,17 +35,20 @@ const PLACEHOLDERS: Record<BillType, string> = {
 
 export default function BillsPage() {
   const { address, isConnected } = useWallet()
-  useBalance(address)
-  const { usdtNgn } = useTokenPrice()
+  const { usdc } = useBalance(address)
+  const { usdcNgn } = useTokenPrice()
+  const { injUsdcRate } = useUSDCConversion(1)
 
-  const [billType, setBillType]   = useState<BillType>('airtime')
-  const [provider, setProvider]   = useState('')
+  const [billType, setBillType] = useState<BillType>('airtime')
+  const [provider, setProvider] = useState('')
   const [identifier, setIdentifier] = useState('')
-  const [amount, setAmount]       = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [status, setStatus]       = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
+  const [amount, setAmount] = useState('')
+  const [paymentToken, setPaymentToken] = useState<'NGN' | 'USDC'>('USDC')
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
-  const usdtEquiv = amount ? (parseInt(amount) / usdtNgn).toFixed(4) : '0'
+  const usdcEquiv = amount ? (parseInt(amount) / usdcNgn).toFixed(4) : '0'
+  const availableUsdc = usdc ? parseFloat(fromWei(usdc)).toFixed(2) : '0'
 
   const handlePay = async () => {
     if (!address || !provider || !identifier || !amount) {
@@ -60,7 +64,7 @@ export default function BillsPage() {
           userAddress: address,
           type: 'bills',
           status: 'pending',
-          amount: toWei(usdtEquiv),
+          amount: toWei(usdcEquiv),
           recipient: `${provider}:${identifier}`,
           txHash: result.transactionId,
         })
@@ -90,11 +94,30 @@ export default function BillsPage() {
           Pay Bills
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-          Pay Nigerian utility bills using your USDT balance.
+          Pay Nigerian utility bills using USDC or convert from other tokens.
         </p>
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* Payment method selector */}
+        <div>
+          <label className="label">Payment Method</label>
+          <div className="seg-control">
+            {(['USDC', 'NGN'] as const).map(t => (
+              <button 
+                key={t} 
+                onClick={() => setPaymentToken(t)} 
+                className={`seg-btn${paymentToken === t ? ' active' : ''}`}
+                style={{ fontSize: '13px' }}
+              >
+                {t === 'USDC' ? '💵 USDC' : '₦ NGN'}
+              </button>
+            ))}
+          </div>
+          <p style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
+            Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{availableUsdc} USDC</span>
+          </p>
+        </div>
 
         {/* Bill type — icon-tile selector */}
         <div>
@@ -159,16 +182,17 @@ export default function BillsPage() {
 
         {/* Amount */}
         <div>
-          <label className="label">Amount (NGN)</label>
+          <label className="label">Amount ({paymentToken === 'NGN' ? 'NGN' : 'USDC'})</label>
           <input
             className="input"
             type="number"
-            placeholder="e.g. 1000"
+            placeholder={paymentToken === 'NGN' ? 'e.g. 1000' : 'e.g. 10.00'}
             value={amount}
             onChange={e => setAmount(e.target.value)}
             min="0"
+            step={paymentToken === 'NGN' ? '100' : '0.01'}
           />
-          {amount && (
+          {amount && paymentToken === 'NGN' && (
             <div
               style={{
                 marginTop: '8px',
@@ -181,8 +205,25 @@ export default function BillsPage() {
                 border: '1px solid var(--border)',
               }}
             >
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>USDT equivalent</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--usdt-color)' }}>{usdtEquiv} USDT</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>USDC equivalent</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--usdc-color, #2775ca)' }}>{usdcEquiv} USDC</span>
+            </div>
+          )}
+          {amount && paymentToken === 'USDC' && (
+            <div
+              style={{
+                marginTop: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                borderRadius: '7px',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>NGN equivalent</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>₦{(parseFloat(amount) * usdcNgn).toLocaleString('en-NG', { maximumFractionDigits: 0 })}</span>
             </div>
           )}
         </div>

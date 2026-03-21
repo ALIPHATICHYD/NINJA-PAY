@@ -49,21 +49,33 @@ export default function PublicClaimPage({
     setStatus({ type: null, message: '' })
 
     try {
-      // Find user's share
-      const userShare = pool.shares.find((s: any) => s.address === address)
-      if (!userShare) {
-        setStatus({ type: 'error', message: 'Your address is not in this claim pool' })
+      // Find an unclaimed share (empty address)
+      const unclaimedShare = pool.shares.find((s: any) => !s.address || s.address === '')
+      
+      if (!unclaimedShare) {
+        setStatus({ type: 'error', message: 'All shares have been claimed already!' })
         setClaiming(false)
         return
       }
 
-      // In a real implementation, the backend would handle the actual MsgSend
-      // For demo, we'll just mark it as claimed
+      // Check if user already claimed
+      const alreadyClaimed = pool.shares.some((s: any) => s.address === address)
+      if (alreadyClaimed) {
+        setStatus({ type: 'error', message: 'You have already claimed your share!' })
+        setClaiming(false)
+        return
+      }
+
+      // Mark this share as claimed by the user
+      const updatedShares = pool.shares.map((s: any) =>
+        s === unclaimedShare ? { ...s, address } : s
+      )
+
       await markClaimAsClaimed(pool.id, address)
 
       setStatus({
         type: 'success',
-        message: `✓ Successfully claimed ${userShare.amount} INJ!`,
+        message: `✓ Successfully claimed ${unclaimedShare.amount} ${pool.claimType}!`,
       })
       setAlreadyClaimed(true)
     } catch (error: any) {
@@ -135,9 +147,8 @@ export default function PublicClaimPage({
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <p className="text-xs text-gray-600 mb-1">Your Share</p>
               <p className="text-2xl font-bold text-green-600">
-                {pool.shares.find((s: any) => s.address === address)?.amount ||
-                  'Address not found'}{' '}
-                INJ
+                {pool.shares[0]?.amount || '0'}{' '}
+                {pool.claimType}
               </p>
             </div>
           )}

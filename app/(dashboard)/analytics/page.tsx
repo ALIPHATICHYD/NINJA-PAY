@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useTokenPrice } from '@/hooks/useTokenPrice'
+import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { getTransactionHistory } from '@/lib/supabase'
 import { TrendingUp, TrendingDown, RefreshCcw } from 'lucide-react'
 import { formatEther } from 'viem'
@@ -13,6 +14,7 @@ type Period = '7D' | '30D' | '90D'
 export default function AnalyticsPage() {
   const { address, isConnected } = useWallet()
   const { injUsd } = useTokenPrice()
+  const { injUsdcRate, usdcPrice } = useUSDCConversion(1)
   const [period, setPeriod] = useState<Period>('30D')
   
   const [transactions, setTransactions] = useState<any[]>([])
@@ -51,7 +53,7 @@ export default function AnalyticsPage() {
   )
 
   // Calculate stats
-  let totalWei = 0n
+  let totalWei = BigInt(0)
   const uniqueRecipients = new Set<string>()
   const breakdown: Record<string, number> = { send: 0, bills: 0, payroll: 0, claim: 0 }
 

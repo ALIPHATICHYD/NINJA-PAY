@@ -14,12 +14,12 @@
 ---
 
 ## 📖 About
-NinjaPay is a community-first financial super-app built on **Injective (inEVM)** that bridges the gap between decentralized finance and real-world utility in Africa. It allows users to off-ramp directly to Nigerian bank accounts, pay local utility bills, run crypto payrolls, and distribute on-chain rewards—all powered by INJ and USDT, wrapped in a sleek, premium Web3 interface.
+NinjaPay is a community-first financial super-app built on **Injective (inEVM)** that bridges the gap between decentralized finance and real-world utility in Africa. It allows users to off-ramp directly to Nigerian bank accounts, pay local utility bills, run crypto payrolls, and distribute on-chain rewards—all powered by INJ and USDC, wrapped in a sleek, premium Web3 interface.
 
 ## ✨ Features
 
-- **💳 Native Off-ramp (Onboard API):** Convert INJ or USDT directly into NGN and receive it in your Nigerian bank account in under 60 seconds.
-- **⚡ Zero-Friction Transfers:** Send INJ or USDT to any EVM wallet address instantly with sub-second finality and near-zero fees.
+- **💳 Native Off-ramp (Onboard API):** Convert INJ or USDC directly into NGN and receive it in your Nigerian bank account in under 60 seconds.
+- **⚡ Zero-Friction Transfers:** Send INJ or USDC to any EVM wallet address instantly with sub-second finality and near-zero fees.
 - **📱 Real-World Bill Payments:** Pay for Airtime, Data, Electricity, and Cable TV subscriptions directly from your crypto wallet.
 - **🎁 Claim Links:** Generate shareable claim pools. Distribute tokens equally, by percentage, or custom amounts to a group via a simple link.
 - **👥 Bulk Payroll:** Batch-pay your entire DAO, team, or community in a single transaction (MsgMultiSend).
@@ -42,7 +42,7 @@ NinjaPay is a community-first financial super-app built on **Injective (inEVM)**
 
 **Backend & Data:**
 - [Supabase](https://supabase.com/) (PostgreSQL for Claims & Transaction History)
-- [CoinGecko API](https://www.coingecko.com/en/api) (Live INJ & USDT pricing)
+- [CoinGecko API](https://www.coingecko.com/en/api) (Live INJ & USDC pricing)
 
 ---
 

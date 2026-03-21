@@ -4,7 +4,7 @@ import { useBalance as useWagmiBalance } from 'wagmi'
 
 interface BalanceReturn {
   inj: string    // raw wei string for native INJ
-  usdt: string   // raw wei string (placeholder 0 for now)
+  usdc: string   // raw wei string (placeholder 0 for now)
   loading: boolean
   error?: string
   refetch: () => void
@@ -22,7 +22,7 @@ export function useBalance(address: string | null): BalanceReturn {
 
   return {
     inj:  data ? data.value.toString() : '0',
-    usdt: '0',  // ERC-20 USDT balance can be added later
+    usdc: '0',  // ERC-20 USDC balance can be added later
     loading: isLoading,
     error: error?.message,
     refetch,

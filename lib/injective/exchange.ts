@@ -6,23 +6,24 @@ const endpoints = getNetworkEndpoints(NETWORK)
 const spotApi = new IndexerGrpcSpotApi(endpoints.indexer)
 
 /**
- * Fetch live INJ/USDT price
- * Returns price as a decimal string (e.g., "12.45" means 1 INJ = 12.45 USDT)
+ * Fetch live INJ/USDC price
+ * Returns price as a decimal string (e.g., "12.45" means 1 INJ = 12.45 USDC)
+ * USDC is Circle's regulated stablecoin via CCTP (Cross-Chain Transfer Protocol)
  */
-export async function getINJUSDTPrice(): Promise<string> {
+export async function getINJUSDCPrice(): Promise<string> {
   try {
     const markets = await spotApi.fetchMarkets()
 
-    // Find INJ/USDT market
-    const injUsdtMarket = markets.find(
-      (m) => m.marketId === MARKETS.INJ_USDT || m.ticker === MARKETS.INJ_USDT
+    // Find INJ/USDC market
+    const injUsdcMarket = markets.find(
+      (m) => m.marketId === MARKETS.INJ_USDC || m.ticker === MARKETS.INJ_USDC
     )
 
-    if (!injUsdtMarket) {
-      throw new Error('INJ/USDT market not found')
+    if (!injUsdcMarket) {
+      throw new Error('INJ/USDC market not found')
     }
 
-    const orderbook = await spotApi.fetchOrderbookV2(injUsdtMarket.marketId)
+    const orderbook = await spotApi.fetchOrderbookV2(injUsdcMarket.marketId)
     const bestBid = orderbook.buys?.[0]?.price
     const bestAsk = orderbook.sells?.[0]?.price
 
@@ -32,7 +33,7 @@ export async function getINJUSDTPrice(): Promise<string> {
 
     return bestBid || bestAsk || '0'
   } catch (error) {
-    console.error('Failed to fetch INJ/USDT price:', error)
+    console.error('Failed to fetch INJ/USDC price:', error)
     throw error
   }
 }
@@ -51,21 +52,21 @@ export async function getAvailableMarkets() {
 }
 
 /**
- * Convert INJ amount to USDT equivalent
+ * Convert INJ amount to USDC equivalent
  */
-export async function convertINJToUSDT(injAmount: string): Promise<string> {
-  const price = await getINJUSDTPrice()
-  // Simple multiplication: INJ amount * price = USDT amount
-  const usdtAmount = (parseFloat(injAmount) * parseFloat(price)).toString()
-  return usdtAmount
+export async function convertINJToUSDC(injAmount: string): Promise<string> {
+  const price = await getINJUSDCPrice()
+  // Simple multiplication: INJ amount * price = USDC amount
+  const usdcAmount = (parseFloat(injAmount) * parseFloat(price)).toString()
+  return usdcAmount
 }
 
 /**
- * Convert USDT amount to INJ equivalent
+ * Convert USDC amount to INJ equivalent
  */
-export async function convertUSDTToINJ(usdtAmount: string): Promise<string> {
-  const price = await getINJUSDTPrice()
-  // Simple division: USDT amount / price = INJ amount
-  const injAmount = (parseFloat(usdtAmount) / parseFloat(price)).toString()
+export async function convertUSDCToINJ(usdcAmount: string): Promise<string> {
+  const price = await getINJUSDCPrice()
+  // Simple division: USDC amount / price = INJ amount
+  const injAmount = (parseFloat(usdcAmount) / parseFloat(price)).toString()
   return injAmount
 }

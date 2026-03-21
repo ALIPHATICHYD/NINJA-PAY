@@ -12,7 +12,7 @@ const endpoints = getNetworkEndpoints(NETWORK)
 const bankApi = new ChainGrpcBankApi(endpoints.grpc)
 
 /**
- * Fetch INJ and USDT balances for an address
+ * Fetch INJ and USDC balances for an address
  */
 export async function fetchBalance(address: string): Promise<BalanceState> {
   try {
@@ -21,19 +21,19 @@ export async function fetchBalance(address: string): Promise<BalanceState> {
 
     const injBalance =
       balances.find((b) => b.denom === DENOMS.INJ)?.amount || '0'
-    const usdtBalance =
-      balances.find((b) => b.denom === DENOMS.USDT)?.amount || '0'
+    const usdcBalance =
+      balances.find((b) => b.denom === DENOMS.USDC)?.amount || '0'
 
     return {
       inj: injBalance,
-      usdt: usdtBalance,
+      usdc: usdcBalance,
       loading: false,
     }
   } catch (error) {
     console.error('Failed to fetch balance:', error)
     return {
       inj: '0',
-      usdt: '0',
+      usdc: '0',
       loading: false,
       error: 'Failed to fetch balance',
     }
@@ -58,9 +58,9 @@ export function createMsgSendINJ(
 }
 
 /**
- * Create a MsgSend transaction to send USDT
+ * Create a MsgSend transaction to send USDC
  */
-export function createMsgSendUSDT(
+export function createMsgSendUSDC(
   recipient: string,
   amountInWei: string
 ): MsgSend {
@@ -68,7 +68,7 @@ export function createMsgSendUSDT(
     srcInjectiveAddress: '', // will be set by broadcaster
     dstInjectiveAddress: recipient,
     amount: {
-      denom: DENOMS.USDT,
+      denom: DENOMS.USDC,
       amount: amountInWei,
     },
   })

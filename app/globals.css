@@ -25,6 +25,7 @@
   --warning: #f59e0b;
   --warning-subtle: rgba(245, 158, 11, 0.1);
   --inj-color: #0fc;
+  --usdc-color: #2775ca;
   --usdt-color: #26a17b;
 }
 
@@ -337,6 +338,7 @@ input, select, textarea { font-family: inherit; }
   font-weight: 600;
 }
 .token-pill-inj  { background: rgba(0,255,204,0.1); color: var(--inj-color); border: 1px solid rgba(0,255,204,0.2); }
+.token-pill-usdc { background: rgba(39,117,202,0.1); color: var(--usdc-color); border: 1px solid rgba(39,117,202,0.2); }
 .token-pill-usdt { background: rgba(38,161,123,0.1); color: var(--usdt-color); border: 1px solid rgba(38,161,123,0.2); }
 
 /* ─── Hero badge ─── */

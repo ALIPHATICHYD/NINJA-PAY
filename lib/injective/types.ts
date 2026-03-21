@@ -1,6 +1,6 @@
 export interface BalanceState {
   inj: string // Wei
-  usdt: string // Wei
+  usdc: string // Wei
   loading: boolean
   error?: string
 }
@@ -18,6 +18,7 @@ export interface TransactionRecord {
 export interface ClaimPool {
   id: string
   creatorAddress: string
+  name?: string // Optional claim name
   totalAmount: string // Wei
   claimType: 'equal' | 'percentage' | 'custom'
   shares: { address: string; amount: string }[]

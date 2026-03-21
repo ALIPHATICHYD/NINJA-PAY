@@ -27,7 +27,7 @@ const BANKS = [
 ]
 
 const FEATURES = [
-  { icon: Send,        title: 'Send',          desc: 'Transfer INJ or USDT to any Injective wallet address instantly.' },
+  { icon: Send,        title: 'Send',          desc: 'Transfer INJ or USDC to any Injective wallet address instantly.' },
   { icon: CreditCard,  title: 'Pay Bills',     desc: 'Airtime, data, electricity, and cable — paid with crypto.' },
   { icon: Share2,      title: 'Claims',        desc: 'Create shareable links to distribute tokens to any group.' },
   { icon: Users2,      title: 'Payroll',       desc: 'Batch-pay your team or DAO in a single transaction.' },
@@ -46,7 +46,7 @@ const FAQS = [
   },
   {
     q: 'How does off-ramping work?',
-    a: 'You send INJ or USDT to NinjaPay\'s escrow, which triggers an Onboard API disbursement to your Nigerian bank account at the current market rate. The process takes < 60 seconds.',
+    a: 'You send INJ or USDC to NinjaPay\'s escrow, which triggers an Onboard API disbursement to your Nigerian bank account at the current market rate. The process takes < 60 seconds.',
   },
   {
     q: 'What are the fees?',
@@ -54,13 +54,13 @@ const FAQS = [
   },
   {
     q: 'Can I pay Nigerian utility bills with crypto?',
-    a: 'Yes — Airtime, Data, Electricity, and Cable TV are all supported via our VTpass integration. Pay in USDT and the equivalent NGN is disbursed to your provider instantly.',
+    a: 'Yes — Airtime, Data, Electricity, and Cable TV are all supported via our VTpass integration. Pay in USDC and the equivalent NGN is disbursed to your provider instantly.',
   },
 ]
 
 export default function LandingPage() {
   const [openFaq, setOpenFaq]         = useState<number | null>(null)
-  const [offrampToken, setOfframpToken] = useState<'INJ' | 'USDT'>('USDT')
+  const [offrampToken, setOfframpToken] = useState<'INJ' | 'USDC'>('USDC')
   const [offrampAmount, setOfframpAmount] = useState('10')
   const [bankName, setBankName]       = useState('')
   const [acctNumber, setAcctNumber]   = useState('')
@@ -86,8 +86,8 @@ export default function LandingPage() {
     'Zenith Bank': '057',
   }
 
-  const { injUsd, usdtNgn, loading } = useTokenPrice()
-  const rate    = offrampToken === 'USDT' ? usdtNgn : (injUsd * usdtNgn)
+  const { injUsd, usdcNgn, loading } = useTokenPrice()
+  const rate    = offrampToken === 'USDC' ? usdcNgn : (injUsd * usdcNgn)
   const ngn     = offrampAmount ? (parseFloat(offrampAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
 
   // Real account name resolution via Paystack
@@ -252,7 +252,7 @@ export default function LandingPage() {
               marginBottom: '40px',
             }}
           >
-            Send INJ and USDT, pay utility bills, run crypto payroll, and
+            Send INJ and USDC, pay utility bills, run crypto payroll, and
             off-ramp directly to your Nigerian bank — all from one non-custodial
             interface on Injective.
           </p>
@@ -302,7 +302,7 @@ export default function LandingPage() {
             <div style={{ marginBottom: '14px' }}>
               <p className="label">You send</p>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                {(['USDT', 'INJ'] as const).map(t => (
+                {(['USDC', 'INJ'] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => setOfframpToken(t)}
@@ -339,7 +339,7 @@ export default function LandingPage() {
                     transform: 'translateY(-50%)',
                     fontSize: '13px',
                     fontWeight: '600',
-                    color: offrampToken === 'USDT' ? 'var(--usdt-color)' : 'var(--inj-color)',
+                    color: offrampToken === 'USDC' ? 'var(--usdc-color)' : 'var(--inj-color)',
                   }}
                 >
                   {offrampToken}

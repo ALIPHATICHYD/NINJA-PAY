@@ -15,8 +15,8 @@ interface Transaction {
 const MOCK_TXS: Transaction[] = [
   { id: '1', type: 'send',    amount: '5.00',   token: 'INJ',  recipient: 'inj1a2b3c...d4e5f6', status: 'confirmed', date: '2026-03-20', dateLabel: 'Today',     txHash: '0xabc123def456' },
   { id: '2', type: 'bills',   amount: '2000',   token: 'NGN',  recipient: 'MTN:08012345678',    status: 'confirmed', date: '2026-03-20', dateLabel: 'Today',     txHash: '0xfed987cba654' },
-  { id: '3', type: 'payroll', amount: '120.00', token: 'USDT', recipient: '6 recipients',       status: 'pending',   date: '2026-03-19', dateLabel: 'Yesterday', txHash: '0x111222333444' },
-  { id: '4', type: 'claims',  amount: '50.00',  token: 'USDT', recipient: 'Team Bonus Q1',      status: 'confirmed', date: '2026-03-17', dateLabel: 'Earlier',   txHash: '0x555666777888' },
+  { id: '3', type: 'payroll', amount: '120.00', token: 'USDC', recipient: '6 recipients',       status: 'pending',   date: '2026-03-19', dateLabel: 'Yesterday', txHash: '0x111222333444' },
+  { id: '4', type: 'claims',  amount: '50.00',  token: 'USDC', recipient: 'Team Bonus Q1',      status: 'confirmed', date: '2026-03-17', dateLabel: 'Earlier',   txHash: '0x555666777888' },
 ]
 
 const FILTERS: { id: TxType; label: string }[] = [

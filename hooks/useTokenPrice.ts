@@ -4,14 +4,14 @@ import { useState, useEffect } from 'react'
 
 interface TokenPrices {
   injUsd: number
-  usdtNgn: number // Approximate P2P/black market rate for USDT to NGN
+  usdcNgn: number // Approximate P2P/black market rate for USDC to NGN
   loading: boolean
 }
 
 export function useTokenPrice(): TokenPrices {
   const [prices, setPrices] = useState<TokenPrices>({
     injUsd: 0,
-    usdtNgn: 1600, // Default estimated parallel market rate
+    usdcNgn: 1600, // Default estimated parallel market rate
     loading: true,
   })
 

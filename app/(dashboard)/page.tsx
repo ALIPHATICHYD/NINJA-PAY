@@ -12,15 +12,19 @@ import {
   ArrowRight,
   ArrowLeftRight,
   Briefcase,
+  TrendingUp,
+  DollarSign,
 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
+import { useUSDCConversion } from '@/hooks/useUSDCConversion'
+import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { fromWei } from '@/lib/injective/bank'
 import { resolveAccountName } from '@/lib/paystack'
 import { useState, useEffect } from 'react'
 
 const FEATURES = [
-  { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDT to any wallet.',   href: '/send' },
+  { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDC to any wallet.',   href: '/send' },
   { icon: CreditCard,   title: 'Bills',         desc: 'Pay airtime, data, electricity, cable.',href: '/bills' },
   { icon: Share2,       title: 'Claims',        desc: 'Create shareable token-drop links.',     href: '/claims' },
   { icon: Users2,       title: 'Beneficiaries', desc: 'Manage saved recipients.',               href: '/beneficiaries' },
@@ -30,7 +34,7 @@ const FEATURES = [
 ]
 
 const RATE_INJ  = 1380
-const RATE_USDT = 1592
+const RATE_USDC = 1592
 
 // Bank code mapping for Paystack account resolution
 const BANK_CODES: { [key: string]: string } = {
@@ -52,15 +56,27 @@ const BANK_CODES: { [key: string]: string } = {
 
 export default function DashboardHome() {
   const { isConnected, address } = useWallet()
-  const { inj, usdt, loading: balLoading } = useBalance(address)
+  const { inj, usdc, loading: balLoading } = useBalance(address)
+  const { injUsdcRate, usdcPrice, loading: priceLoading } = useUSDCConversion(1)
+  const { userAddress: cosmosAddress, isReady: cosmosReady } = useCosmosTransaction()
 
-  const injDisplay  = balLoading ? '—' : parseFloat(fromWei(inj)).toFixed(4)
-  const usdtDisplay = balLoading ? '—' : parseFloat(fromWei(usdt)).toFixed(2)
+  const injDisplay = balLoading ? '—' : parseFloat(fromWei(inj)).toFixed(4)
+  const usdcDisplay = balLoading ? '—' : parseFloat(fromWei(usdc)).toFixed(2)
 
-  const [offrampToken, setOfframpToken] = useState<'USDT' | 'INJ'>('USDT')
+  // Conversion calculations
+  const injValue = balLoading ? 0 : parseFloat(fromWei(inj))
+  const usdcValue = balLoading ? 0 : parseFloat(fromWei(usdc))
+  const injInUsdc = injValue * (parseFloat(injUsdcRate) || 0)
+  const totalUsdc = usdcValue + injInUsdc
+  
+  const [offrampToken, setOfframpToken] = useState<'USDC' | 'INJ'>('USDC')
   const [offrampAmount, setOfframpAmount] = useState('10')
-  const rate = offrampToken === 'USDT' ? RATE_USDT : RATE_INJ
-  const ngn  = offrampAmount ? (parseFloat(offrampAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
+  const [convertAmount, setConvertAmount] = useState('1')
+  
+  const USD_TO_NGN_RATE = 1592 // Base rate
+  const injUsdcRateNum = parseFloat(injUsdcRate) || 0
+  const ngn = offrampAmount ? (parseFloat(offrampAmount) * (offrampToken === 'USDC' ? USD_TO_NGN_RATE : injUsdcRateNum * USD_TO_NGN_RATE)).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
+  const convertValue = offrampToken === 'INJ' ? (parseFloat(convertAmount) * injUsdcRateNum).toFixed(4) : (parseFloat(convertAmount) / (injUsdcRateNum || 1)).toFixed(6)
 
   /* ── Disconnected state ── */
   if (!isConnected) {
@@ -158,9 +174,9 @@ export default function DashboardHome() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '20px', fontWeight: '600', color: 'var(--text-secondary)', letterSpacing: '-0.02em' }}>
-                {balLoading ? <span className="skeleton" style={{ display: 'inline-block', width: '80px', height: '24px' }} /> : usdtDisplay}
+                {balLoading ? <span className="skeleton" style={{ display: 'inline-block', width: '80px', height: '24px' }} /> : usdcDisplay}
               </span>
-              {!balLoading && <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '500' }}>USDT</span>}
+              {!balLoading && <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '500' }}>USDC</span>}
             </div>
           </div>
 
@@ -192,6 +208,36 @@ export default function DashboardHome() {
             </div>
           </div>
 
+          {/* Cosmos address badge */}
+          {cosmosReady && cosmosAddress && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '4px 10px',
+                  background: 'rgba(39, 117, 202, 0.1)',
+                  border: '1px solid rgba(39, 117, 202, 0.3)',
+                  borderRadius: '20px',
+                }}
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2775ca' }} />
+                <span style={{ fontSize: '11px', color: '#2775ca', fontWeight: '600' }}>Cosmos</span>
+              </div>
+              <div
+                className="copy-field"
+                style={{ flex: 1, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
+                onClick={() => navigator.clipboard.writeText(cosmosAddress || '')}
+                title="Click to copy"
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {cosmosAddress?.slice(0, 14)}...{cosmosAddress?.slice(-6)}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Quick actions */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <Link href="/send" className="btn-primary" style={{ fontSize: '13px', padding: '9px 16px' }}>
@@ -219,7 +265,7 @@ export default function DashboardHome() {
           </div>
 
           <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-            {(['USDT', 'INJ'] as const).map(t => (
+            {(['USDC', 'INJ'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setOfframpToken(t)}
@@ -261,6 +307,38 @@ export default function DashboardHome() {
 
           <Link href="/send" className="btn-primary" style={{ width: '100%', padding: '10px', fontSize: '13px' }}>
             Off-Ramp Now <ArrowRight size={13} />
+          </Link>
+        </div>
+
+        {/* USDC Pricing & Conversion Widget */}
+        <div className="card" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+            <div className="icon-box" style={{ background: 'linear-gradient(135deg, #2775ca 0%, #1e5ba8 100%)' }}>
+              <DollarSign size={16} />
+            </div>
+            <div>
+              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>USDC Rates</p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Live market prices</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 INJ</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent)' }}>
+                {priceLoading ? '...' : `${(parseFloat(injUsdcRate) || 0).toFixed(4)} USDC`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 USDC</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: '#2775ca' }}>
+                ${(parseFloat(usdcPrice) || 1).toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          <Link href="/send" className="btn-secondary" style={{ width: '100%', padding: '8px', fontSize: '12px' }}>
+            <TrendingUp size={12} /> View All Rates
           </Link>
         </div>
       </div>
