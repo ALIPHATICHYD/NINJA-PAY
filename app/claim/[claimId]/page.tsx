@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
+import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { getClaimPoolByLink, markClaimAsClaimed, hasUserClaimed } from '@/lib/supabase'
-import { createMsgSendINJ } from '@/lib/injective/bank'
+import { toUSDCChainFormat } from '@/lib/injective/usdc-testnet'
 
 export default function PublicClaimPage({
   params,
@@ -11,6 +12,7 @@ export default function PublicClaimPage({
   params: { claimId: string }
 }) {
   const { address, isConnected, connect } = useWallet()
+  const { sendToken: cosmosSendToken, loading: cosmosLoading } = useCosmosTransaction()
   const [pool, setPool] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [claiming, setClaiming] = useState(false)
@@ -51,7 +53,7 @@ export default function PublicClaimPage({
     try {
       // Find an unclaimed share (empty address)
       const unclaimedShare = pool.shares.find((s: any) => !s.address || s.address === '')
-      
+
       if (!unclaimedShare) {
         setStatus({ type: 'error', message: 'All shares have been claimed already!' })
         setClaiming(false)
@@ -66,18 +68,41 @@ export default function PublicClaimPage({
         return
       }
 
-      // Mark this share as claimed by the user
-      const updatedShares = pool.shares.map((s: any) =>
-        s === unclaimedShare ? { ...s, address } : s
-      )
+      // Send tokens to user before marking as claimed
+      const token = pool.token || pool.claimType || 'INJ'
+      const amount = unclaimedShare.amount
 
-      await markClaimAsClaimed(pool.id, address)
+      // Convert amount to chain format based on token type
+      let chainAmount = amount
+      if (token === 'USDC') {
+        // USDC has 6 decimals
+        chainAmount = toUSDCChainFormat(amount)
+      } else {
+        // INJ has 18 decimals
+        const { toChainAmount } = await import('@/lib/injective/cosmos-transactions')
+        chainAmount = toChainAmount(amount, 18)
+      }
 
-      setStatus({
-        type: 'success',
-        message: `✓ Successfully claimed ${unclaimedShare.amount} ${pool.claimType}!`,
-      })
-      setAlreadyClaimed(true)
+      console.log(`Claiming ${amount} ${token} (chain: ${chainAmount}) to ${address}`)
+
+      // Send the tokens via Cosmos transaction
+      try {
+        const txHash = await cosmosSendToken(address, chainAmount, token as 'INJ' | 'USDC')
+
+        // Only mark as claimed after successful token transfer
+        await markClaimAsClaimed(pool.id, address)
+
+        setStatus({
+          type: 'success',
+          message: `✓ Successfully claimed ${amount} ${token}! Tx: ${txHash.slice(0, 16)}...`,
+        })
+        setAlreadyClaimed(true)
+      } catch (txError: any) {
+        setStatus({
+          type: 'error',
+          message: `Token transfer failed: ${txError.message}. Please try again.`,
+        })
+      }
     } catch (error: any) {
       setStatus({
         type: 'error',

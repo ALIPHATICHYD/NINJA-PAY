@@ -596,3 +596,64 @@ input, select, textarea { font-family: inherit; }
   pointer-events: none;
   animation: orb-float 12s ease-in-out infinite;
 }
+
+/* ─── Section utilities ─── */
+.section-base {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 88px 24px;
+}
+
+.section-sm { padding: 28px 24px; }
+.section-lg { padding: 120px 24px; }
+
+/* ─── Container utilities ─── */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ─── Grid layouts ─── */
+.grid-auto-fit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.grid-features { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+/* ─── Hero section ─── */
+.hero-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 64px;
+  align-items: center;
+}
+
+/* ─── Animation polish ─── */
+.smooth-hover { transition: all 0.2s ease; }
+.glow-hover:hover { box-shadow: 0 6px 24px var(--accent-glow); }
+
+/* ─── Typography utilities ─── */
+.text-gradient {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Navbar glass effect ─── */
+.navbar-glass {
+  background: rgba(8,10,14,0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ─── Widget card glass ─── */
+.widget-glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}

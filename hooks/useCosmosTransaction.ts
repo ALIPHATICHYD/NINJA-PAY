@@ -26,7 +26,8 @@ interface UseCosmosTxReturn {
 }
 
 /**
- * Hook for handling Cosmos transactions
+ * Hook for handling Cosmos transactions on Injective
+ * Supports both Keplr and Leap wallets
  */
 export function useCosmosTransaction(): UseCosmosTxReturn {
   const [userAddress, setUserAddress] = useState<string | null>(null)
@@ -40,8 +41,8 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
     setError(null)
 
     try {
-      if (!isKeplrAvailable()) {
-        throw new Error('Keplr extension not installed')
+      if (!isKeplrAvailable() && !(window as any).leap) {
+        throw new Error('No wallet found. Please install Keplr or Leap.')
       }
 
       const address = await requestConnection(CHAIN_ID)
@@ -61,31 +62,31 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
 
   // Auto-initialize on component mount
   useEffect(() => {
-    if (isKeplrAvailable() && !isReady) {
+    const hasWallet = isKeplrAvailable() || (typeof window !== 'undefined' && (window as any).leap)
+    if (hasWallet && !isReady) {
       initializeWallet()
     }
-  }, [])
+  }, [isReady, initializeWallet])
 
   const sendTokenFn = useCallback(
     async (recipientAddress: string, amount: string, token: 'INJ' | 'USDC'): Promise<string> => {
       if (!userAddress) {
-        throw new Error('Wallet not initialized')
+        throw new Error('Wallet not initialized. Please connect your wallet first.')
       }
 
       setLoading(true)
       setError(null)
 
       try {
-        // Use the correct denom based on token type
-        const denom = token === 'USDC' 
-          ? 'peggy0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' // USDC testnet
-          : 'inj'
-
-        const txHash = await sendToken(recipientAddress, amount, CHAIN_ID)
+        // sendToken expects chain-formatted amount
+        // The function handles the conversion internally
+        const txHash = await sendToken(recipientAddress, amount, CHAIN_ID, token)
+        console.log(`✓ ${token} transfer successful: ${txHash}`)
         return txHash
       } catch (err: any) {
         const errorMsg = err.message || 'Transaction failed'
         setError(errorMsg)
+        console.error('Send token error:', err)
         throw err
       } finally {
         setLoading(false)
@@ -93,6 +94,26 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
     },
     [userAddress]
   )
+
+  const reset = useCallback(() => {
+    setUserAddress(null)
+    setIsReady(false)
+    setIsLedger(false)
+    setLoading(false)
+    setError(null)
+  }, [])
+
+  return {
+    isReady,
+    userAddress,
+    isLedger,
+    loading,
+    error,
+    initializeWallet,
+    sendToken: sendTokenFn,
+    reset,
+  }
+}
 
   const reset = useCallback(() => {
     setUserAddress(null)

@@ -387,8 +387,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Bank field */}
-            <div style={{ marginBottom: '18px' }}>
+            {/* Bank field - DISABLED */}
+            <div style={{ marginBottom: '18px', display: 'none' }}>
               <p className="label">Bank account</p>
               <select 
                 className="select" 

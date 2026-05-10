@@ -131,9 +131,9 @@ export default function SendPage() {
 
   const handleSend = async () => {
     if (!isValidAddr || !amount) return
-    
+
     setSendStatus({ type: 'pending', message: '' })
-    
+
     try {
       if (sendToken === 'USDC') {
         // Cosmos USDC send
@@ -141,26 +141,44 @@ export default function SendPage() {
           setSendStatus({ type: 'error', message: 'Cosmos wallet not connected. Click "Connect USDC" first.' })
           return
         }
-        
+
         const amountInChainFormat = toUSDCChainFormat(parsedAmt.toString())
         if (!isValidUSDCAmount(amountInChainFormat)) {
           setSendStatus({ type: 'error', message: `Invalid USDC amount. Max decimals: 6` })
           return
         }
-        
+
         const hash = await cosmosSendToken(recipient, amountInChainFormat, 'USDC')
         setTxHash(hash)
         setSendStatus({ type: 'success', message: `USDC transfer initiated! Transaction: ${hash.slice(0, 16)}...` })
         setAmount('')
         setRecipient('')
       } else {
-        // EVM INJ send
-        reset()
-        sendTransaction({
-          to: recipient as `0x${string}`,
-          value: parseEther(amount),
-        })
-        setSendStatus({ type: 'pending', message: 'Waiting for wallet confirmation...' })
+        // INJ send - support both Cosmos (inj1) and EVM (0x) addresses
+        if (isValidCosmosAddr) {
+          // Cosmos path: use Keplr/Leap
+          if (!cosmosReady) {
+            setSendStatus({ type: 'error', message: 'Cosmos wallet not connected. Please connect first.' })
+            return
+          }
+
+          const { toChainAmount } = await import('@/lib/injective/cosmos-transactions')
+          const amountInWei = toChainAmount(amount, 18)
+
+          const hash = await cosmosSendToken(recipient, amountInWei, 'INJ')
+          setTxHash(hash)
+          setSendStatus({ type: 'success', message: `INJ transfer initiated! Transaction: ${hash.slice(0, 16)}...` })
+          setAmount('')
+          setRecipient('')
+        } else if (isValidEthAddr) {
+          // EVM path: use MetaMask/Wagmi
+          reset()
+          sendTransaction({
+            to: recipient as `0x${string}`,
+            value: parseEther(amount),
+          })
+          setSendStatus({ type: 'pending', message: 'Waiting for wallet confirmation...' })
+        }
       }
     } catch (error: any) {
       setSendStatus({ type: 'error', message: error.message || 'Transaction failed' })
@@ -255,14 +273,14 @@ export default function SendPage() {
             <input
               className="input input-mono"
               type="text"
-              placeholder={sendToken === 'USDC' ? 'inj1... or 0x...' : '0x...'}
+              placeholder={sendToken === 'USDC' ? 'inj1... or 0x...' : 'inj1... or 0x...'}
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
               style={{ fontSize: '12px' }}
             />
             {recipient && !isValidAddr && (
               <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>
-                Enter a valid {sendToken === 'USDC' ? 'Cosmos (inj1...) or EVM (0x...)' : 'EVM (0x...)'} address.
+                Enter a valid {sendToken === 'USDC' ? 'Cosmos (inj1...) or EVM (0x...)' : 'Cosmos (inj1...) or EVM (0x...)'} address.
               </p>
             )}
           </div>
