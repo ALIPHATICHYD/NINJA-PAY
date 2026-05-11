@@ -1,7 +1,7 @@
 'use client'
 
-import { Container } from './Container'
-import { SectionHeader } from './SectionHeader'
+import { Container } from '../Container'
+import { SectionHeader } from '../SectionHeader'
 
 const STEPS = [
   { step: '01', title: 'Connect your wallet', desc: 'Use Keplr, Leap, or MetaMask to connect your Injective wallet with one click.' },

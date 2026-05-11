@@ -1,8 +1,8 @@
 'use client'
 
 import { ChevronDown } from 'lucide-react'
-import { Container } from './Container'
-import { SectionHeader } from './SectionHeader'
+import { Container } from '../Container'
+import { SectionHeader } from '../SectionHeader'
 
 const FAQS = [
   {

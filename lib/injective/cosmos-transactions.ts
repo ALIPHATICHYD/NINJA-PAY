@@ -5,15 +5,26 @@
  * Supports Keplr and Leap wallets with proper message encoding
  */
 
-import {
-  MsgSend,
-  MsgBroadcasterWithPk,
-  getNetworkEndpoints,
-  SigningStargateClient,
-} from '@injectivelabs/sdk-ts'
+import { GasPrice, SigningStargateClient } from '@cosmjs/stargate'
+import { getNetworkEndpoints } from '@injectivelabs/networks'
+import type { OfflineSigner } from '@cosmjs/proto-signing'
 import { NETWORK, CHAIN_ID, DENOMS } from './constants'
 
 const endpoints = getNetworkEndpoints(NETWORK)
+const gasPrice = GasPrice.fromString(`0.025${DENOMS.INJ}`)
+
+type CosmosWallet = {
+  enable: (chainId: string) => Promise<void>
+  getKey: (chainId: string) => Promise<{ bech32Address: string; isLedger?: boolean }>
+  getOfflineSigner: (chainId: string) => Promise<OfflineSigner>
+}
+
+declare global {
+  interface Window {
+    keplr?: CosmosWallet
+    leap?: CosmosWallet
+  }
+}
 
 // Helper to convert amount to proper chain format
 export function toChainAmount(amount: string, decimals: number = 18): string {
@@ -33,7 +44,7 @@ interface TransactionOptions {
  */
 export function isKeplrAvailable(): boolean {
   if (typeof window === 'undefined') return false
-  return !!(window as any).keplr
+  return !!window.keplr
 }
 
 /**
@@ -41,7 +52,7 @@ export function isKeplrAvailable(): boolean {
  */
 export function isLeapAvailable(): boolean {
   if (typeof window === 'undefined') return false
-  return !!(window as any).leap
+  return !!window.leap
 }
 
 /**
@@ -53,7 +64,7 @@ export async function initializeKeplr(chainId: string = CHAIN_ID): Promise<boole
       throw new Error('Keplr extension not installed')
     }
 
-    await (window as any).keplr.enable(chainId)
+    await window.keplr!.enable(chainId)
     return true
   } catch (error) {
     console.error('Failed to initialize Keplr:', error)
@@ -70,7 +81,7 @@ export async function initializeLeap(chainId: string = CHAIN_ID): Promise<boolea
       throw new Error('Leap extension not installed')
     }
 
-    await (window as any).leap.enable(chainId)
+    await window.leap!.enable(chainId)
     return true
   } catch (error) {
     console.error('Failed to initialize Leap:', error)
@@ -86,8 +97,8 @@ export async function getUserAddress(chainId: string = CHAIN_ID): Promise<string
     // Try Keplr first
     if (isKeplrAvailable()) {
       try {
-        await (window as any).keplr.enable(chainId)
-        const key = await (window as any).keplr.getKey(chainId)
+        await window.keplr!.enable(chainId)
+        const key = await window.keplr!.getKey(chainId)
         return key.bech32Address
       } catch (err) {
         console.warn('Keplr failed:', err)
@@ -96,8 +107,8 @@ export async function getUserAddress(chainId: string = CHAIN_ID): Promise<string
 
     // Fall back to Leap
     if (isLeapAvailable()) {
-      await (window as any).leap.enable(chainId)
-      const key = await (window as any).leap.getKey(chainId)
+      await window.leap!.enable(chainId)
+      const key = await window.leap!.getKey(chainId)
       return key.bech32Address
     }
 
@@ -120,7 +131,6 @@ export async function sendToken(
   options?: Partial<TransactionOptions>,
 ): Promise<string> {
   try {
-    // Validate recipient address format
     if (!recipientAddress.startsWith('inj1') || recipientAddress.length < 40) {
       throw new Error('Invalid Injective address. Must start with "inj1"')
     }
@@ -131,18 +141,25 @@ export async function sendToken(
       throw new Error('Amount must be a positive number')
     }
 
-    // Get wallet signer
-    let wallet: any = null
-    let walletName: string = ''
+    let wallet: CosmosWallet | null = null
+    let walletName = ''
 
     if (isKeplrAvailable()) {
-      wallet = (window as any).keplr
+      wallet = window.keplr ?? null
       walletName = 'Keplr'
     } else if (isLeapAvailable()) {
-      wallet = (window as any).leap
+      wallet = window.leap ?? null
       walletName = 'Leap'
     } else {
       throw new Error('No Web3 wallet available. Please install Keplr or Leap.')
+    }
+
+    if (!wallet) {
+      throw new Error('No Web3 wallet available. Please install Keplr or Leap.')
+    }
+
+    if (!endpoints.rpc) {
+      throw new Error('Injective network RPC endpoint is unavailable')
     }
 
     const userAddr = await getUserAddress(chainId)
@@ -152,40 +169,27 @@ export async function sendToken(
 
     console.log(`Sending ${amount} ${token} from ${userAddr} to ${recipientAddress} using ${walletName}`)
 
-    // Create MsgSend message using Injective SDK
-    const msgSend = MsgSend.fromJSON({
-      srcInjectiveAddress: userAddr,
-      dstInjectiveAddress: recipientAddress,
-      amount: {
-        denom,
-        amount: chainAmount,
-      },
+    const offlineSigner = await wallet.getOfflineSigner(chainId)
+    const client = await SigningStargateClient.connectWithSigner(endpoints.rpc, offlineSigner, {
+      gasPrice,
     })
 
-    // Get offline signer from wallet
-    const offlineSigner = wallet.getOfflineSignerOnlyMethods
-      ? await wallet.getOfflineSignerOnlyMethods(chainId)
-      : await wallet.getOfflineSigner(chainId)
+    const txResponse = await client.sendTokens(
+      userAddr,
+      recipientAddress,
+      [{ denom, amount: chainAmount }],
+      'auto',
+      options?.memo || '',
+    )
 
-    // Broadcast transaction
-    const broadcaster = new MsgBroadcasterWithPk({
-      chainId,
-      msgs: msgSend,
-      injectiveAddress: userAddr,
-      signer: offlineSigner,
-      simulateGas: true,
-    })
-
-    const txResponse = await broadcaster.broadcast()
-
-    if (!txResponse || !txResponse.txhash) {
+    if (!txResponse || !txResponse.transactionHash) {
       throw new Error('Transaction failed - no hash returned from broadcaster')
     }
 
-    console.log(`Transaction successful: ${txResponse.txhash}`)
-    return txResponse.txhash
-  } catch (error: any) {
-    const errorMessage = error?.message || 'Failed to send token'
+    console.log(`Transaction successful: ${txResponse.transactionHash}`)
+    return txResponse.transactionHash
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to send token'
     console.error(`sendToken error for ${token}:`, error)
     throw new Error(`Failed to send ${token}: ${errorMessage}`)
   }
@@ -198,15 +202,15 @@ export async function sendToken(
 export async function isUserUsingLedger(chainId: string = CHAIN_ID): Promise<boolean> {
   try {
     if (isKeplrAvailable()) {
-      await (window as any).keplr.enable(chainId)
-      const key = await (window as any).keplr.getKey(chainId)
-      if ((key as any).isLedger) return true
+      await window.keplr!.enable(chainId)
+      const key = await window.keplr!.getKey(chainId)
+      if (key.isLedger) return true
     }
 
     if (isLeapAvailable()) {
-      await (window as any).leap.enable(chainId)
-      const key = await (window as any).leap.getKey(chainId)
-      if ((key as any).isLedger) return true
+      await window.leap!.enable(chainId)
+      const key = await window.leap!.getKey(chainId)
+      if (key.isLedger) return true
     }
 
     return false

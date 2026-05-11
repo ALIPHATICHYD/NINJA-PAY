@@ -1,8 +1,8 @@
 'use client'
 
 import { Send, CreditCard, Share2, Users2, BarChart3, ListOrdered } from 'lucide-react'
-import { Container } from './Container'
-import { SectionHeader } from './SectionHeader'
+import { Container } from '../Container'
+import { SectionHeader } from '../SectionHeader'
 
 const FEATURES = [
   { icon: Send, title: 'Send', desc: 'Transfer INJ or USDC to any Injective wallet address instantly.' },

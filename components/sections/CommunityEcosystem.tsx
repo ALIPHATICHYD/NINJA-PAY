@@ -1,7 +1,7 @@
 'use client'
 
-import { Container } from './Container'
-import { SectionHeader } from './SectionHeader'
+import { Container } from '../Container'
+import { SectionHeader } from '../SectionHeader'
 
 export function CommunityEcosystem() {
   return (

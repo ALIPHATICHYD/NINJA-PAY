@@ -2,8 +2,6 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import {
-  initializeKeplr,
-  getUserAddress,
   sendToken,
   isKeplrAvailable,
   isUserUsingLedger,
@@ -41,7 +39,7 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
     setError(null)
 
     try {
-      if (!isKeplrAvailable() && !(window as any).leap) {
+      if (!isKeplrAvailable() && !(typeof window !== 'undefined' && window.leap)) {
         throw new Error('No wallet found. Please install Keplr or Leap.')
       }
 
@@ -51,8 +49,8 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
       setUserAddress(address)
       setIsLedger(usingLedger)
       setIsReady(true)
-    } catch (err: any) {
-      const errorMsg = err.message || 'Failed to initialize wallet'
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to initialize wallet'
       setError(errorMsg)
       console.error('Wallet initialization error:', err)
     } finally {
@@ -62,7 +60,7 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
 
   // Auto-initialize on component mount
   useEffect(() => {
-    const hasWallet = isKeplrAvailable() || (typeof window !== 'undefined' && (window as any).leap)
+    const hasWallet = isKeplrAvailable() || (typeof window !== 'undefined' && !!window.leap)
     if (hasWallet && !isReady) {
       initializeWallet()
     }
@@ -83,8 +81,8 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
         const txHash = await sendToken(recipientAddress, amount, CHAIN_ID, token)
         console.log(`✓ ${token} transfer successful: ${txHash}`)
         return txHash
-      } catch (err: any) {
-        const errorMsg = err.message || 'Transaction failed'
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Transaction failed'
         setError(errorMsg)
         console.error('Send token error:', err)
         throw err
@@ -94,26 +92,6 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
     },
     [userAddress]
   )
-
-  const reset = useCallback(() => {
-    setUserAddress(null)
-    setIsReady(false)
-    setIsLedger(false)
-    setLoading(false)
-    setError(null)
-  }, [])
-
-  return {
-    isReady,
-    userAddress,
-    isLedger,
-    loading,
-    error,
-    initializeWallet,
-    sendToken: sendTokenFn,
-    reset,
-  }
-}
 
   const reset = useCallback(() => {
     setUserAddress(null)
@@ -155,8 +133,8 @@ export function useEVMWallet() {
       if (accounts && accounts.length > 0) {
         setAddress(accounts[0])
       }
-    } catch (err: any) {
-      const errorMsg = err.message || 'Failed to connect wallet'
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to connect wallet'
       setError(errorMsg)
       console.error('EVM connection error:', err)
     } finally {
@@ -178,18 +156,26 @@ export function useEVMWallet() {
     checkConnection()
 
     // Listen for changes
-    const { onAccountChange, onNetworkChange } = require('@/lib/injective/evm-config')
-    const unsubscribeAccount = onAccountChange((accounts: string[]) => {
-      setAddress(accounts.length > 0 ? accounts[0] : null)
-    })
+    let unsubscribeAccount: (() => void) | undefined
+    let unsubscribeNetwork: (() => void) | undefined
+    let active = true
 
-    const unsubscribeNetwork = onNetworkChange((newChainId: string) => {
-      setChainId(newChainId)
+    void import('@/lib/injective/evm-config').then(({ onAccountChange, onNetworkChange }) => {
+      if (!active) return
+
+      unsubscribeAccount = onAccountChange((accounts: string[]) => {
+        setAddress(accounts.length > 0 ? accounts[0] : null)
+      })
+
+      unsubscribeNetwork = onNetworkChange((newChainId: string) => {
+        setChainId(newChainId)
+      })
     })
 
     return () => {
-      unsubscribeAccount()
-      unsubscribeNetwork()
+      active = false
+      unsubscribeAccount?.()
+      unsubscribeNetwork?.()
     }
   }, [])
 

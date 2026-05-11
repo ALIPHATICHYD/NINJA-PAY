@@ -1,6 +1,6 @@
 'use client'
 
-import { Container } from './Container'
+import { Container } from '../Container'
 
 export function StatsStrip() {
   const stats = [

@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
-import { Container } from './Container'
-import { Background } from './Background'
+import { Container } from '../Container'
+import { Background } from '../Background'
 
 export function Hero() {
   return (

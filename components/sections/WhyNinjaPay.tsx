@@ -1,7 +1,7 @@
 'use client'
 
 import { Shield, Zap, Wallet, CheckCircle2 } from 'lucide-react'
-import { Container } from './Container'
+import { Container } from '../Container'
 
 const WHY_ITEMS = [
   { icon: Shield, title: 'Non-Custodial', desc: 'You hold your keys. NinjaPay never takes custody of your funds.' },

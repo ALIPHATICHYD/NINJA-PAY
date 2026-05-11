@@ -1,107 +1,62 @@
-import {
-  ChainRestAuthApi,
-  ChainRestTendermintApi,
-  getTxRawFromTxResponseFromRest,
-  MsgBroadcasterWithPk,
-  getNetworkEndpoints,
-} from '@injectivelabs/sdk-ts'
-import { NETWORK } from './constants'
+import { GasPrice, SigningStargateClient } from '@cosmjs/stargate'
+import type { EncodeObject, OfflineSigner } from '@cosmjs/proto-signing'
+import { getNetworkEndpoints } from '@injectivelabs/networks'
+import { NETWORK, DENOMS } from './constants'
 
 const endpoints = getNetworkEndpoints(NETWORK)
+const gasPrice = GasPrice.fromString(`0.025${DENOMS.INJ}`)
 
-/**
- * Broadcast a signed transaction using Keplr wallet
- */
+type CosmosWallet = {
+  enable: (chainId: string) => Promise<void>
+  getOfflineSigner: (chainId: string) => Promise<OfflineSigner>
+}
+
+function getWallet() {
+  if (typeof window === 'undefined') {
+    throw new Error('Cosmos wallet is only available in the browser')
+  }
+
+  const browserWindow = window as Window & { keplr?: CosmosWallet; leap?: CosmosWallet }
+
+  if (browserWindow.keplr) return browserWindow.keplr
+  if (browserWindow.leap) return browserWindow.leap
+
+  throw new Error('No Cosmos wallet available. Please install Keplr or Leap.')
+}
+
 export async function broadcastTxMessage(
-  msgs: any[],
+  msgs: EncodeObject[],
   userAddress: string,
-  chainId: string
+  chainId: string,
 ): Promise<string> {
-  try {
-    if (!userAddress) {
-      throw new Error('Missing sender address')
-    }
-
-    if (!(window as any).keplr) {
-      throw new Error('Keplr not available')
-    }
-
-    // Get Keplr signer
-    const keplr = (window as any).keplr
-    const offlineSigner = keplr.getOfflineSignerOnlyMethods ?
-      await keplr.getOfflineSignerOnlyMethods(chainId) :
-      keplr.getOfflineSigner(chainId)
-
-    // Prepare transaction with proper gas estimation
-    const authApi = new ChainRestAuthApi({ baseUrl: endpoints.rest })
-    const tendermintApi = new ChainRestTendermintApi({ baseUrl: endpoints.rest })
-
-    const account = await authApi.fetchAccount(userAddress)
-    const latestBlock = await tendermintApi.getLatestBlock()
-
-    const broadcaster = new MsgBroadcasterWithPk({
-      chainId,
-      msgs,
-      injectiveAddress: userAddress,
-      signer: offlineSigner,
-      simulateGas: true,
-    })
-
-    // Sign and broadcast the transaction
-    const txResponse = await broadcaster.broadcast()
-
-    if (!txResponse || !txResponse.txhash) {
-      throw new Error('Transaction failed - no hash returned')
-    }
-
-    return txResponse.txhash
-  } catch (error) {
-    console.error('Failed to broadcast transaction:', error)
-    throw error
+  if (!userAddress) {
+    throw new Error('Missing sender address')
   }
+
+  if (!endpoints.rpc) {
+    throw new Error('Injective network RPC endpoint is unavailable')
+  }
+
+  const wallet = getWallet()
+  await wallet.enable(chainId)
+  const offlineSigner = await wallet.getOfflineSigner(chainId)
+  const client = await SigningStargateClient.connectWithSigner(endpoints.rpc, offlineSigner, {
+    gasPrice,
+  })
+
+  const response = await client.signAndBroadcast(userAddress, msgs, 'auto')
+  if (!response.transactionHash) {
+    throw new Error('Transaction failed - no hash returned')
+  }
+
+  return response.transactionHash
 }
 
-/**
- * Estimate gas for a transaction
- */
-export async function estimateGas(
-  msgs: any[],
-  userAddress: string
-): Promise<number> {
-  try {
-    // Gas estimation for average Cosmos transaction
-    // Will vary based on message complexity
-    if (!msgs || msgs.length === 0) return 100000
-
-    // Base gas + per-message overhead
-    let estimatedGas = 80000
-    estimatedGas += msgs.length * 50000
-
-    return estimatedGas
-  } catch (error) {
-    console.error('Failed to estimate gas:', error)
-    return 200000 // fallback
-  }
+export async function estimateGas(msgs: EncodeObject[], _userAddress: string): Promise<number> {
+  if (!msgs || msgs.length === 0) return 100000
+  return 80000 + msgs.length * 50000
 }
 
-/**
- * Simulate a transaction without broadcasting
- */
-export async function simulateTx(
-  msgs: any[],
-  userAddress: string,
-  chainId: string
-): Promise<boolean> {
-  try {
-    if (!userAddress || !msgs.length) return false
-
-    const authApi = new ChainRestAuthApi({ baseUrl: endpoints.rest })
-    const account = await authApi.fetchAccount(userAddress)
-
-    // If we can fetch the account, basic validation passes
-    return !!account
-  } catch (error) {
-    console.error('Simulation failed:', error)
-    return false
-  }
+export async function simulateTx(msgs: EncodeObject[], userAddress: string, _chainId: string): Promise<boolean> {
+  return !!userAddress && Array.isArray(msgs) && msgs.length > 0
 }
