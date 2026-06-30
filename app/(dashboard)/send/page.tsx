@@ -76,23 +76,6 @@ export default function SendPage() {
   const ngn = orAmount ? (parseFloat(orAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
 
   // Bank code mapping (example - expand as needed)
-  const BANK_CODES: { [key: string]: string } = {
-    'Access Bank': '044',
-    'Ecobank': '050',
-    'Fidelity Bank': '070',
-    'First Bank': '011',
-    'GTBank': '058',
-    'Kuda Bank': '090267',
-    'Moniepoint': '999991',
-    'OPay': '999992',
-    'Palmpay': '999993',
-    'Stanbic IBTC': '039',
-    'Sterling Bank': '100',
-    'UBA': '033',
-    'Wema Bank': '035',
-    'Zenith Bank': '057',
-  }
-
   // Real account name resolution via Paystack
   useEffect(() => {
     const resolveAccount = async () => {
@@ -102,14 +85,7 @@ export default function SendPage() {
         setOrStatus({ type: null, message: '' })
         
         try {
-          const bankCode = BANK_CODES[bankName]
-          if (!bankCode) {
-            setOrStatus({ type: 'error', message: 'Bank not supported or not found' })
-            setIsResolving(false)
-            return
-          }
-
-          const result = await resolveAccountName(acctNumber, bankCode)
+          const result = await resolveAccountName(acctNumber, bankName)
           setResolvedName(result.accountName)
           setOrStatus({ type: 'success', message: `Account verified: ${result.accountName}` })
         } catch (error: any) {
@@ -207,7 +183,7 @@ export default function SendPage() {
   }
 
   return (
-    <div style={{ maxWidth: '540px', margin: '0 auto' }}>
+    <div className="send-page" style={{ maxWidth: '540px', margin: '0 auto' }}>
       <div style={{ marginBottom: '28px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
           Send &amp; Off-Ramp
@@ -218,7 +194,7 @@ export default function SendPage() {
       </div>
 
       {/* Tab selector */}
-      <div className="seg-control" style={{ marginBottom: '20px' }}>
+      <div className="seg-control send-tabs" style={{ marginBottom: '20px' }}>
         <button className={`seg-btn${tab === 'send' ? ' active' : ''}`} onClick={() => setTab('send')}>
           <Send size={13} style={{ display: 'inline', marginRight: '6px' }} />
           Send Tokens
@@ -233,7 +209,7 @@ export default function SendPage() {
       {tab === 'send' && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Network/Token selector */}
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div className="stack-mobile" style={{ display: 'flex', gap: '12px' }}>
             <div style={{ flex: 1 }}>
               <label className="label">Token</label>
               <div className="seg-control">
@@ -288,7 +264,7 @@ export default function SendPage() {
           {/* Amount */}
           <div>
             <label className="label">Amount ({sendToken})</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="stack-mobile amount-row" style={{ display: 'flex', gap: '8px' }}>
               <input
                 className="input"
                 type="number"
@@ -345,7 +321,7 @@ export default function SendPage() {
           )}
           {isConfirmed && injTxHash && sendToken === 'INJ' && (
             <div className="alert-success">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="stack-mobile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>Transaction confirmed!</span>
                 <a
                   href={`${TESTNET_EXPLORER}/${injTxHash}`}
@@ -408,7 +384,7 @@ export default function SendPage() {
           </div>
 
           {/* Rate + NGN */}
-          <div style={{ padding: '14px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="stack-mobile rate-row" style={{ padding: '14px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>You receive</p>
               <p style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>₦{ngn}</p>

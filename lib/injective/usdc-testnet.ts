@@ -7,6 +7,7 @@
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { NETWORK, MARKETS, USDC_TESTNET_CONFIG, DENOMS } from './constants'
+import { getSimplePrice } from '@/lib/prices-client'
 
 const endpoints = getNetworkEndpoints(NETWORK)
 
@@ -32,11 +33,7 @@ function fromChainFormat(chainAmount: string | number, decimals: number): string
  */
 export async function getUSDCPrice(): Promise<string> {
   try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=usd'
-    )
-    const data = await response.json()
-    
+    const data = await getSimplePrice('usd-coin', 'usd')
     if (data['usd-coin']?.usd) {
       return data['usd-coin'].usd.toString()
     }
@@ -53,10 +50,7 @@ export async function getUSDCPrice(): Promise<string> {
  */
 export async function getINJUSDCPriceFromOrderbook(): Promise<string> {
   try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=injective-protocol&vs_currencies=usd'
-    )
-    const data = await response.json()
+    const data = await getSimplePrice('injective-protocol', 'usd')
     const injPrice = data['injective-protocol']?.usd
 
     if (!injPrice) {
@@ -76,12 +70,8 @@ export async function getINJUSDCPriceFromOrderbook(): Promise<string> {
  */
 export async function getINJUSDCPriceFromCoinGecko(): Promise<string> {
   try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=injective-protocol&vs_currencies=usd'
-    )
-    const data = await response.json()
+    const data = await getSimplePrice('injective-protocol', 'usd')
     const injUsdPrice = data['injective-protocol']?.usd || '0'
-    
     return injUsdPrice.toString()
   } catch (error) {
     console.error('Failed to fetch INJ price from CoinGecko:', error)

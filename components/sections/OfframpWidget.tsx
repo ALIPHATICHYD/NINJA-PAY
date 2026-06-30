@@ -23,23 +23,6 @@ const BANKS = [
   'Zenith Bank',
 ]
 
-const BANK_CODES: { [key: string]: string } = {
-  'Access Bank': '044',
-  Ecobank: '050',
-  'Fidelity Bank': '070',
-  'First Bank': '011',
-  GTBank: '058',
-  'Kuda Bank': '090267',
-  Moniepoint: '999991',
-  OPay: '999992',
-  Palmpay: '999993',
-  'Stanbic IBTC': '039',
-  'Sterling Bank': '100',
-  UBA: '033',
-  'Wema Bank': '035',
-  'Zenith Bank': '057',
-}
-
 export function OfframpWidget() {
   const [offrampToken, setOfframpToken] = useState<'INJ' | 'USDC'>('USDC')
   const [offrampAmount, setOfframpAmount] = useState('10')
@@ -66,14 +49,7 @@ export function OfframpWidget() {
         setOrStatus({ type: null, message: '' })
 
         try {
-          const bankCode = BANK_CODES[bankName]
-          if (!bankCode) {
-            setOrStatus({ type: 'error', message: 'Bank not supported or not found' })
-            setIsResolving(false)
-            return
-          }
-
-          const result = await resolveAccountName(acctNumber, bankCode)
+          const result = await resolveAccountName(acctNumber, bankName)
           setResolvedName(result.accountName)
           setOrStatus({ type: 'success', message: `Account verified: ${result.accountName}` })
         } catch (error: any) {

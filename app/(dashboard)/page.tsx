@@ -20,7 +20,6 @@ import { useBalance } from '@/hooks/useBalance'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { fromWei } from '@/lib/injective/bank'
-import { resolveAccountName } from '@/lib/paystack'
 import { useState, useEffect } from 'react'
 
 const FEATURES = [
@@ -35,24 +34,6 @@ const FEATURES = [
 
 const RATE_INJ  = 1380
 const RATE_USDC = 1592
-
-// Bank code mapping for Paystack account resolution
-const BANK_CODES: { [key: string]: string } = {
-  'Access Bank': '044',
-  'Ecobank': '050',
-  'Fidelity Bank': '070',
-  'First Bank': '011',
-  'GTBank': '058',
-  'Kuda Bank': '090267',
-  'Moniepoint': '999991',
-  'OPay': '999992',
-  'Palmpay': '999993',
-  'Stanbic IBTC': '039',
-  'Sterling Bank': '100',
-  'UBA': '033',
-  'Wema Bank': '035',
-  'Zenith Bank': '057',
-}
 
 export default function DashboardHome() {
   const { isConnected, address } = useWallet()

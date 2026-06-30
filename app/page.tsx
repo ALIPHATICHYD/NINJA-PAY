@@ -64,27 +64,8 @@ export default function LandingPage() {
   const [offrampAmount, setOfframpAmount] = useState('10')
   const [bankName, setBankName]       = useState('')
   const [acctNumber, setAcctNumber]   = useState('')
-  const [resolvedName, setResolvedName] = useState('')
   const [isResolving, setIsResolving]   = useState(false)
   const [orStatus, setOrStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
-
-  // Bank code mapping for Paystack account resolution
-  const BANK_CODES: { [key: string]: string } = {
-    'Access Bank': '044',
-    'Ecobank': '050',
-    'Fidelity Bank': '070',
-    'First Bank': '011',
-    'GTBank': '058',
-    'Kuda Bank': '090267',
-    'Moniepoint': '999991',
-    'OPay': '999992',
-    'Palmpay': '999993',
-    'Stanbic IBTC': '039',
-    'Sterling Bank': '100',
-    'UBA': '033',
-    'Wema Bank': '035',
-    'Zenith Bank': '057',
-  }
 
   const { injUsd, usdcNgn, loading } = useTokenPrice()
   const rate    = offrampToken === 'USDC' ? usdcNgn : (injUsd * usdcNgn)
@@ -95,29 +76,18 @@ export default function LandingPage() {
     const resolveAccount = async () => {
       if (acctNumber.length === 10 && bankName) {
         setIsResolving(true)
-        setResolvedName('')
         setOrStatus({ type: null, message: '' })
         
         try {
-          const bankCode = BANK_CODES[bankName]
-          if (!bankCode) {
-            setOrStatus({ type: 'error', message: 'Bank not supported or not found' })
-            setIsResolving(false)
-            return
-          }
-
-          const result = await resolveAccountName(acctNumber, bankCode)
-          setResolvedName(result.accountName)
+          const result = await resolveAccountName(acctNumber, bankName)
           setOrStatus({ type: 'success', message: `Account verified: ${result.accountName}` })
-        } catch (error: any) {
-          const errorMsg = error.message || 'Failed to resolve account name'
+        } catch (error: unknown) {
+          const errorMsg = error instanceof Error ? error.message : 'Failed to resolve account name'
           setOrStatus({ type: 'error', message: errorMsg })
-          setResolvedName('')
         } finally {
           setIsResolving(false)
         }
       } else {
-        setResolvedName('')
         setOrStatus({ type: null, message: '' })
       }
     }

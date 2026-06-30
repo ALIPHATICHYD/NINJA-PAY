@@ -1,5 +1,6 @@
 'use client'
 
+import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
@@ -17,6 +18,7 @@ const NAV_LINKS = [
 
 export function Navigation() {
   const pathname = usePathname()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
@@ -36,6 +38,7 @@ export function Navigation() {
       }}
     >
       <div
+        className="nav-shell"
         style={{
           maxWidth: '1280px',
           margin: '0 auto',
@@ -82,12 +85,11 @@ export function Navigation() {
 
         {/* Centered Nav Links — desktop */}
         <div
-          className="hidden md:flex"
+          className="nav-links"
           style={{
             position: 'absolute',
             left: '50%',
             transform: 'translateX(-50%)',
-            display: 'flex',
             gap: '2px',
             alignItems: 'center',
           }}
@@ -144,7 +146,7 @@ export function Navigation() {
         </div>
 
         {/* Connect Wallet */}
-        <div style={{ flexShrink: 0 }}>
+        <div className="nav-wallet" style={{ flexShrink: 0 }}>
           <ConnectButton.Custom>
             {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
               const connected = mounted && account && chain
@@ -207,6 +209,110 @@ export function Navigation() {
             }}
           </ConnectButton.Custom>
         </div>
+
+        {/* Mobile toggle */}
+        <button
+          aria-label="Toggle navigation"
+          aria-expanded={menuOpen}
+          className="nav-mobile-toggle"
+          onClick={() => setMenuOpen(v => !v)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            padding: '8px',
+            borderRadius: '8px',
+            marginLeft: '8px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+
+        {/* Mobile nav panel */}
+        {menuOpen && (
+          <div
+            className="mobile-nav-panel"
+            role="menu"
+            style={{
+              position: 'absolute',
+              top: '62px',
+              left: 0,
+              right: 0,
+              background: 'rgba(8,10,14,0.96)',
+              borderTop: '1px solid var(--border)',
+              padding: '12px 16px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              zIndex: 60,
+            }}
+          >
+            <div className="mobile-nav-wallet">
+              <ConnectButton.Custom>
+                {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+                  const connected = mounted && account && chain
+                  if (!mounted) {
+                    return (
+                      <button className="btn-primary" style={{ width: '100%' }} aria-hidden="true">
+                        Connect Wallet
+                      </button>
+                    )
+                  }
+                  if (!connected) {
+                    return (
+                      <button onClick={openConnectModal} className="btn-primary" style={{ width: '100%' }}>
+                        Connect Wallet
+                      </button>
+                    )
+                  }
+                  if (chain.unsupported) {
+                    return (
+                      <button onClick={openChainModal} className="alert-error" style={{ width: '100%', border: 'none', cursor: 'pointer', padding: '10px 14px', borderRadius: '8px', fontWeight: '600' }}>
+                        Wrong Network
+                      </button>
+                    )
+                  }
+                  return (
+                    <button
+                      onClick={openAccountModal}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        padding: '10px 14px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-light)',
+                        borderRadius: '8px',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--bg-hover)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                          <User size={13} strokeWidth={2.5} />
+                        </span>
+                        {account.displayName}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ color: 'var(--text-muted)' }}>
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  )
+                }}
+              </ConnectButton.Custom>
+            </div>
+            {NAV_LINKS.map(link => (
+              <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)} style={{ padding: '10px 12px', borderRadius: '8px', color: 'var(--text-secondary)', textDecoration: 'none' }}>{link.label}</Link>
+            ))}
+          </div>
+        )}
       </div>
 
     </nav>

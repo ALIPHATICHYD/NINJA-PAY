@@ -657,3 +657,157 @@ input, select, textarea { font-family: inherit; }
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
+
+@media (max-width: 768px) {
+  .container,
+  .section-base,
+  .section-lg,
+  .section-sm {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .section-base {
+    padding-top: 64px;
+    padding-bottom: 64px;
+  }
+
+  .section-lg {
+    padding-top: 80px;
+    padding-bottom: 80px;
+  }
+
+  .dashboard-main {
+    padding: 24px 16px 56px !important;
+  }
+
+  .dashboard-footer-inner {
+    padding: 16px !important;
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .dashboard-footer-inner > div {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .nav-shell {
+    height: auto !important;
+    padding: 12px 16px !important;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .nav-wallet {
+    display: none;
+  }
+
+  .nav-mobile-toggle {
+    margin-left: auto;
+  }
+
+  .mobile-nav-wallet {
+    display: block;
+  }
+
+  .mobile-nav-wallet button {
+    width: 100%;
+  }
+
+  .send-page {
+    max-width: none !important;
+  }
+
+  .send-page > div:first-child {
+    margin-bottom: 20px !important;
+  }
+
+  .send-page h1 {
+    font-size: 22px !important;
+  }
+
+  .seg-control {
+    flex-wrap: wrap;
+  }
+
+  .seg-btn {
+    flex: 1 1 140px;
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .input-lg {
+    font-size: 15px;
+  }
+
+  .stack-mobile {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .stack-mobile > * {
+    width: 100%;
+  }
+
+  .amount-row .btn-ghost {
+    min-height: 44px;
+  }
+
+  .rate-row {
+    gap: 14px;
+  }
+
+  .rate-row > div:last-child {
+    text-align: left !important;
+  }
+
+  .modal-box {
+    padding: 20px;
+  }
+
+  .stat-chip {
+    padding: 14px 18px;
+  }
+}
+
+@media (max-width: 540px) {
+  .grid-auto-fit,
+  .grid-features,
+  .grid-stats,
+  .hero-content {
+    grid-template-columns: 1fr;
+  }
+
+  .table-row {
+    grid-template-columns: 1fr;
+    padding: 12px 16px;
+    gap: 8px;
+  }
+
+  .modal-box {
+    padding: 16px;
+  }
+}
+
+/* Navigation responsive helpers */
+.nav-links { display: none; }
+.nav-mobile-toggle { display: flex; }
+.mobile-nav-panel { display: none; }
+
+@media (min-width: 768px) {
+  .nav-links { display: flex; }
+  .nav-mobile-toggle { display: none; }
+  .mobile-nav-panel { display: none; }
+}
+
+@media (max-width: 767px) {
+  .mobile-nav-panel { display: flex; }
+}

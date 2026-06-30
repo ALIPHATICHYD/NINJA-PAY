@@ -9,10 +9,11 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+    <div className="dashboard-shell" style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
       <Navigation />
 
       <main
+        className="dashboard-main"
         style={{
           maxWidth: '1280px',
           margin: '0 auto',
@@ -24,6 +25,7 @@ export default function DashboardLayout({
 
       <footer style={{ borderTop: '1px solid var(--border)' }}>
         <div
+          className="dashboard-footer-inner"
           style={{
             maxWidth: '1280px',
             margin: '0 auto',

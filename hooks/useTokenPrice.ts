@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getSimplePrice } from '@/lib/prices-client'
 
 interface TokenPrices {
   injUsd: number
@@ -20,8 +21,7 @@ export function useTokenPrice(): TokenPrices {
 
     const fetchPrice = async () => {
       try {
-        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=injective-protocol&vs_currencies=usd')
-        const data = await res.json()
+        const data = await getSimplePrice('injective-protocol', 'usd')
         if (mounted && data['injective-protocol']) {
           setPrices(prev => ({ ...prev, injUsd: data['injective-protocol'].usd, loading: false }))
         }

@@ -47,7 +47,7 @@ export const INJECTIVE_TESTNET_EVM: InjectiveNetworkConfig = {
   ],
   nativeCurrency: {
     name: 'Injective',
-    symbol: 'INJ',
+    symbol: 'INJ',  
     decimals: 18,
   },
   blockExplorerUrls: ['https://testnet.explorer.injective.network'],
