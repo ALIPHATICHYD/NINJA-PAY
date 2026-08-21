@@ -1,10 +1,9 @@
 import {
   ChainRestAuthApi,
   ChainRestTendermintApi,
-  getTxRawFromTxResponseFromRest,
   MsgBroadcasterWithPk,
-  getNetworkEndpoints,
 } from '@injectivelabs/sdk-ts'
+import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { NETWORK } from './constants'
 
 const endpoints = getNetworkEndpoints(NETWORK)
@@ -28,33 +27,33 @@ export async function broadcastTxMessage(
 
     // Get Keplr signer
     const keplr = (window as any).keplr
-    const offlineSigner = keplr.getOfflineSignerOnlyMethods ?
-      await keplr.getOfflineSignerOnlyMethods(chainId) :
-      keplr.getOfflineSigner(chainId)
+    const offlineSigner = keplr.getOfflineSignerOnlyMethods
+      ? await keplr.getOfflineSignerOnlyMethods(chainId)
+      : keplr.getOfflineSigner(chainId)
 
     // Prepare transaction with proper gas estimation
-    const authApi = new ChainRestAuthApi({ baseUrl: endpoints.rest })
-    const tendermintApi = new ChainRestTendermintApi({ baseUrl: endpoints.rest })
+    const authApi = new ChainRestAuthApi(endpoints.rest)
+    const tendermintApi = new ChainRestTendermintApi(endpoints.rest)
 
-    const account = await authApi.fetchAccount(userAddress)
-    const latestBlock = await tendermintApi.getLatestBlock()
+    await authApi.fetchAccount(userAddress)
+    await tendermintApi.fetchLatestBlock()
 
     const broadcaster = new MsgBroadcasterWithPk({
-      chainId,
-      msgs,
-      injectiveAddress: userAddress,
-      signer: offlineSigner,
-      simulateGas: true,
+      network: NETWORK,
+      privateKey: offlineSigner,
+      simulateTx: true,
     })
 
     // Sign and broadcast the transaction
-    const txResponse = await broadcaster.broadcast()
+    const txResponse = await broadcaster.broadcast({
+      msgs,
+    })
 
-    if (!txResponse || !txResponse.txhash) {
+    if (!txResponse || !txResponse.txHash) {
       throw new Error('Transaction failed - no hash returned')
     }
 
-    return txResponse.txhash
+    return txResponse.txHash
   } catch (error) {
     console.error('Failed to broadcast transaction:', error)
     throw error
@@ -95,7 +94,7 @@ export async function simulateTx(
   try {
     if (!userAddress || !msgs.length) return false
 
-    const authApi = new ChainRestAuthApi({ baseUrl: endpoints.rest })
+    const authApi = new ChainRestAuthApi(endpoints.rest)
     const account = await authApi.fetchAccount(userAddress)
 
     // If we can fetch the account, basic validation passes

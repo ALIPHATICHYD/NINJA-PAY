@@ -8,9 +8,8 @@
 import {
   MsgSend,
   MsgBroadcasterWithPk,
-  getNetworkEndpoints,
-  SigningStargateClient,
 } from '@injectivelabs/sdk-ts'
+import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { NETWORK, CHAIN_ID, DENOMS } from './constants'
 
 const endpoints = getNetworkEndpoints(NETWORK)
@@ -169,21 +168,21 @@ export async function sendToken(
 
     // Broadcast transaction
     const broadcaster = new MsgBroadcasterWithPk({
-      chainId,
-      msgs: msgSend,
-      injectiveAddress: userAddr,
-      signer: offlineSigner,
-      simulateGas: true,
+      network: NETWORK,
+      privateKey: offlineSigner,
+      simulateTx: true,
     })
 
-    const txResponse = await broadcaster.broadcast()
+    const txResponse = await broadcaster.broadcast({
+      msgs: msgSend,
+    })
 
-    if (!txResponse || !txResponse.txhash) {
+    if (!txResponse || !txResponse.txHash) {
       throw new Error('Transaction failed - no hash returned from broadcaster')
     }
 
-    console.log(`Transaction successful: ${txResponse.txhash}`)
-    return txResponse.txhash
+    console.log(`Transaction successful: ${txResponse.txHash}`)
+    return txResponse.txHash
   } catch (error: any) {
     const errorMessage = error?.message || 'Failed to send token'
     console.error(`sendToken error for ${token}:`, error)
