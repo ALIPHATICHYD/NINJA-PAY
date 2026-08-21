@@ -115,26 +115,6 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
   }
 }
 
-  const reset = useCallback(() => {
-    setUserAddress(null)
-    setIsReady(false)
-    setIsLedger(false)
-    setLoading(false)
-    setError(null)
-  }, [])
-
-  return {
-    isReady,
-    userAddress,
-    isLedger,
-    loading,
-    error,
-    initializeWallet,
-    sendToken: sendTokenFn,
-    reset,
-  }
-}
-
 /**
  * Hook for EVM wallet management
  */
