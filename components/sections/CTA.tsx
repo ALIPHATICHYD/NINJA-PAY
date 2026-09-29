@@ -41,7 +41,7 @@ export function CTA() {
               lineHeight: '1.7',
             }}
           >
-            Connect your wallet and access the full NinjaPay suite — no signup, no KYC delay, no waiting.
+            Connect your wallet to send INJ and USDC on Injective testnet.
           </p>
           <Link href="/send" className="btn-primary" style={{ padding: '14px 36px', fontSize: '16px' }}>
             Launch App

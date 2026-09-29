@@ -1,30 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
-import { useTokenPrice } from '@/hooks/useTokenPrice'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
-import { Send, ArrowLeftRight, ArrowRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
-import { resolveAccountName } from '@/lib/paystack'
+import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
+import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 import { toUSDCChainFormat, isValidUSDCAmount } from '@/lib/injective/usdc-testnet'
-
-const BANKS = [
-  'Access Bank', 'Ecobank', 'Fidelity Bank', 'First Bank', 'GTBank', 
-  'Kuda Bank', 'Moniepoint', 'OPay', 'Palmpay', 'Stanbic IBTC', 
-  'Sterling Bank', 'UBA', 'Wema Bank', 'Zenith Bank'
-]
 
 const TESTNET_EXPLORER = 'https://testnet.explorer.injective.network/transaction'
 
 export default function SendPage() {
   const { address, isConnected } = useWallet()
   const { inj, usdc } = useBalance(address)
-  const { usdcNgnRate, loading: pricesLoading } = useUSDCConversion(1)
-  const { injUsd } = useTokenPrice()
   
   // Cosmos transaction hook for USDC sends
   const { 
@@ -45,17 +35,6 @@ export default function SendPage() {
     message: '' 
   })
 
-  // Off-ramp state
-  const [orToken, setOrToken] = useState<'USDC' | 'INJ'>('USDC')
-  const [orAmount, setOrAmount] = useState('')
-  const [bankName, setBankName] = useState('')
-  const [acctNumber, setAcctNumber] = useState('')
-  const [resolvedName, setResolvedName] = useState('')
-  const [isResolving, setIsResolving] = useState(false)
-  
-  const [orLoading, setOrLoading] = useState(false)
-  const [orStatus, setOrStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
-
   // wagmi send transaction hooks (for INJ)
   const { sendTransaction, data: injTxHash, isPending, error: sendError, reset } = useSendTransaction()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: injTxHash })
@@ -71,63 +50,6 @@ export default function SendPage() {
   const isValidCosmosAddr = recipient.startsWith('inj1') && recipient.length > 40
   const isValidAddr = isValidEthAddr || isValidCosmosAddr
   const canSend = isValidAddr && parsedAmt > 0 && parsedAmt <= maxAmount
-
-  const rate = orToken === 'USDC' ? usdcNgnRate : (injUsd * usdcNgnRate)
-  const ngn = orAmount ? (parseFloat(orAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
-
-  // Bank code mapping (example - expand as needed)
-  const BANK_CODES: { [key: string]: string } = {
-    'Access Bank': '044',
-    'Ecobank': '050',
-    'Fidelity Bank': '070',
-    'First Bank': '011',
-    'GTBank': '058',
-    'Kuda Bank': '090267',
-    'Moniepoint': '999991',
-    'OPay': '999992',
-    'Palmpay': '999993',
-    'Stanbic IBTC': '039',
-    'Sterling Bank': '100',
-    'UBA': '033',
-    'Wema Bank': '035',
-    'Zenith Bank': '057',
-  }
-
-  // Real account name resolution via Paystack
-  useEffect(() => {
-    const resolveAccount = async () => {
-      if (acctNumber.length === 10 && bankName) {
-        setIsResolving(true)
-        setResolvedName('')
-        setOrStatus({ type: null, message: '' })
-        
-        try {
-          const bankCode = BANK_CODES[bankName]
-          if (!bankCode) {
-            setOrStatus({ type: 'error', message: 'Bank not supported or not found' })
-            setIsResolving(false)
-            return
-          }
-
-          const result = await resolveAccountName(acctNumber, bankCode)
-          setResolvedName(result.accountName)
-          setOrStatus({ type: 'success', message: `Account verified: ${result.accountName}` })
-        } catch (error: any) {
-          const errorMsg = error.message || 'Failed to resolve account name'
-          setOrStatus({ type: 'error', message: errorMsg })
-          setResolvedName('')
-        } finally {
-          setIsResolving(false)
-        }
-      } else {
-        setResolvedName('')
-        setOrStatus({ type: null, message: '' })
-      }
-    }
-
-    const timer = setTimeout(resolveAccount, 800) // Debounce
-    return () => clearTimeout(timer)
-  }, [acctNumber, bankName])
 
   const handleSend = async () => {
     if (!isValidAddr || !amount) return
@@ -185,23 +107,10 @@ export default function SendPage() {
     }
   }
 
-  const handleOfframp = async () => {
-    if (!orAmount || !bankName || !acctNumber) {
-      setOrStatus({ type: 'error', message: 'Please fill in all fields.' })
-      return
-    }
-    setOrLoading(true)
-    setOrStatus({ type: null, message: '' })
-    await new Promise(r => setTimeout(r, 2000))
-    setOrStatus({ type: 'success', message: `Off-ramp initiated. ₦${ngn} will be credited to your ${bankName} account ending in ${acctNumber.slice(-4)} within 60 seconds.` })
-    setOrAmount(''); setAcctNumber('')
-    setOrLoading(false)
-  }
-
   if (!isConnected) {
     return (
       <div style={{ maxWidth: '520px', margin: '0 auto' }}>
-        <div className="alert-warning">Connect your wallet to use Send &amp; Off-Ramp.</div>
+        <div className="alert-warning">Connect your wallet to send tokens.</div>
       </div>
     )
   }
@@ -213,7 +122,7 @@ export default function SendPage() {
           Send &amp; Off-Ramp
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-          Transfer tokens or convert crypto to Nigerian Naira.
+          Transfer INJ or USDC on Injective. Off-ramp to NGN is not live yet.
         </p>
       </div>
 
@@ -225,7 +134,7 @@ export default function SendPage() {
         </button>
         <button className={`seg-btn${tab === 'offramp' ? ' active' : ''}`} onClick={() => setTab('offramp')}>
           <ArrowLeftRight size={13} style={{ display: 'inline', marginRight: '6px' }} />
-          Off-Ramp to NGN
+          Off-Ramp (not live)
         </button>
       </div>
 
@@ -376,105 +285,8 @@ export default function SendPage() {
         </div>
       )}
 
-      {/* ─── Off-Ramp tab ─── */}
-      {tab === 'offramp' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Token selector */}
-          <div>
-            <label className="label">Token to convert</label>
-            <div className="seg-control">
-              {(['USDC', 'INJ'] as const).map(t => (
-                <button key={t} onClick={() => setOrToken(t)} className={`seg-btn${orToken === t ? ' active' : ''}`}>{t}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Amount */}
-          <div>
-            <label className="label">Amount ({orToken})</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                className="input"
-                type="number"
-                placeholder="0.00"
-                value={orAmount}
-                onChange={e => setOrAmount(e.target.value)}
-                style={{ paddingRight: '60px' }}
-              />
-              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>
-                {orToken}
-              </span>
-            </div>
-          </div>
-
-          {/* Rate + NGN */}
-          <div style={{ padding: '14px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>You receive</p>
-              <p style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>₦{ngn}</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Est. Rate</p>
-              <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>
-                {pricesLoading ? 'Loading...' : `1 ${orToken} = ₦${rate.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`}
-              </p>
-            </div>
-          </div>
-
-          {/* Bank details */}
-          <div>
-            <label className="label">Bank Name</label>
-            <div style={{ position: 'relative', marginBottom: '10px' }}>
-              <select className="select" value={bankName} onChange={e => setBankName(e.target.value)}>
-                <option value="">Select bank</option>
-                {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-            <label className="label">Account Number</label>
-            <input
-              className="input input-mono"
-              type="text"
-              placeholder="0123456789"
-              value={acctNumber}
-              maxLength={10}
-              onChange={e => setAcctNumber(e.target.value.replace(/\D/g, ''))}
-              style={{ marginBottom: '10px' }}
-            />
-            {isResolving && (
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span className="spinner" style={{ width: '10px', height: '10px', borderWidth: '1px' }} /> Resolving account...
-              </p>
-            )}
-            {orStatus.type === 'success' && !isResolving && (
-              <p style={{ fontSize: '12px', color: 'var(--success)', fontWeight: '500' }}>
-                ✓ {orStatus.message}
-              </p>
-            )}
-            {orStatus.type === 'error' && !isResolving && (
-              <p style={{ fontSize: '12px', color: 'var(--error)', fontWeight: '500' }}>
-                ✗ {orStatus.message}
-              </p>
-            )}
-          </div>
-
-          {orStatus.type && (
-            <div className={orStatus.type === 'success' ? 'alert-success' : 'alert-error'}>{orStatus.message}</div>
-          )}
-
-          <button
-            onClick={handleOfframp}
-            disabled={orLoading || !orAmount || !bankName || !resolvedName || isResolving}
-            className="btn-primary"
-            style={{ width: '100%', padding: '13px', fontSize: '15px' }}
-          >
-            {orLoading ? <><span className="spinner" /> Processing…</> : <>Off-Ramp Now <ArrowRight size={15} /></>}
-          </button>
-
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.6' }}>
-            0.5% service fee · Credits within 60 seconds · Powered by Onboard API
-          </p>
-        </div>
-      )}
+      {/* ─── Off-Ramp tab: not live ─── */}
+      {tab === 'offramp' && <OfframpUnavailable />}
     </div>
   )
 }

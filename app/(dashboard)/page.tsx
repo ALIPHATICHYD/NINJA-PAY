@@ -10,7 +10,6 @@ import {
   ListOrdered,
   ArrowUpRight,
   ArrowRight,
-  ArrowLeftRight,
   Briefcase,
   TrendingUp,
   DollarSign,
@@ -20,8 +19,7 @@ import { useBalance } from '@/hooks/useBalance'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { fromWei } from '@/lib/injective/bank'
-import { resolveAccountName } from '@/lib/paystack'
-import { useState, useEffect } from 'react'
+import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 
 const FEATURES = [
   { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDC to any wallet.',   href: '/send' },
@@ -32,27 +30,6 @@ const FEATURES = [
   { icon: BarChart3,    title: 'Analytics',     desc: 'Volume, transactions, performance.',     href: '/analytics' },
   { icon: ListOrdered,  title: 'Transactions',  desc: 'Full on-chain history.',                 href: '/transactions' },
 ]
-
-const RATE_INJ  = 1380
-const RATE_USDC = 1592
-
-// Bank code mapping for Paystack account resolution
-const BANK_CODES: { [key: string]: string } = {
-  'Access Bank': '044',
-  'Ecobank': '050',
-  'Fidelity Bank': '070',
-  'First Bank': '011',
-  'GTBank': '058',
-  'Kuda Bank': '090267',
-  'Moniepoint': '999991',
-  'OPay': '999992',
-  'Palmpay': '999993',
-  'Stanbic IBTC': '039',
-  'Sterling Bank': '100',
-  'UBA': '033',
-  'Wema Bank': '035',
-  'Zenith Bank': '057',
-}
 
 export default function DashboardHome() {
   const { isConnected, address } = useWallet()
@@ -69,14 +46,6 @@ export default function DashboardHome() {
   const injInUsdc = injValue * (parseFloat(injUsdcRate) || 0)
   const totalUsdc = usdcValue + injInUsdc
   
-  const [offrampToken, setOfframpToken] = useState<'USDC' | 'INJ'>('USDC')
-  const [offrampAmount, setOfframpAmount] = useState('10')
-  const [convertAmount, setConvertAmount] = useState('1')
-  
-  const USD_TO_NGN_RATE = 1592 // Base rate
-  const injUsdcRateNum = parseFloat(injUsdcRate) || 0
-  const ngn = offrampAmount ? (parseFloat(offrampAmount) * (offrampToken === 'USDC' ? USD_TO_NGN_RATE : injUsdcRateNum * USD_TO_NGN_RATE)).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
-  const convertValue = offrampToken === 'INJ' ? (parseFloat(convertAmount) * injUsdcRateNum).toFixed(4) : (parseFloat(convertAmount) / (injUsdcRateNum || 1)).toFixed(6)
 
   /* ── Disconnected state ── */
   if (!isConnected) {
@@ -252,63 +221,8 @@ export default function DashboardHome() {
           </div>
         </div>
 
-        {/* Off-ramp quick widget */}
-        <div className="card" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-            <div className="icon-box">
-              <ArrowLeftRight size={16} />
-            </div>
-            <div>
-              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Off-Ramp</p>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Convert crypto → NGN</p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-            {(['USDC', 'INJ'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => setOfframpToken(t)}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  border: offrampToken === t ? '1px solid rgba(91,88,240,0.4)' : '1px solid var(--border)',
-                  background: offrampToken === t ? 'var(--accent-subtle)' : 'transparent',
-                  color: offrampToken === t ? 'var(--accent)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ position: 'relative', marginBottom: '10px' }}>
-            <input
-              className="input"
-              type="number"
-              value={offrampAmount}
-              onChange={e => setOfframpAmount(e.target.value)}
-              placeholder="0"
-              style={{ paddingRight: '60px' }}
-            />
-            <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>
-              {offrampToken}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '14px', border: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>You receive</span>
-            <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>₦{ngn}</span>
-          </div>
-
-          <Link href="/send" className="btn-primary" style={{ width: '100%', padding: '10px', fontSize: '13px' }}>
-            Off-Ramp Now <ArrowRight size={13} />
-          </Link>
-        </div>
+        {/* Off-ramp status (not live) */}
+        <OfframpUnavailable />
 
         {/* USDC Pricing & Conversion Widget */}
         <div className="card" style={{ padding: '24px' }}>

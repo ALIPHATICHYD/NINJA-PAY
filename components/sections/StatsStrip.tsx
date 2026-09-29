@@ -7,7 +7,7 @@ export function StatsStrip() {
     { label: 'Settlement time', value: '< 1 second' },
     { label: 'Network fee', value: '~$0.002' },
     { label: 'Wallets supported', value: '3 wallets' },
-    { label: 'Off-ramp currency', value: 'NGN via Onboard' },
+    { label: 'NGN off-ramp', value: 'Not live yet' },
   ]
 
   return (

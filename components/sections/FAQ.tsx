@@ -15,15 +15,15 @@ const FAQS = [
   },
   {
     q: 'How does off-ramping work?',
-    a: "You send INJ or USDC to NinjaPay's escrow, which triggers an Onboard API disbursement to your Nigerian bank account at the current market rate. The process takes < 60 seconds.",
+    a: "It isn't live yet. NinjaPay will not hold your crypto or convert it to naira itself. The off-ramp will only launch through a licensed partner, and none is connected today.",
   },
   {
     q: 'What are the fees?',
-    a: 'Injective charges minimal network fees (~$0.002). NinjaPay adds a 0.5% service fee on off-ramp conversions. All fees are shown before you confirm.',
+    a: 'Sending on Injective costs a network fee paid in INJ, shown by your wallet before you sign. NinjaPay has no off-ramp fees because the off-ramp is not live.',
   },
   {
     q: 'Can I pay Nigerian utility bills with crypto?',
-    a: 'Yes — Airtime, Data, Electricity, and Cable TV are all supported via our VTpass integration. Pay in USDC and the equivalent NGN is disbursed to your provider instantly.',
+    a: 'Not yet. Bill payments are not live and no payment is taken.',
   },
 ]
 
