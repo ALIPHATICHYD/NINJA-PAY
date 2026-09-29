@@ -260,7 +260,7 @@ export default function SendPage() {
                   href={`${TESTNET_EXPLORER}/${injTxHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent-text)' }}
                 >
                   View on explorer <ExternalLink size={11} />
                 </a>

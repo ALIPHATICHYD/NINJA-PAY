@@ -102,7 +102,7 @@ export default function BillsPage() {
                     gap: '8px',
                     padding: '14px 8px',
                     borderRadius: '10px',
-                    border: active ? '1px solid rgba(91,88,240,0.5)' : '1px solid var(--border)',
+                    border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
                     background: active ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
                     cursor: 'pointer',
                     transition: 'all 0.15s',

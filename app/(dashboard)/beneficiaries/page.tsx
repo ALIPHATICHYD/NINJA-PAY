@@ -15,7 +15,7 @@ const MOCK_BENEFICIARIES: Beneficiary[] = [
 ]
 
 const TAG_COLORS: Record<string, { bg: string; color: string }> = {
-  Team:   { bg: 'var(--accent-subtle)',   color: 'var(--accent)' },
+  Team:   { bg: 'var(--accent-subtle)',   color: 'var(--accent-text)' },
   Vendor: { bg: 'rgba(245,158,11,0.1)',   color: 'var(--warning)' },
   Family: { bg: 'var(--success-subtle)',  color: 'var(--success)' },
 }
@@ -25,7 +25,7 @@ function getInitials(name: string) {
 }
 
 function getAvatarColor(name: string) {
-  const colors = ['#5b58f0', '#8b5cf6', '#10d67a', '#f59e0b', '#f04f5b']
+  const colors = ['#4d3dff', '#193d6d', '#4669b9', '#7a4515', '#611447']
   return colors[name.charCodeAt(0) % colors.length]
 }
 
@@ -167,8 +167,8 @@ export default function BeneficiariesPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
                       borderRadius: '7px', fontSize: '12px', fontWeight: '600',
-                      background: 'var(--accent-subtle)', color: 'var(--accent)',
-                      border: '1px solid rgba(91,88,240,0.2)', transition: 'all 0.15s',
+                      background: 'var(--accent-subtle)', color: 'var(--accent-text)',
+                      border: '1px solid var(--accent-border)', transition: 'all 0.15s',
                     }}
                   >
                     <Send size={12} /> Send

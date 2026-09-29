@@ -239,7 +239,7 @@ export default function DashboardHome() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 INJ</span>
-              <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent)' }}>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent-text)' }}>
                 {priceLoading ? '...' : `${(parseFloat(injUsdcRate) || 0).toFixed(4)} USDC`}
               </span>
             </div>
@@ -335,7 +335,7 @@ export default function DashboardHome() {
           <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Recent Transactions</h3>
           <Link
             href="/transactions"
-            style={{ fontSize: '13px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '4px' }}
+            style={{ fontSize: '13px', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', gap: '4px' }}
           >
             View all <ArrowUpRight size={12} />
           </Link>
@@ -360,7 +360,7 @@ export default function DashboardHome() {
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '6px' }}>
             Start by sending INJ to another wallet or paying a bill.
           </p>
-          <Link href="/send" style={{ display: 'inline-block', marginTop: '16px', fontSize: '13px', color: 'var(--accent)' }}>
+          <Link href="/send" style={{ display: 'inline-block', marginTop: '16px', fontSize: '13px', color: 'var(--accent-text)' }}>
             Send your first transaction
           </Link>
         </div>

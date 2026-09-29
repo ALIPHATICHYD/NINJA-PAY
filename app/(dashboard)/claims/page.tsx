@@ -198,7 +198,7 @@ export default function ClaimsPage() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: '12px',
                     padding: '12px 14px', borderRadius: '9px', textAlign: 'left',
-                    border: splitType === s.id ? '1px solid rgba(91,88,240,0.5)' : '1px solid var(--border)',
+                    border: splitType === s.id ? '1px solid var(--accent)' : '1px solid var(--border)',
                     background: splitType === s.id ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
@@ -258,7 +258,7 @@ export default function ClaimsPage() {
         </div>
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center' }}>
-            <RefreshCcw size={24} className="spinner" style={{ color: 'var(--accent)', margin: '0 auto' }} />
+            <RefreshCcw size={24} className="spinner" style={{ color: 'var(--accent-text)', margin: '0 auto' }} />
           </div>
         ) : created.length === 0 ? (
           <div className="empty-state">

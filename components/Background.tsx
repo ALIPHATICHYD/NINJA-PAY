@@ -26,7 +26,7 @@ export function Background({ variant = 'lg', position = 'top-left' }: Background
       style={{
         width: size.width,
         height: size.height,
-        background: 'rgba(91,88,240,0.12)',
+        background: 'var(--accent-subtle)',
         ...pos,
       } as React.CSSProperties}
     />

@@ -117,7 +117,7 @@ export default function AnalyticsPage() {
 
       {loading ? (
         <div style={{ padding: '40px', textAlign: 'center' }}>
-          <RefreshCcw size={24} className="spinner" style={{ color: 'var(--accent)', margin: '0 auto' }} />
+          <RefreshCcw size={24} className="spinner" style={{ color: 'var(--accent-text)', margin: '0 auto' }} />
         </div>
       ) : (
         <>
@@ -177,7 +177,7 @@ export default function AnalyticsPage() {
                           width: '100%',
                           height: `${height}px`,
                           background: hovered ? 'var(--accent-gradient)' : 'var(--accent-subtle)',
-                          border: `1px solid ${hovered ? 'transparent' : 'rgba(91,88,240,0.25)'}`,
+                          border: `1px solid ${hovered ? 'transparent' : 'var(--accent-border)'}`,
                           borderRadius: '5px 5px 0 0',
                           transition: 'all 0.2s',
                           position: 'relative',

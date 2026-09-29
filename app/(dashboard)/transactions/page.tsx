@@ -130,7 +130,7 @@ export default function TransactionsPage() {
                     href={`https://explorer.injective.network/transaction/${tx.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--accent)', fontFamily: 'monospace' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--accent-text)', fontFamily: 'monospace' }}
                   >
                     {tx.txHash.slice(0, 8)}...<ExternalLink size={10} />
                   </a>
