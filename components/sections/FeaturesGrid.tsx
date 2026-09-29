@@ -6,7 +6,7 @@ import { SectionHeader } from './SectionHeader'
 
 const FEATURES = [
   { icon: Send, title: 'Send', desc: 'Transfer INJ or USDC to any Injective wallet address instantly.' },
-  { icon: CreditCard, title: 'Pay Bills', desc: 'Airtime, data, electricity, and cable — paid with crypto.' },
+  { icon: CreditCard, title: 'Pay Bills', desc: 'Airtime, data, electricity, and cable. Not live yet.' },
   { icon: Share2, title: 'Claims', desc: 'Create shareable links to distribute tokens to any group.' },
   { icon: Users2, title: 'Payroll', desc: 'Batch-pay your team or DAO in a single transaction.' },
   { icon: BarChart3, title: 'Analytics', desc: 'Track volume, transaction counts, and performance over time.' },

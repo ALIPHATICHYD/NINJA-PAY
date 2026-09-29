@@ -54,9 +54,8 @@ export function Hero() {
             marginBottom: '40px',
           }}
         >
-          Send INJ and USDC, pay utility bills, run crypto payroll, and
-          off-ramp directly to your Nigerian bank — all from one non-custodial
-          interface on Injective.
+          Send INJ and USDC from one non-custodial interface on Injective.
+          Off-ramp to Nigerian bank accounts and bill payments are not live yet.
         </p>
 
         <div className="reveal delay-4" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

@@ -3,11 +3,7 @@
 import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
-import { useTokenPrice } from '@/hooks/useTokenPrice'
-import { useUSDCConversion } from '@/hooks/useUSDCConversion'
-import { mockPurchaseBill } from '@/lib/vtpass'
-import { toWei, fromWei } from '@/lib/injective/bank'
-import { recordTransaction } from '@/lib/supabase'
+import { fromWei } from '@/lib/injective/bank'
 import { CreditCard, Phone, Wifi, Zap, Tv, AlertCircle } from 'lucide-react'
 
 type BillType = 'airtime' | 'data' | 'electricity' | 'cable'
@@ -36,48 +32,13 @@ const PLACEHOLDERS: Record<BillType, string> = {
 export default function BillsPage() {
   const { address, isConnected } = useWallet()
   const { usdc } = useBalance(address)
-  const { usdcNgn } = useTokenPrice()
-  const { injUsdcRate } = useUSDCConversion(1)
 
   const [billType, setBillType] = useState<BillType>('airtime')
   const [provider, setProvider] = useState('')
   const [identifier, setIdentifier] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentToken, setPaymentToken] = useState<'NGN' | 'USDC'>('USDC')
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
-
-  const usdcEquiv = amount ? (parseInt(amount) / usdcNgn).toFixed(4) : '0'
   const availableUsdc = usdc ? parseFloat(fromWei(usdc)).toFixed(2) : '0'
-
-  const handlePay = async () => {
-    if (!address || !provider || !identifier || !amount) {
-      setStatus({ type: 'error', message: 'Please fill in all fields.' })
-      return
-    }
-    setLoading(true)
-    setStatus({ type: null, message: '' })
-    try {
-      const result = await mockPurchaseBill(`${billType}-${provider.toLowerCase()}`, identifier, parseInt(amount))
-      if (result.status === 'success' && address) {
-        await recordTransaction({
-          userAddress: address,
-          type: 'bills',
-          status: 'pending',
-          amount: toWei(usdcEquiv),
-          recipient: `${provider}:${identifier}`,
-          txHash: result.transactionId,
-        })
-      }
-      setStatus({ type: 'success', message: `Bill payment of ₦${parseInt(amount).toLocaleString()} for ${provider} initiated successfully.` })
-      setIdentifier('')
-      setAmount('')
-    } catch (error: any) {
-      setStatus({ type: 'error', message: error.message || 'Failed to process payment.' })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   if (!isConnected) {
     return (
@@ -94,8 +55,12 @@ export default function BillsPage() {
           Pay Bills
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-          Pay Nigerian utility bills using USDC or convert from other tokens.
+          Pay Nigerian utility bills with USDC.
         </p>
+      </div>
+
+      <div className="alert-warning" role="status" style={{ marginBottom: '20px' }}>
+        Bill payments are not live yet. No payment is taken and nothing is sent to a provider.
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -192,58 +157,14 @@ export default function BillsPage() {
             min="0"
             step={paymentToken === 'NGN' ? '100' : '0.01'}
           />
-          {amount && paymentToken === 'NGN' && (
-            <div
-              style={{
-                marginTop: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px',
-                background: 'var(--bg-secondary)',
-                borderRadius: '7px',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>USDC equivalent</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--usdc-color, #2775ca)' }}>{usdcEquiv} USDC</span>
-            </div>
-          )}
-          {amount && paymentToken === 'USDC' && (
-            <div
-              style={{
-                marginTop: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px',
-                background: 'var(--bg-secondary)',
-                borderRadius: '7px',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>NGN equivalent</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>₦{(parseFloat(amount) * usdcNgn).toLocaleString('en-NG', { maximumFractionDigits: 0 })}</span>
-            </div>
-          )}
         </div>
 
-        {status.type && (
-          <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>
-            {status.message}
-          </div>
-        )}
-
         <button
-          onClick={handlePay}
-          disabled={loading || !provider || !identifier || !amount}
+          disabled
           className="btn-primary"
           style={{ width: '100%', padding: '13px', fontSize: '15px' }}
         >
-          {loading
-            ? <><span className="spinner" /> Processing...</>
-            : <><CreditCard size={15} /> Pay Bill</>
-          }
+          <CreditCard size={15} /> Not live yet
         </button>
       </div>
     </div>

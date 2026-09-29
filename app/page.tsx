@@ -14,21 +14,13 @@ import {
   Zap,
   Wallet,
   ChevronDown,
-  ArrowLeftRight,
   CheckCircle2,
 } from 'lucide-react'
-import { useTokenPrice } from '@/hooks/useTokenPrice'
-import { resolveAccountName } from '@/lib/paystack'
-
-const BANKS = [
-  'Access Bank', 'Ecobank', 'Fidelity Bank', 'First Bank', 'GTBank', 
-  'Kuda Bank', 'Moniepoint', 'OPay', 'Palmpay', 'Stanbic IBTC', 
-  'Sterling Bank', 'UBA', 'Wema Bank', 'Zenith Bank'
-]
+import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 
 const FEATURES = [
   { icon: Send,        title: 'Send',          desc: 'Transfer INJ or USDC to any Injective wallet address instantly.' },
-  { icon: CreditCard,  title: 'Pay Bills',     desc: 'Airtime, data, electricity, and cable — paid with crypto.' },
+  { icon: CreditCard,  title: 'Pay Bills',     desc: 'Airtime, data, electricity, and cable. Not live yet.' },
   { icon: Share2,      title: 'Claims',        desc: 'Create shareable links to distribute tokens to any group.' },
   { icon: Users2,      title: 'Payroll',       desc: 'Batch-pay your team or DAO in a single transaction.' },
   { icon: BarChart3,   title: 'Analytics',     desc: 'Track volume, transaction counts, and performance over time.' },
@@ -46,86 +38,20 @@ const FAQS = [
   },
   {
     q: 'How does off-ramping work?',
-    a: 'You send INJ or USDC to NinjaPay\'s escrow, which triggers an Onboard API disbursement to your Nigerian bank account at the current market rate. The process takes < 60 seconds.',
+    a: 'It isn\'t live yet. NinjaPay will not hold your crypto or convert it to naira itself. The off-ramp will only launch through a licensed partner, and none is connected today.',
   },
   {
     q: 'What are the fees?',
-    a: 'Injective charges minimal network fees (~$0.002). NinjaPay adds a 0.5% service fee on off-ramp conversions. All fees are shown before you confirm.',
+    a: 'Sending on Injective costs a network fee paid in INJ, shown by your wallet before you sign. NinjaPay has no off-ramp fees because the off-ramp is not live.',
   },
   {
     q: 'Can I pay Nigerian utility bills with crypto?',
-    a: 'Yes — Airtime, Data, Electricity, and Cable TV are all supported via our VTpass integration. Pay in USDC and the equivalent NGN is disbursed to your provider instantly.',
+    a: 'Not yet. Bill payments are not live and no payment is taken.',
   },
 ]
 
 export default function LandingPage() {
   const [openFaq, setOpenFaq]         = useState<number | null>(null)
-  const [offrampToken, setOfframpToken] = useState<'INJ' | 'USDC'>('USDC')
-  const [offrampAmount, setOfframpAmount] = useState('10')
-  const [bankName, setBankName]       = useState('')
-  const [acctNumber, setAcctNumber]   = useState('')
-  const [resolvedName, setResolvedName] = useState('')
-  const [isResolving, setIsResolving]   = useState(false)
-  const [orStatus, setOrStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
-
-  // Bank code mapping for Paystack account resolution
-  const BANK_CODES: { [key: string]: string } = {
-    'Access Bank': '044',
-    'Ecobank': '050',
-    'Fidelity Bank': '070',
-    'First Bank': '011',
-    'GTBank': '058',
-    'Kuda Bank': '090267',
-    'Moniepoint': '999991',
-    'OPay': '999992',
-    'Palmpay': '999993',
-    'Stanbic IBTC': '039',
-    'Sterling Bank': '100',
-    'UBA': '033',
-    'Wema Bank': '035',
-    'Zenith Bank': '057',
-  }
-
-  const { injUsd, usdcNgn, loading } = useTokenPrice()
-  const rate    = offrampToken === 'USDC' ? usdcNgn : (injUsd * usdcNgn)
-  const ngn     = offrampAmount ? (parseFloat(offrampAmount) * rate).toLocaleString('en-NG', { maximumFractionDigits: 0 }) : '0'
-
-  // Real account name resolution via Paystack
-  useEffect(() => {
-    const resolveAccount = async () => {
-      if (acctNumber.length === 10 && bankName) {
-        setIsResolving(true)
-        setResolvedName('')
-        setOrStatus({ type: null, message: '' })
-        
-        try {
-          const bankCode = BANK_CODES[bankName]
-          if (!bankCode) {
-            setOrStatus({ type: 'error', message: 'Bank not supported or not found' })
-            setIsResolving(false)
-            return
-          }
-
-          const result = await resolveAccountName(acctNumber, bankCode)
-          setResolvedName(result.accountName)
-          setOrStatus({ type: 'success', message: `Account verified: ${result.accountName}` })
-        } catch (error: any) {
-          const errorMsg = error.message || 'Failed to resolve account name'
-          setOrStatus({ type: 'error', message: errorMsg })
-          setResolvedName('')
-        } finally {
-          setIsResolving(false)
-        }
-      } else {
-        setResolvedName('')
-        setOrStatus({ type: null, message: '' })
-      }
-    }
-
-    const timer = setTimeout(resolveAccount, 800) // Debounce
-    return () => clearTimeout(timer)
-  }, [acctNumber, bankName])
-
   // Scroll Reveal Animations Observer
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -252,9 +178,8 @@ export default function LandingPage() {
               marginBottom: '40px',
             }}
           >
-            Send INJ and USDC, pay utility bills, run crypto payroll, and
-            off-ramp directly to your Nigerian bank — all from one non-custodial
-            interface on Injective.
+            Send INJ and USDC from one non-custodial interface on Injective.
+            Off-ramp to Nigerian bank accounts and bill payments are not live yet.
           </p>
 
           <div className="reveal delay-4" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -281,159 +206,9 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Right: Off-ramp widget mockup */}
+        {/* Right: off-ramp status (not live) */}
         <div className="reveal-right" style={{ position: 'relative', zIndex: 1, marginTop: '20px' }}>
-          <div
-            className="card-glass"
-            style={{ borderColor: 'var(--border-light)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}
-          >
-            {/* Widget header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
-              <div className="icon-box">
-                <ArrowLeftRight size={17} />
-              </div>
-              <div>
-                <p style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Off-Ramp</p>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Convert crypto → NGN instantly</p>
-              </div>
-            </div>
-
-            {/* Token toggle */}
-            <div style={{ marginBottom: '14px' }}>
-              <p className="label">You send</p>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                {(['USDC', 'INJ'] as const).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setOfframpToken(t)}
-                    style={{
-                      padding: '6px 14px',
-                      borderRadius: '7px',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      border: offrampToken === t ? '1px solid rgba(91,88,240,0.4)' : '1px solid var(--border)',
-                      background: offrampToken === t ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
-                      color: offrampToken === t ? 'var(--accent)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div style={{ position: 'relative' }}>
-                <input
-                  className="input input-lg"
-                  type="number"
-                  value={offrampAmount}
-                  onChange={e => setOfframpAmount(e.target.value)}
-                  placeholder="0.00"
-                  style={{ paddingRight: '70px' }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    right: '14px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    color: offrampToken === 'USDC' ? 'var(--usdc-color)' : 'var(--inj-color)',
-                  }}
-                >
-                  {offrampToken}
-                </span>
-              </div>
-            </div>
-
-            {/* Rate row */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 14px',
-                background: 'var(--bg-secondary)',
-                borderRadius: '9px',
-                marginBottom: '14px',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Est. Rate</span>
-              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>
-                {loading ? 'Loading...' : `1 ${offrampToken} ≈ ₦${rate.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`}
-              </span>
-            </div>
-
-            {/* NGN output */}
-            <div style={{ marginBottom: '18px' }}>
-              <p className="label">You receive (NGN)</p>
-              <div
-                style={{
-                  padding: '14px 16px',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-                  ₦{ngn}
-                </span>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>NGN</span>
-              </div>
-            </div>
-
-            {/* Bank field - DISABLED */}
-            <div style={{ marginBottom: '18px', display: 'none' }}>
-              <p className="label">Bank account</p>
-              <select 
-                className="select" 
-                value={bankName} 
-                onChange={e => setBankName(e.target.value)}
-                style={{ marginBottom: '8px' }}
-              >
-                <option value="">Select bank</option>
-                {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-              <input 
-                className="input input-mono" 
-                type="text"
-                placeholder="0123456789" 
-                value={acctNumber}
-                maxLength={10}
-                onChange={e => setAcctNumber(e.target.value.replace(/\D/g, ''))}
-                style={{ marginBottom: '8px' }}
-              />
-              {isResolving && (
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="spinner" style={{ width: '10px', height: '10px', borderWidth: '1px' }} /> Resolving account...
-                </p>
-              )}
-              {orStatus.type === 'success' && !isResolving && (
-                <p style={{ fontSize: '12px', color: 'var(--success)', fontWeight: '500' }}>
-                  ✓ {orStatus.message}
-                </p>
-              )}
-              {orStatus.type === 'error' && !isResolving && (
-                <p style={{ fontSize: '12px', color: 'var(--error)', fontWeight: '500' }}>
-                  ✗ {orStatus.message}
-                </p>
-              )}
-            </div>
-
-            <Link href="/send" className="btn-primary" style={{ width: '100%', padding: '13px', fontSize: '15px' }}>
-              Off-Ramp Now
-              <ArrowRight size={15} />
-            </Link>
-
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '12px', lineHeight: '1.5' }}>
-              Connect wallet to proceed · Powered by Onboard API
-            </p>
-          </div>
+          <OfframpUnavailable className="card-glass" />
         </div>
       </section>
 
@@ -453,7 +228,7 @@ export default function LandingPage() {
             { label: 'Settlement time',   value: '< 1 second' },
             { label: 'Network fee',       value: '~$0.002' },
             { label: 'Wallets supported', value: '3 wallets' },
-            { label: 'Off-ramp currency', value: 'NGN via Onboard' },
+            { label: 'NGN off-ramp', value: 'Not live yet' },
           ].map(stat => (
             <div key={stat.label} style={{ textAlign: 'center' }}>
               <p style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
@@ -696,7 +471,7 @@ export default function LandingPage() {
               Ready to get started?
             </h2>
             <p style={{ fontSize: '16px', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 36px', lineHeight: '1.7' }}>
-              Connect your wallet and access the full NinjaPay suite — no signup, no KYC delay, no waiting.
+              Connect your wallet to send INJ and USDC on Injective testnet.
             </p>
             <Link href="/send" className="btn-primary" style={{ padding: '14px 36px', fontSize: '16px' }}>
               Launch App
