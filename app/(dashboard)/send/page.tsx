@@ -8,7 +8,6 @@ import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
-import { toUSDCChainFormat, isValidUSDCAmount } from '@/lib/injective/usdc-testnet'
 
 const TESTNET_EXPLORER = 'https://testnet.explorer.injective.network/transaction'
 
@@ -64,15 +63,15 @@ export default function SendPage() {
           return
         }
 
-        const amountInChainFormat = toUSDCChainFormat(parsedAmt.toString())
-        if (!isValidUSDCAmount(amountInChainFormat)) {
+        if (!/^\d*\.?\d{0,6}$/.test(amount.trim())) {
           setSendStatus({ type: 'error', message: `Invalid USDC amount. Max decimals: 6` })
           return
         }
 
-        const hash = await cosmosSendToken(recipient, amountInChainFormat, 'USDC')
+        // sendToken takes the human-readable amount and converts to base units once
+        const hash = await cosmosSendToken(recipient, amount.trim(), 'USDC')
         setTxHash(hash)
-        setSendStatus({ type: 'success', message: `USDC transfer initiated! Transaction: ${hash.slice(0, 16)}...` })
+        setSendStatus({ type: 'success', message: `USDC sent. Transaction: ${hash.slice(0, 16)}...` })
         setAmount('')
         setRecipient('')
       } else {
@@ -84,12 +83,9 @@ export default function SendPage() {
             return
           }
 
-          const { toChainAmount } = await import('@/lib/injective/cosmos-transactions')
-          const amountInWei = toChainAmount(amount, 18)
-
-          const hash = await cosmosSendToken(recipient, amountInWei, 'INJ')
+          const hash = await cosmosSendToken(recipient, amount.trim(), 'INJ')
           setTxHash(hash)
-          setSendStatus({ type: 'success', message: `INJ transfer initiated! Transaction: ${hash.slice(0, 16)}...` })
+          setSendStatus({ type: 'success', message: `INJ sent. Transaction: ${hash.slice(0, 16)}...` })
           setAmount('')
           setRecipient('')
         } else if (isValidEthAddr) {

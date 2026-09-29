@@ -15,16 +15,37 @@ export interface TransactionRecord {
   createdAt: Date
 }
 
+export interface ClaimShare {
+  /** Human-readable amount, for display */
+  amount: string
+  /** Exact amount in the token's base units; what is actually paid */
+  amountBase?: string
+  /** Legacy field from pools created before escrow; unused for new pools */
+  address?: string
+}
+
 export interface ClaimPool {
   id: string
   creatorAddress: string
-  name?: string // Optional claim name
-  totalAmount: string // Wei
+  name?: string
+  totalAmount: string // human-readable
   claimType: 'equal' | 'percentage' | 'custom'
-  shares: { address: string; amount: string }[]
-  claimedBy: string[]
+  /** Token held in escrow. Null for legacy pools created before escrow. */
+  token: 'INJ' | 'USDC' | null
+  /** Escrow account funded at creation. Null for legacy (unfunded) pools. */
+  escrowAddress: string | null
+  shares: ClaimShare[]
   linkCode: string
   createdAt: Date
+}
+
+export interface ClaimRecord {
+  id: string
+  poolId: string
+  shareIndex: number
+  claimerAddress: string
+  txHash: string | null
+  status: 'pending' | 'paid'
 }
 
 export interface PayrollOutput {

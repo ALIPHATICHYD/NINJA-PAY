@@ -78,8 +78,7 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
       setError(null)
 
       try {
-        // sendToken expects chain-formatted amount
-        // The function handles the conversion internally
+        // amount is human-readable ("1.5"); sendToken converts to base units once
         const txHash = await sendToken(recipientAddress, amount, CHAIN_ID, token)
         console.log(`✓ ${token} transfer successful: ${txHash}`)
         return txHash

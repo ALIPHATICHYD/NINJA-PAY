@@ -65,10 +65,10 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Feature | Route | Status | What actually happens today |
 |---|---|---|---|
 | Send INJ to a `0x…` address | `/send` | Working on testnet | Native value transfer through wagmi `useSendTransaction` on the EVM chain configured in `components/Web3Providers.tsx`. |
-| Send INJ or USDC to an `inj1…` address | `/send` | Broken | Builds a Cosmos `MsgSend` signed via Keplr/Leap. Signing and amount handling have defects; see [Known issues](#known-issues). |
-| Payroll | `/payroll` | Broken | Sends one transaction per recipient through the same Cosmos path. The UI describes a single `MsgMultiSend`, but that builder (`createMsgMultiSendPayroll`) is not wired up. |
-| Claim links: create | `/claims` | Metadata only | Writes a claim pool row to Supabase. **No funds are escrowed** when a pool is created. |
-| Claim links: redeem | `/claim/[claimId]` | Not functional | The claimer's own wallet signs a transfer to itself; no creator funds move. See [Known issues](#known-issues). |
+| Send INJ or USDC to an `inj1…` address | `/send` | Implemented, awaiting a funded testnet run | Builds a Cosmos `MsgSend`, simulates gas, signs with Keplr/Leap (`SIGN_MODE_DIRECT`), and waits for block inclusion. Ledger accounts are not supported yet. |
+| Payroll | `/payroll` | Partial | Sends one signed transaction per recipient through the Cosmos path. The UI describes a single `MsgMultiSend`, but that builder (`createMsgMultiSendPayroll`) is not wired up. |
+| Claim links: create | `/claims` | Implemented, awaiting a funded testnet run | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
+| Claim links: redeem | `/claim/[claimId]` | Implemented, awaiting a funded testnet run | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
 | Transactions | `/transactions` | Mock data | Renders a hardcoded `MOCK_TXS` list. |
 | Beneficiaries | `/beneficiaries` | Local only | In-memory list seeded with sample entries; nothing is persisted. |
 | Analytics | `/analytics` | Wired, no data | Reads the Supabase `transactions` table, but nothing writes to it yet (`recordTransaction` is never called). |
@@ -285,7 +285,27 @@ create table if not exists transactions (
 
 create index if not exists transactions_user_created_idx
   on transactions (user_address, created_at desc);
+
+-- Claim-link escrow. Only the escrow's public address is stored; its key never reaches the server.
+alter table claim_pools add column if not exists token          text check (token in ('INJ', 'USDC'));
+alter table claim_pools add column if not exists escrow_address text;
+
+-- One row per claimed share. The unique constraints are the lock that stops
+-- a share being paid twice or one address claiming twice.
+create table if not exists claims (
+  id              uuid primary key default uuid_generate_v4(),
+  pool_id         uuid        not null references claim_pools (id) on delete cascade,
+  share_index     int         not null,
+  claimer_address text        not null,
+  status          text        not null default 'pending' check (status in ('pending', 'paid')),
+  tx_hash         text,
+  created_at      timestamptz not null default now(),
+  constraint claims_one_per_share   unique (pool_id, share_index),
+  constraint claims_one_per_claimer unique (pool_id, claimer_address)
+);
 ```
+
+If you created the tables from an earlier version of this README, run the `alter table` and `create table claims` statements above as a migration. The claims code looks for the constraint names `claims_one_per_share` and `claims_one_per_claimer`, so keep them as written.
 
 ### Row Level Security
 
@@ -294,16 +314,20 @@ The app talks to Supabase from the browser with the anon key, so **enable RLS on
 ```sql
 alter table claim_pools  enable row level security;
 alter table transactions enable row level security;
+alter table claims       enable row level security;
 
 -- Prototype policies: anyone may read and insert. Tighten before any real use.
 create policy "read claim pools"   on claim_pools  for select using (true);
 create policy "create claim pools" on claim_pools  for insert with check (true);
-create policy "update claim pools" on claim_pools  for update using (true);
+create policy "read claims"        on claims       for select using (true);
+create policy "reserve claims"     on claims       for insert with check (true);
+create policy "mark claims paid"   on claims       for update using (true);
+create policy "release claims"     on claims       for delete using (status = 'pending');
 create policy "read transactions"  on transactions for select using (true);
 create policy "insert transactions" on transactions for insert with check (true);
 ```
 
-The `update` policy on `claim_pools` lets any client rewrite `claimed_by` and `shares`. That is acceptable only on testnet. A production design should move claim state on-chain (see [Roadmap](#roadmap)) or behind a server route that verifies a signed message from the claimer.
+These policies let any client insert or update claim rows. The funds themselves are protected by the escrow key, not by the database: a forged `claims` row cannot move tokens. What a hostile client *can* do is reserve shares it never pays out, or mark rows paid. That is acceptable on testnet. For production, move reservation behind a server route that checks a signature from the claimer, or move claim state on-chain (see [Roadmap](#roadmap)). No `update` policy on `claim_pools` is needed any more.
 
 ---
 
@@ -313,12 +337,12 @@ The `update` policy on `claim_pools` lets any client rewrite `claimed_by` and `s
 
 1. The user chooses INJ or USDC and enters a recipient.
 2. **`0x…` recipient, INJ:** the page calls wagmi `sendTransaction({ to, value: parseEther(amount) })`. The connected EVM wallet signs, and `useWaitForTransactionReceipt` tracks confirmation.
-3. **`inj1…` recipient, INJ or USDC:** the page converts the amount to base units and calls `useCosmosTransaction().sendToken`. This calls `sendToken` in `lib/injective/cosmos-transactions.ts`, which:
-   - builds a `MsgSend` with the right denom;
-   - gets an offline signer from Keplr or Leap;
-   - broadcasts it.
-
-   This path has open defects; see [Known issues](#known-issues).
+3. **`inj1…` recipient, INJ or USDC:** the page passes the **human-readable** amount to `useCosmosTransaction().sendToken`. `sendToken` in `lib/injective/cosmos-transactions.ts` converts it to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It then builds a `MsgSend` and hands it to `signAndBroadcast`, which:
+   1. fetches the account number, sequence, and latest block height from the chain's REST API;
+   2. builds the transaction with `createTransaction` and a timeout height;
+   3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation fails);
+   4. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`;
+   5. broadcasts it and waits until the transaction is included in a block.
 
 ### Payroll (`/payroll`)
 
@@ -326,15 +350,28 @@ The payroll screen has three steps: name the run, add recipients (`inj1…` only
 
 ### Claim links (`/claims` → `/claim/[claimId]`)
 
-1. The creator enters a total amount, a recipient count, and a split type. The app writes a `claim_pools` row with empty share slots and a random `link_code`, then shows a shareable link.
-2. A recipient opens `/claim/<link_code>`, connects a wallet, and claims the first unclaimed share. The app records the claimer's address in `claimed_by` and `shares`.
+Claim links use a **one-time escrow account whose key travels in the link**. The code is in `lib/injective/claim-escrow.ts`.
 
-No tokens are locked when a pool is created, so there is nothing to pay out from. A working design needs one of the following:
+**Creating a pool**
 
-- **Escrow wallet:** the creator funds a pool address, and a server route releases each share after verifying the claimer.
-- **CosmWasm contract:** a small contract holds the funds and enforces one claim per address on-chain.
+1. The creator enters a name, token, total, and number of recipients. The total is split equally in base units with `BigInt`. Any indivisible remainder goes to the first shares, one base unit each, so the shares always sum to exactly the total.
+2. The browser generates a fresh escrow key from 32 bytes of `crypto.getRandomValues`, and saves it to `localStorage` **before** any funds move, so the creator can always reclaim.
+3. The creator signs one `MsgSend` to the escrow address. It carries the total, plus an INJ reserve for fees: three times the fixed escrow fee (0.000032 INJ), for each share plus one final sweep. For USDC pools, the message carries two coins, sorted by denom as the chain requires.
+4. The pool is saved to Supabase with the escrow's **address**, token, and share amounts. The key is never sent to the server.
+5. The link is `https://…/claim/<code>#k=<escrow key>`. Browsers never send the `#fragment` to a server.
 
----
+**Claiming**
+
+1. The page reads the key from the fragment and checks that it derives the pool's `escrow_address`.
+2. The claimer connects Keplr or Leap, or an EVM wallet (its `0x` address is converted to the matching `inj1` address).
+3. The page reserves the next free share by inserting a `claims` row. The unique constraints on `(pool_id, share_index)` and `(pool_id, claimer_address)` make that insert the lock.
+4. The escrow key signs a `MsgSend` of that share to the claimer, with a fixed 200,000 gas limit. The row is then marked `paid` with the transaction hash. If the payout fails, the reservation is deleted so someone else can claim that share.
+
+**Reclaiming.** In `/claims`, the creator's browser can sweep everything left in the escrow (unclaimed shares plus unused fee reserve) back to the funding address. After a sweep, remaining claimers will see that the pool is out of funds.
+
+**Trust model.** NinjaPay never holds the key or the funds. The link is a **bearer secret**: anyone who has it can claim, and a malicious holder could drain the escrow directly with the key. Share links privately. "One claim per address" is enforced by the database, not the chain, and it stops honest double-claims, not a determined attacker with many addresses. A CosmWasm contract would make these rules trustless (see [Roadmap](#roadmap)).
+
+Pools created before this design have no escrow and are shown as *unfunded*. They cannot be claimed.
 
 ## Security model
 
@@ -354,17 +391,25 @@ These are verified against the current code. They are the priority list before a
 
 | # | Severity | Issue | Where |
 |---|---|---|---|
-| 1 | Critical | Cosmos signing uses `MsgBroadcasterWithPk` with a Keplr/Leap **offline signer** passed as `privateKey`. That class expects a raw private key, so wallet-signed Cosmos sends will not work. Use a wallet-based broadcaster instead, for example `MsgBroadcaster` with a `WalletStrategy` from `@injectivelabs/wallet-ts`. | `lib/injective/cosmos-transactions.ts`, `lib/injective/broadcast.ts` |
-| 2 | Critical | Amounts are converted to base units **twice**. The Send, Payroll, and Claim pages convert to base units, then `sendToken` converts again with `toChainAmount`, so 1 USDC is requested as 1,000,000 USDC. Payroll INJ also passes `fromWei(amount)`, which divides a human amount by 10^18. | `app/(dashboard)/send/page.tsx`, `app/(dashboard)/payroll/page.tsx`, `app/claim/[claimId]/page.tsx` |
-| 3 | High | Claim redemption signs with the **claimer's** wallet and sends to the claimer's own address. No creator funds are escrowed or moved. | `app/claim/[claimId]/page.tsx`, `app/(dashboard)/claims/page.tsx` |
-| 4 | High | The claim page reads the token from `pool.token \|\| pool.claimType`, but `claim_type` stores the split type (`equal`, …), not the token symbol. | `app/claim/[claimId]/page.tsx` |
-| 5 | High | The claim page reads `params.claimId` synchronously. In Next.js 16, `params` is a Promise, so it must be unwrapped with `use(params)`. | `app/claim/[claimId]/page.tsx` |
-| 6 | Medium | Payroll sends N separate transactions instead of one atomic `MsgMultiSend`, even though the UI says otherwise. | `app/(dashboard)/payroll/page.tsx` |
-| 7 | Medium | The EVM chain ID is inconsistent (`2424` in `Web3Providers.tsx`, `0x968` = 2408 in `evm-config.ts`), and both target inEVM RPCs. | `components/Web3Providers.tsx`, `lib/injective/evm-config.ts` |
-| 8 | Medium | `recordTransaction` is never called, so `/analytics` has no data. `/transactions` and `/beneficiaries` render hardcoded sample data. | `lib/supabase.ts`, dashboard pages |
-| 9 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
-| 10 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
-| 11 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx`, `lib/injective/usdc-testnet.ts` |
+| 1 | Medium | A claim reservation left `pending` (for example, the tab closed after reserving but before the payout confirmed) keeps that share locked. Nothing expires stale reservations yet. If the payout did land on-chain, the row simply never flips to `paid`. | `lib/supabase.ts` |
+| 2 | Medium | Claim links are bearer secrets and one-claim-per-address is database-enforced, not on-chain. See the trust model under [Claim links](#claim-links-claims--claimclaimid). | `lib/injective/claim-escrow.ts` |
+| 3 | Medium | Payroll sends N separate transactions instead of one atomic `MsgMultiSend`, even though the UI says otherwise. | `app/(dashboard)/payroll/page.tsx` |
+| 4 | Medium | The EVM chain ID is inconsistent (`2424` in `Web3Providers.tsx`, `0x968` = 2408 in `evm-config.ts`), and both target inEVM RPCs. | `components/Web3Providers.tsx`, `lib/injective/evm-config.ts` |
+| 5 | Medium | `recordTransaction` is never called, so `/analytics` has no data. `/transactions` and `/beneficiaries` render hardcoded sample data. | `lib/supabase.ts`, dashboard pages |
+| 6 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
+| 7 | Low | The escrow key for re-copying a link and reclaiming is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. | `lib/injective/claim-escrow.ts` |
+| 8 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
+| 9 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx`, `lib/injective/usdc-testnet.ts` |
+| 10 | Low | Payroll computes the available USDC balance with `fromWei` (18 decimals), but USDC has 6, so the USDC balance shown there is wrong. | `app/(dashboard)/payroll/page.tsx` |
+| 11 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error. Injective needs EIP-712 (amino) signing for Ledger, which is not implemented. | `lib/injective/cosmos-transactions.ts` |
+
+**Fixed:**
+
+- Cosmos transactions are now signed by the wallet. Previously a Keplr/Leap signer was passed to `MsgBroadcasterWithPk` as a private key.
+- Amounts are converted to base units exactly once, inside `sendToken`. Previously they were converted twice, so 1 USDC was requested as 1,000,000 USDC.
+- Claim links now move real funds through a creator-funded escrow. Previously nothing was escrowed and the claimer's own wallet paid itself.
+- The claim page reads the token from the pool's `token` column (it used to read the split type), and unwraps `params` with `use()` as Next.js 16 requires.
+- The "Percentage" and "Custom" split options were removed. They had no inputs behind them and always split equally.
 
 ---
 
@@ -405,9 +450,9 @@ There is no automated test suite yet. `lib/supabase.test.ts` contains manual con
 
 ## Roadmap
 
-1. **Fix the Cosmos rail.** Switch to a wallet-based broadcaster, convert amounts once, and add simulation-based fee estimates shown before signing.
+1. **Harden the Cosmos rail.** Verify sends end to end on testnet, show the simulated fee before signing, and add Ledger support through EIP-712 signing.
 2. **Atomic payroll.** One `MsgMultiSend` per run, with CSV import and a per-recipient preview.
-3. **Real claim links.** Escrow the funds in a CosmWasm contract (or a verified escrow service) and enforce one claim per address on-chain.
+3. **Trustless claim links.** Move the escrow into a CosmWasm contract that enforces one claim per address and creator refunds on-chain, and expire stale reservations.
 4. **Persistent history.** Record every broadcast in `transactions`, and read status back from the chain by transaction hash.
 5. **One EVM target.** Standardise on a single Injective EVM chain ID and RPC across RainbowKit and the helpers.
 6. **Server-side integrations.** Move Paystack and VTPass behind route handlers with secret keys, then enable bills.
