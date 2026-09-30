@@ -11,6 +11,7 @@ import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 import { TxStatus } from '@/components/TxStatus'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
+import { useTransferChecks } from '@/hooks/useTransferChecks'
 import type { ChainState } from '@/components/StatusChip'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { INJ, TOKENS } from '@/lib/injective/tokens'
@@ -25,7 +26,7 @@ import {
   networkFee,
 } from '@/lib/injective/fees'
 import { FAUCETS, INJECTIVE_EVM } from '@/lib/injective/network'
-import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
+import { isSameAccount, parseAccountAddress, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { parsePaymentRequest } from '@/lib/payment-request'
 
 
@@ -125,8 +126,11 @@ export default function SendPage() {
   // INJ goes over the EVM, USDC over the Cosmos side: check the one in use is live and on the right chain.
   const chainHealth = useChainHealth(sendToken === 'INJ' ? 'evm' : 'cosmos')
 
+  // Circuit breaker, the token's permission rules, and whether the recipient has ever been used.
+  const transferChecks = useTransferChecks(sendToken, toInjectiveAddress(sender), to && !isOwnAddress ? to.injective : null)
+
   const canSend = !!to && !isOwnAddress && !balLoading && !balError && chainHealth.canSend &&
-    (sendToken === 'INJ' || cosmosReady) &&
+    (sendToken === 'INJ' || cosmosReady) && transferChecks.blocks.length === 0 &&
     amountBase !== null && amountBase > BigInt(0) && !overBalance && feeCheck.ok
 
   // One status line per transfer: waiting for the wallet, waiting for a block, confirmed or failed.
@@ -313,6 +317,9 @@ export default function SendPage() {
                 Same account as {recipient.trim().startsWith('0x') ? shortAddress(to.injective, 14) : shortAddress(to.evm, 12)}
               </p>
             )}
+            {transferChecks.warnings.map(w => (
+              <p key={w.message} role="alert" style={{ fontSize: '11px', color: 'var(--warning)', marginTop: '5px' }}>{w.message}</p>
+            ))}
           </div>
 
           {/* Amount */}
@@ -352,6 +359,12 @@ export default function SendPage() {
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{feeError}</span>
             </div>
           )}
+
+          {transferChecks.blocks.map(b => (
+            <div key={b.message} role="alert" className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{b.message}</span>
+            </div>
+          ))}
 
           <ChainHealthNotice state={chainHealth} />
 
