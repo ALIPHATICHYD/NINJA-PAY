@@ -5,6 +5,7 @@ import { format, isToday, isYesterday } from 'date-fns'
 import { ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useActivity } from '@/hooks/useActivity'
+import { StatusChip } from '@/components/StatusChip'
 import {
   ACTIVITY_LABELS,
   EXPLORER_TX_URL,
@@ -128,9 +129,7 @@ export default function TransactionsPage() {
                     {tx.direction === 'out' ? '−' : '+'}
                     {tx.coins.map(c => `${formatCoinAmount(c)} ${c.token}`).join(' + ')}
                   </p>
-                  <span className={`badge badge-${tx.success ? 'success' : 'error'}`} style={{ width: 'fit-content' }}>
-                    {tx.success ? 'Confirmed' : 'Failed'}
-                  </span>
+                  <StatusChip state={tx.success ? 'confirmed' : 'failed'} className="w-fit" />
                   <a
                     href={`${EXPLORER_TX_URL}${tx.hash}`}
                     target="_blank"

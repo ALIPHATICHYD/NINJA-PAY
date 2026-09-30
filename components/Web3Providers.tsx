@@ -40,7 +40,7 @@ export function Web3Providers({ children }: { children: React.ReactNode }) {
         <RainbowKitProvider
           theme={darkTheme({
             accentColor: '#4d3dff',
-            accentColorForeground: 'white',
+            accentColorForeground: '#eeefff',
             borderRadius: 'medium',
             fontStack: 'system',
             overlayBlur: 'small',

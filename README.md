@@ -187,7 +187,7 @@ lib/
   supabase.ts                 Claim pools and transaction history
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
-  favicon.png, logo.svg, ninja-hero.png
+  favicon.png, logo.svg, ninja-hero.webp
 ```
 
 ---

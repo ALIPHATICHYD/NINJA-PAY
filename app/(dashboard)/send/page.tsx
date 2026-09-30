@@ -230,7 +230,7 @@ export default function SendPage() {
             <div className="alert-error">{sendError.message.slice(0, 120)}</div>
           )}
           {sendStatus.type === 'pending' && (
-            <div className="alert-warning" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="alert-pending" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="spinner" /> {sendStatus.message || 'Processing...'}
             </div>
           )}
@@ -245,12 +245,12 @@ export default function SendPage() {
             </div>
           )}
           {isPending && sendToken === 'INJ' && (
-            <div className="alert-warning" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="alert-pending" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="spinner" /> Waiting for wallet confirmation…
             </div>
           )}
           {isConfirming && sendToken === 'INJ' && (
-            <div className="alert-warning" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="alert-pending" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="spinner" /> Transaction submitted — awaiting confirmation…
             </div>
           )}
