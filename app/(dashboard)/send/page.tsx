@@ -12,6 +12,7 @@ import { TxStatus } from '@/components/TxStatus'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { useTransferChecks } from '@/hooks/useTransferChecks'
+import { useRecipient } from '@/hooks/useRecipients'
 import type { ChainState } from '@/components/StatusChip'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { INJ, TOKENS } from '@/lib/injective/tokens'
@@ -26,7 +27,7 @@ import {
   networkFee,
 } from '@/lib/injective/fees'
 import { FAUCETS, INJECTIVE_EVM } from '@/lib/injective/network'
-import { isSameAccount, parseAccountAddress, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
+import { isSameAccount, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { parsePaymentRequest } from '@/lib/payment-request'
 
 
@@ -77,9 +78,10 @@ export default function SendPage() {
   })
   const { data: settledReceipt } = useTransactionReceipt({ hash: injTxHash, query: { enabled: !!injTxHash && waitFailed } })
 
-  // The recipient may be typed as inj1… or 0x…: both are the same account.
-  const to = useMemo(() => parseAccountAddress(recipient), [recipient])
-  const isOwnAddress = isSameAccount(recipient, address)
+  // The recipient may be typed as inj1… or 0x… (the same account) or as a .inj name.
+  const target = useRecipient(recipient)
+  const to = target.account
+  const isOwnAddress = isSameAccount(to?.injective, address)
 
   // USDC still signs through Keplr/Leap, which may hold a different account than the wallet.
   // Balances and the fee check use whichever account actually sends.
@@ -293,30 +295,38 @@ export default function SendPage() {
 
           {/* Recipient */}
           <div>
-            <label className="label">Recipient Address</label>
+            <label className="label">Recipient</label>
             <input
               className="input input-mono"
               type="text"
-              placeholder="inj1… or 0x…"
+              placeholder="inj1…, 0x… or name.inj"
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
+              autoCapitalize="none"
+              spellCheck={false}
               style={{ fontSize: '12px' }}
             />
-            {recipient.trim() && !to && (
-              <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>
-                Enter a valid inj1… or 0x… address.
-              </p>
+            {target.resolving && (
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>Looking up {target.name}…</p>
+            )}
+            {target.error && (
+              <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>{target.error}</p>
             )}
             {to && isOwnAddress && (
               <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>
                 That&apos;s your own wallet address.
               </p>
             )}
-            {to && !isOwnAddress && (
+            {to && !isOwnAddress && (target.kind === 'name' ? (
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '5px', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
+                {target.name} points to {to.injective}
+              </p>
+            ) : (
               <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
+                {target.name && <>Named {target.name} · </>}
                 Same account as {recipient.trim().startsWith('0x') ? shortAddress(to.injective, 14) : shortAddress(to.evm, 12)}
               </p>
-            )}
+            ))}
             {transferChecks.warnings.map(w => (
               <p key={w.message} role="alert" style={{ fontSize: '11px', color: 'var(--warning)', marginTop: '5px' }}>{w.message}</p>
             ))}

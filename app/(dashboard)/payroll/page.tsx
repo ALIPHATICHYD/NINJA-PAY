@@ -8,9 +8,10 @@ import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { TOKENS } from '@/lib/injective/tokens'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
+import { useRecipients } from '@/hooks/useRecipients'
 import { COSMOS_SEND_GAS, checkFee, feeShortfallMessage, formatFee, networkFee } from '@/lib/injective/fees'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
-import { parseAccountAddress, shortAddress } from '@/lib/injective/address'
+import { shortAddress } from '@/lib/injective/address'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
@@ -70,9 +71,11 @@ export default function PayrollPage() {
   const updateRecipient = (id: string, field: keyof PayrollRecipient, value: string) =>
     setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
 
-  // Each row may be typed as inj1… or 0x…; both name the same account, stored as inj1.
-  const accounts = useMemo(() => recipients.map(r => parseAccountAddress(r.address)?.injective ?? null), [recipients])
-  const invalidRows = recipients.flatMap((r, i) => (r.address.trim() && !accounts[i] ? [i + 1] : []))
+  // Each row may be an inj1… or 0x… address (the same account, stored as inj1) or a .inj name.
+  const targets = useRecipients(recipients.map(r => r.address))
+  const accounts = targets.map(t => t.account?.injective ?? null)
+  const invalidRows = targets.flatMap((t, i) => (t.error ? [i + 1] : []))
+  const resolvingRows = targets.flatMap((t, i) => (t.resolving ? [i + 1] : []))
   const invalidAmountRows = recipients.flatMap((r, i) => (r.amount.trim() && amounts[i] === null ? [i + 1] : []))
   const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
 
@@ -186,7 +189,7 @@ export default function PayrollPage() {
 
           {/* Column headers */}
           <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 120px 38px', gap: '8px', paddingLeft: '2px' }}>
-            {['Label (opt.)', 'Wallet Address', `Amount (${token})`, ''].map(h => (
+            {['Label (opt.)', 'Address or .inj Name', `Amount (${token})`, ''].map(h => (
               <p key={h} style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</p>
             ))}
           </div>
@@ -197,7 +200,9 @@ export default function PayrollPage() {
                 <input className="input" placeholder={`Person ${idx + 1}`} value={rec.label || ''} onChange={e => updateRecipient(rec.id, 'label', e.target.value)} style={{ fontSize: '13px' }} />
                 <input
                   className="input input-mono"
-                  placeholder="inj1… or 0x…"
+                  placeholder="inj1…, 0x… or name.inj"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={rec.address}
                   onChange={e => updateRecipient(rec.id, 'address', e.target.value)}
                   aria-invalid={invalidRows.includes(idx + 1)}
@@ -211,9 +216,17 @@ export default function PayrollPage() {
             ))}
           </div>
 
-          {invalidRows.length > 0 && (
-            <p style={{ fontSize: '12px', color: 'var(--error)' }}>
-              {invalidRows.length === 1 ? 'Row' : 'Rows'} {invalidRows.join(', ')}: enter a valid inj1… or 0x… address.
+          {invalidRows.map(n => (
+            <p key={n} style={{ fontSize: '12px', color: 'var(--error)' }}>Row {n}: {targets[n - 1].error}</p>
+          ))}
+          {resolvingRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Looking up {resolvingRows.map(n => targets[n - 1].name).join(', ')}…
+            </p>
+          )}
+          {targets.some(t => t.kind === 'name' && t.account) && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Names are paid at the address they point to now. The review step shows each one.
             </p>
           )}
           {invalidAmountRows.length > 0 && (
@@ -302,7 +315,10 @@ export default function PayrollPage() {
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <div>
                   <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '2px' }}>{r.label || `Recipient ${i + 1}`}</p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{shortAddress(accounts[i] ?? r.address, 14)}</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {targets[i].name && <span style={{ color: 'var(--text-secondary)' }}>{targets[i].name} · </span>}
+                    {shortAddress(accounts[i] ?? r.address, 14)}
+                  </p>
                 </div>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{r.amount} {token}</p>
               </div>
