@@ -9,7 +9,6 @@
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { NETWORK } from './constants'
-import { EXPLORERS } from './network'
 import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
@@ -177,6 +176,3 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   'claim-reclaim': 'Claim reclaimed',
   payroll: 'Payroll',
 }
-
-/** InjScan transaction page for a Cosmos tx hash. */
-export const EXPLORER_TX_URL = `${EXPLORERS.cosmos}/transaction/`

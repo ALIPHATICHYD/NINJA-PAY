@@ -19,7 +19,8 @@ import { useBalance } from '@/hooks/useBalance'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useActivity } from '@/hooks/useActivity'
-import { ACTIVITY_LABELS, EXPLORER_TX_URL, coinValue, formatCoinAmount } from '@/lib/injective/activity'
+import { ACTIVITY_LABELS, coinValue, formatCoinAmount } from '@/lib/injective/activity'
+import { explorerTxUrl } from '@/lib/injective/network'
 import { useBeneficiaries } from '@/lib/beneficiaries'
 import { format } from 'date-fns'
 import { formatBaseUnits } from '@/lib/money'
@@ -378,7 +379,7 @@ export default function DashboardHome() {
             {recent.map((tx, i) => (
               <a
                 key={`${tx.hash}-${i}`}
-                href={`${EXPLORER_TX_URL}${tx.hash}`}
+                href={explorerTxUrl(tx.hash)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '12px 0', borderTop: i === 0 ? 'none' : '1px solid var(--border)', textDecoration: 'none' }}

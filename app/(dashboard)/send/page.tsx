@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { useEstimateGas, useGasPrice, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
-import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
+import { useEstimateGas, useGasPrice, useSendTransaction, useTransactionReceipt, useWaitForTransactionReceipt } from 'wagmi'
+import { Send, ArrowLeftRight, AlertCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
+import { TxStatus } from '@/components/TxStatus'
+import type { ChainState } from '@/components/StatusChip'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { INJ, TOKENS } from '@/lib/injective/tokens'
 import {
@@ -19,7 +21,7 @@ import {
   maxInjAfterFee,
   networkFee,
 } from '@/lib/injective/fees'
-import { EXPLORERS, INJECTIVE_EVM } from '@/lib/injective/network'
+import { INJECTIVE_EVM } from '@/lib/injective/network'
 import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
 
 
@@ -54,7 +56,13 @@ export default function SendPage() {
 
   // wagmi send transaction hooks (for INJ)
   const { sendTransaction, data: injTxHash, isPending, error: sendError, reset } = useSendTransaction()
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: injTxHash })
+  // wagmi's wait throws when the transaction reverted, so on an error read the
+  // receipt directly to tell "failed on chain" from "couldn't check yet".
+  const { data: receipt, isLoading: isConfirming, isError: waitFailed } = useWaitForTransactionReceipt({
+    hash: injTxHash,
+    query: { retry: false },
+  })
+  const { data: settledReceipt } = useTransactionReceipt({ hash: injTxHash, query: { enabled: !!injTxHash && waitFailed } })
 
   // The recipient may be typed as inj1… or 0x…: both are the same account.
   const to = useMemo(() => parseAccountAddress(recipient), [recipient])
@@ -106,10 +114,27 @@ export default function SendPage() {
     (sendToken === 'INJ' || cosmosReady) &&
     amountBase !== null && amountBase > BigInt(0) && !overBalance && feeCheck.ok
 
+  // One status line per transfer: waiting for the wallet, waiting for a block, confirmed or failed.
+  const txStatus = ((): { state: ChainState; message: string; hash?: string } | null => {
+    if (sendToken === 'USDC') {
+      if (sendStatus.type === 'pending') return { state: 'pending', message: 'Sign in Keplr or Leap, then wait for the block.' }
+      if (sendStatus.type === 'success' && txHash) return { state: 'confirmed', message: sendStatus.message, hash: txHash }
+      return null
+    }
+    if (isPending) return { state: 'awaiting-signature', message: 'Confirm the transfer in your wallet.' }
+    if (!injTxHash) return null
+    if (isConfirming) return { state: 'pending', message: 'Sent. Waiting for it to be included in a block.', hash: injTxHash }
+    const final = receipt ?? settledReceipt
+    if (final?.status === 'success') return { state: 'confirmed', message: 'INJ sent and confirmed on chain.', hash: injTxHash }
+    if (final?.status === 'reverted') return { state: 'failed', message: 'The transfer failed on chain, so no INJ was sent. The network fee was still charged.', hash: injTxHash }
+    if (waitFailed) return { state: 'pending', message: "Couldn't confirm it yet. Check the explorer for its status.", hash: injTxHash }
+    return null
+  })()
+
   const handleSend = async () => {
     if (!to || !amount) return
 
-    setSendStatus({ type: 'pending', message: '' })
+    setSendStatus({ type: 'idle', message: '' })
 
     try {
       if (sendToken === 'USDC') {
@@ -119,10 +144,12 @@ export default function SendPage() {
           return
         }
 
-        // sendToken takes the human-readable amount and converts to base units once
+        // sendToken takes the human-readable amount and converts to base units once.
+        // It resolves once the transaction is included in a block.
+        setSendStatus({ type: 'pending', message: '' })
         const hash = await cosmosSendToken(to.injective, amount.trim(), 'USDC')
         setTxHash(hash)
-        setSendStatus({ type: 'success', message: `USDC sent. Transaction: ${hash.slice(0, 16)}...` })
+        setSendStatus({ type: 'success', message: `${amount.trim()} USDC sent and confirmed on chain.` })
         setAmount('')
         setRecipient('')
       } else {
@@ -133,7 +160,6 @@ export default function SendPage() {
           to: to.evm,
           value: amountBase!,
         })
-        setSendStatus({ type: 'pending', message: 'Waiting for wallet confirmation...' })
       }
     } catch (error: any) {
       setSendStatus({ type: 'error', message: error.message || 'Transaction failed' })
@@ -300,22 +326,14 @@ export default function SendPage() {
           )}
 
           {/* Status messages */}
-          {cosmosError && sendToken === 'USDC' && (
+          {sendToken === 'USDC' && cosmosError && sendStatus.type !== 'error' && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <AlertCircle size={14} /> {cosmosError}
             </div>
           )}
-          {sendError && sendToken === 'INJ' && (
-            <div className="alert-error">{sendError.message.slice(0, 120)}</div>
-          )}
-          {sendStatus.type === 'pending' && (
-            <div className="alert-pending" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="spinner" /> {sendStatus.message || 'Processing...'}
-            </div>
-          )}
-          {sendStatus.type === 'success' && (
-            <div className="alert-success" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <CheckCircle size={14} /> {sendStatus.message}
+          {sendToken === 'INJ' && sendError && (
+            <div className="alert-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={14} /> {((sendError as { shortMessage?: string }).shortMessage ?? sendError.message).slice(0, 160)}
             </div>
           )}
           {sendStatus.type === 'error' && (
@@ -323,31 +341,7 @@ export default function SendPage() {
               <AlertCircle size={14} /> {sendStatus.message}
             </div>
           )}
-          {isPending && sendToken === 'INJ' && (
-            <div className="alert-pending" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="spinner" /> Waiting for wallet confirmation…
-            </div>
-          )}
-          {isConfirming && sendToken === 'INJ' && (
-            <div className="alert-pending" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="spinner" /> Transaction submitted — awaiting confirmation…
-            </div>
-          )}
-          {isConfirmed && injTxHash && sendToken === 'INJ' && (
-            <div className="alert-success">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Transaction confirmed!</span>
-                <a
-                  href={`${EXPLORERS.evm}/tx/${injTxHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent-text)' }}
-                >
-                  View on explorer <ExternalLink size={11} />
-                </a>
-              </div>
-            </div>
-          )}
+          {txStatus && <TxStatus {...txStatus} />}
 
           <button
             onClick={handleSend}

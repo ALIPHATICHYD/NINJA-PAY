@@ -71,6 +71,20 @@ export const EXPLORERS = {
   cosmos: IS_MAINNET ? 'https://injscan.com' : 'https://testnet.explorer.injective.network',
 }
 
+/** EVM transaction hashes are 0x plus 64 hex digits; Cosmos ones are 64 hex digits without 0x. */
+export function isEvmTxHash(hash: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(hash)
+}
+
+/** The explorer page for a transaction: Blockscout for EVM hashes, InjScan for Cosmos ones. */
+export function explorerTxUrl(hash: string): string {
+  return isEvmTxHash(hash) ? `${EXPLORERS.evm}/tx/${hash}` : `${EXPLORERS.cosmos}/transaction/${hash}`
+}
+
+export function explorerName(hash: string): 'Blockscout' | 'InjScan' {
+  return isEvmTxHash(hash) ? 'Blockscout' : 'InjScan'
+}
+
 /** Where to get test funds. Mainnet has no faucet. */
 export const FAUCETS = IS_MAINNET
   ? null
