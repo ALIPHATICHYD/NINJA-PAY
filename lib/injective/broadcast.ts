@@ -1,9 +1,8 @@
 import { ChainRestAuthApi, type Msgs } from '@injectivelabs/sdk-ts'
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK } from './constants'
+import { ENDPOINTS } from './network'
 import { signAndBroadcast } from './cosmos-transactions'
 
-const endpoints = getNetworkEndpoints(NETWORK)
+const endpoints = ENDPOINTS
 
 /**
  * Sign with Keplr/Leap and broadcast. Delegates to signAndBroadcast so there is

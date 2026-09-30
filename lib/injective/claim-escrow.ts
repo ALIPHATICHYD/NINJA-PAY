@@ -14,6 +14,7 @@
 import { MsgSend, MsgBroadcasterWithPk, PrivateKey } from '@injectivelabs/sdk-ts'
 import { DEFAULT_GAS_PRICE } from '@injectivelabs/utils'
 import { NETWORK } from './constants'
+import { ENDPOINTS } from './network'
 import { DENOMS, TOKENS, sameDenom } from './tokens'
 import { fetchAllBalances, balanceOf, type Coin } from './bank'
 import { toChainAmount } from '../money'
@@ -148,6 +149,7 @@ async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
   const broadcaster = new MsgBroadcasterWithPk({
     network: NETWORK,
+    endpoints: { grpc: ENDPOINTS.grpc, rest: ENDPOINTS.rest, indexer: ENDPOINTS.indexer },
     privateKey: privateKeyHex,
     simulateTx: false,
   })

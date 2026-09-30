@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Gift, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
+import { useChainHealth } from '@/hooks/useChainHealth'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import {
   getClaimPoolByLink,
@@ -56,6 +58,7 @@ function Notice({ title, body }: { title: string; body: string }) {
 
 export default function PublicClaimPage({ params }: { params: Promise<{ claimId: string }> }) {
   const { claimId } = use(params)
+  const chainHealth = useChainHealth('cosmos')
 
   const { address: evmAddress } = useWallet()
   const {
@@ -242,13 +245,16 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
             {cosmosError && <p className="text-sm text-coral">{cosmosError}</p>}
           </div>
         ) : (
+          <div className="flex flex-col gap-3">
+          <ChainHealthNotice state={chainHealth} />
           <button
             onClick={handleClaim}
-            disabled={claiming}
+            disabled={claiming || !chainHealth.canSend}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-ocean px-6 py-3.5 text-[15px] font-semibold text-snow transition hover:bg-ocean-hover active:scale-[0.98] disabled:opacity-50"
           >
             {claiming ? <><span className="spinner" /> Claiming…</> : `Claim ${shareAmount} ${pool.token}`}
           </button>
+          </div>
         )}
 
         {status.type === 'error' && (

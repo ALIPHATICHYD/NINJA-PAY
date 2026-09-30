@@ -15,10 +15,9 @@ import {
   getTxRawFromTxRawOrDirectSignResponse,
   type Msgs,
 } from '@injectivelabs/sdk-ts'
-import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
-import { NETWORK, CHAIN_ID } from './constants'
-import { FAUCETS, NETWORK_LABEL } from './network'
+import { CHAIN_ID } from './constants'
+import { ENDPOINTS, FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
 import { balanceOf, fetchAllBalances, resolveHeldDenom } from './bank'
 import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
@@ -26,7 +25,7 @@ import { HOOK_RESTRICTION_MESSAGE, describeTransferError, errorMessage, isHookOu
 import { toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
-const endpoints = getNetworkEndpoints(NETWORK)
+const endpoints = ENDPOINTS
 
 interface TransactionOptions {
   memo?: string

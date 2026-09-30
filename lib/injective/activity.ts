@@ -7,8 +7,7 @@
  * same chain and are not parsed here yet.
  */
 
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK } from './constants'
+import { ENDPOINTS } from './network'
 import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
@@ -75,7 +74,7 @@ type RestTx = {
 }
 
 async function searchTxs(query: string, limit: number): Promise<RestTx[]> {
-  const { rest } = getNetworkEndpoints(NETWORK)
+  const { rest } = ENDPOINTS
   const params = new URLSearchParams({
     query,
     order_by: 'ORDER_BY_DESC',

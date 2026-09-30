@@ -15,7 +15,7 @@
  */
 
 import { defineChain } from 'viem'
-import { Network } from '@injectivelabs/networks'
+import { Network, getNetworkEndpoints } from '@injectivelabs/networks'
 import { ChainId } from '@injectivelabs/ts-types'
 
 /** Set NEXT_PUBLIC_INJECTIVE_NETWORK=mainnet to target mainnet. Anything else means testnet. */
@@ -43,6 +43,27 @@ const EVM = IS_MAINNET
       ws: 'wss://k8s.testnet.ws.injective.network/',
       blockscout: 'https://testnet.blockscout.injective.network',
     }
+
+const configured = (value: string | undefined) => value?.trim() || undefined
+const publicEndpoints = getNetworkEndpoints(NETWORK)
+
+/** Injective's public EVM JSON-RPC for this network. Wallets get this URL when adding the network. */
+export const PUBLIC_EVM_RPC = EVM.rpc
+
+/**
+ * Where the app reads the chain. Injective's shared public endpoints by
+ * default, which its docs do not recommend for production traffic. Set the
+ * NEXT_PUBLIC_INJECTIVE_* variables to use a premium provider; see
+ * app/api/evm-rpc/route.ts to keep an EVM provider's key on the server.
+ *
+ * Source: https://docs.injective.network/infra/public-endpoints
+ */
+export const ENDPOINTS = {
+  grpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_GRPC) ?? publicEndpoints.grpc,
+  rest: configured(process.env.NEXT_PUBLIC_INJECTIVE_REST) ?? publicEndpoints.rest,
+  indexer: configured(process.env.NEXT_PUBLIC_INJECTIVE_INDEXER) ?? publicEndpoints.indexer,
+  evmRpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_RPC) ?? PUBLIC_EVM_RPC,
+}
 
 /** Injective's native EVM, for wagmi, RainbowKit and viem. */
 export const INJECTIVE_EVM = defineChain({

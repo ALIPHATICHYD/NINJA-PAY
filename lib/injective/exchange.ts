@@ -1,8 +1,8 @@
 import { IndexerGrpcSpotApi } from '@injectivelabs/sdk-ts'
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK, MARKETS } from './constants'
+import { MARKETS } from './constants'
+import { ENDPOINTS } from './network'
 
-const endpoints = getNetworkEndpoints(NETWORK)
+const endpoints = ENDPOINTS
 const spotApi = new IndexerGrpcSpotApi(endpoints.indexer)
 
 /**

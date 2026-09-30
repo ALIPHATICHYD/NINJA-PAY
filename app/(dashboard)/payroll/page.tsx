@@ -7,6 +7,8 @@ import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { TOKENS } from '@/lib/injective/tokens'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
+import { useChainHealth } from '@/hooks/useChainHealth'
 import { COSMOS_SEND_GAS, checkFee, feeShortfallMessage, formatFee, networkFee } from '@/lib/injective/fees'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
 import { parseAccountAddress, shortAddress } from '@/lib/injective/address'
@@ -34,6 +36,8 @@ export default function PayrollPage() {
   } = useCosmosTransaction()
   // Payroll signs with Keplr/Leap, so balances and the fee check use that account once it's connected.
   const { inj, usdc, loading: balLoading } = useBalance(cosmosAddress ?? address)
+
+  const chainHealth = useChainHealth('cosmos')
 
   const [step, setStep] = useState<Step>(1)
   const [payrollName, setPayrollName] = useState('')
@@ -284,6 +288,8 @@ export default function PayrollPage() {
             </div>
           )}
 
+          <ChainHealthNotice state={chainHealth} />
+
           {fundsError && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
@@ -317,7 +323,7 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady || !chainHealth.canSend} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>

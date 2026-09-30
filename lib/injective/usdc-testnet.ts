@@ -5,12 +5,11 @@
  * Adapted from Neptune Service pattern for USDC on Injective testnet
  */
 
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK } from './constants'
+import { ENDPOINTS } from './network'
 import { USDC } from './tokens'
 import { getPrices } from '../prices'
 
-const endpoints = getNetworkEndpoints(NETWORK)
+const endpoints = ENDPOINTS
 
 /**
  * Convert amount to chain format (multiply by 10^decimals)

@@ -8,6 +8,8 @@ import { useEstimateGas, useGasPrice, useSendTransaction, useTransactionReceipt,
 import { Send, ArrowLeftRight, AlertCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 import { TxStatus } from '@/components/TxStatus'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
+import { useChainHealth } from '@/hooks/useChainHealth'
 import type { ChainState } from '@/components/StatusChip'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { INJ, TOKENS } from '@/lib/injective/tokens'
@@ -110,7 +112,10 @@ export default function SendPage() {
     ? feeShortfallMessage(feeCheck, sendToken === 'INJ')
     : null
 
-  const canSend = !!to && !isOwnAddress && !balLoading && !balError &&
+  // INJ goes over the EVM, USDC over the Cosmos side: check the one in use is live and on the right chain.
+  const chainHealth = useChainHealth(sendToken === 'INJ' ? 'evm' : 'cosmos')
+
+  const canSend = !!to && !isOwnAddress && !balLoading && !balError && chainHealth.canSend &&
     (sendToken === 'INJ' || cosmosReady) &&
     amountBase !== null && amountBase > BigInt(0) && !overBalance && feeCheck.ok
 
@@ -157,6 +162,7 @@ export default function SendPage() {
         // recipient is converted to its 0x form: same account, same balance.
         reset()
         sendTransaction({
+          chainId: INJECTIVE_EVM.id, // wagmi refuses if the wallet is on another chain
           to: to.evm,
           value: amountBase!,
         })
@@ -324,6 +330,8 @@ export default function SendPage() {
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{feeError}</span>
             </div>
           )}
+
+          <ChainHealthNotice state={chainHealth} />
 
           {/* Status messages */}
           {sendToken === 'USDC' && cosmosError && sendStatus.type !== 'error' && (

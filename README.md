@@ -174,24 +174,36 @@ app/
   claim/
     layout.tsx                Web3Providers for public claim links
     [claimId]/page.tsx        Public claim redemption page
+  api/evm-rpc/route.ts        Optional EVM RPC proxy that keeps a provider key on the server
 components/
   landing/                    Client leaves for the landing page (Reveal, Steps, Faq, HeroArt)
   Navigation.tsx              App nav with RainbowKit ConnectButton
   Web3Providers.tsx           wagmi config, RainbowKit theme, QueryClient
   OfframpUnavailable.tsx      Honest "not live" off-ramp placeholder
+  StatusChip.tsx, TxStatus.tsx   Transfer state chip and status line with explorer link
+  ChainHealthNotice.tsx       "Sending is paused" and scheduled-upgrade banners
 hooks/
   useWallet.ts                Thin wrapper over wagmi useAccount
   useCosmosTransaction.ts     Keplr/Leap connection and sendToken
   useBalance.ts               INJ/USDC balances from the bank module
+  useChainHealth.ts           Chain id and block freshness for the rail a page sends on
+  useActivity.ts              On-chain history for the connected accounts
   useTokenPrice.ts, useUSDCConversion.ts, useExchangeRate.ts
 lib/
   injective/
-    constants.ts              Network, chain ID, denoms, env-backed config
-    bank.ts                   Balance queries, MsgSend / MsgMultiSend builders, wei helpers
-    cosmos-transactions.ts    Keplr/Leap detection and sendToken
-    broadcast.ts              Broadcast, gas estimate, and simulate helpers
-    evm-config.ts             Add-network / add-token helpers for EVM wallets
-    exchange.ts, usdc-testnet.ts, wallet.ts, types.ts
+    network.ts                Network, chain ids, endpoints, explorers, faucets
+    tokens.ts                 INJ and native USDC: denoms, decimals, contracts
+    address.ts                inj1… and 0x… as one account
+    fees.ts                   INJ network fee maths and checks
+    health.ts                 Chain id, block freshness and upgrade-plan checks
+    transfer-errors.ts        USDC compliance-hook errors in plain words
+    bank.ts                   Balance queries, MsgMultiSend builder
+    cosmos-transactions.ts    Keplr/Leap signing, sendToken
+    claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
+    activity.ts               Transaction history from the chain
+    constants.ts              Re-exports network settings, env-backed config
+    broadcast.ts, evm-config.ts, exchange.ts, usdc-testnet.ts, types.ts
+  money.ts                    Exact amount <-> base-unit conversion
   supabase.ts                 Claim pools and transaction history
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
@@ -233,13 +245,16 @@ npm run build && npm start
 
 ## Environment variables
 
-All variables are prefixed `NEXT_PUBLIC_`, which means **they are bundled into client JavaScript and visible to anyone**. Only put publishable values here. See [Security model](#security-model).
+Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visible to anyone**. Only put publishable values in them. `INJECTIVE_EVM_RPC_URL` is the one server-only variable. See [Security model](#security-model).
 
 | Variable | Required | Used by | Notes |
 |---|---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes, for claims and analytics | `lib/supabase.ts` | Supabase → Project Settings → API. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes, for claims and analytics | `lib/supabase.ts` | Publishable anon key. Protect tables with RLS. |
 | `NEXT_PUBLIC_INJECTIVE_NETWORK` | No | `lib/injective/network.ts` | `mainnet` to target mainnet. Defaults to testnet. |
+| `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD and indexer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
+| `NEXT_PUBLIC_INJECTIVE_EVM_RPC` | No | `components/Web3Providers.tsx`, `lib/injective/health.ts` | EVM JSON-RPC for reads. A keyless provider URL, or `/api/evm-rpc` to use the server proxy below. The public RPC stays as a fallback. |
+| `INJECTIVE_EVM_RPC_URL` | No (server-only) | `app/api/evm-rpc/route.ts` | A premium EVM RPC URL with its API key. The proxy forwards only read methods and `eth_sendRawTransaction`, falls back to the public RPC, and logs nothing. Anyone who can reach the route can use it, so add rate limiting before relying on it. |
 | `NEXT_PUBLIC_WALLETCONNECT_ID` | Recommended | `components/Web3Providers.tsx` | From [WalletConnect Cloud](https://cloud.walletconnect.com). A shared fallback ID is hardcoded; use your own for anything public. |
 | `NEXT_PUBLIC_BACKEND_URL` | No | `lib/injective/constants.ts` | Defaults to `http://localhost:3001`. No backend ships with this repo. |
 | `NEXT_PUBLIC_PAYSTACK_KEY` | No | `lib/paystack.ts` | Not used by any page. Use a **public** key only (`pk_test_…`). |
@@ -410,6 +425,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- Chain endpoints are configurable (`NEXT_PUBLIC_INJECTIVE_*`), with an optional server proxy that keeps a premium EVM RPC key off the client. Send, Payroll, Claims and the claim page check that the endpoint reports the expected chain id and a block from the last minute before allowing a send, re-checking every 30 seconds, and they warn when governance has scheduled a chain upgrade (`lib/injective/health.ts`).
 - Transaction links go to the explorer that matches the hash (Blockscout for EVM, InjScan for Cosmos) on every page, and Send shows one status line per transfer: waiting for signature, pending, confirmed, or failed. A reverted INJ transfer used to show nothing, because wagmi's receipt wait throws on a revert; it now shows **Failed**.
 - USDC transfers run Circle's compliance hook on Injective. When the hook runs out of gas (`types.ErrorOutOfGas`), which Injective's docs say is not a real restriction, wallet transactions and claim payouts now retry once with twice the gas. A real restriction is reported as the token issuer's rule, and NinjaPay says it doesn't screen transfers. Claim payouts and refunds size gas by simulation instead of a fixed 200,000. Keplr/Leap no longer opens an approval window on page load, and the unused `NEXT_PUBLIC_ESCROW_WALLET` setting is gone.
 - Send and Payroll show the network fee in INJ and block a transfer the account can't pay for, and `signAndBroadcast` re-checks against the simulated fee before the wallet opens. Before, a user with USDC but no INJ got a raw chain error after signing, **Max** could leave nothing for the fee, and amounts were compared as floats. Send and Payroll now read balances from the account that actually signs (Keplr/Leap for USDC and Payroll).

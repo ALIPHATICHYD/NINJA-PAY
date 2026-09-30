@@ -1,10 +1,16 @@
 'use client'
 
 import { getDefaultConfig, RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
-import { WagmiProvider } from 'wagmi'
+import { WagmiProvider, fallback, http } from 'wagmi'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import '@rainbow-me/rainbowkit/styles.css'
-import { INJECTIVE_EVM } from '@/lib/injective/network'
+import { ENDPOINTS, INJECTIVE_EVM, PUBLIC_EVM_RPC } from '@/lib/injective/network'
+
+// Reads go to the configured EVM RPC (a premium provider or the /api/evm-rpc
+// proxy) and fall back to Injective's public RPC if it fails.
+const evmTransport = ENDPOINTS.evmRpc === PUBLIC_EVM_RPC
+  ? http(PUBLIC_EVM_RPC)
+  : fallback([http(ENDPOINTS.evmRpc), http(PUBLIC_EVM_RPC)])
 
 const config = getDefaultConfig({
   appName: 'NinjaPay',
@@ -12,6 +18,7 @@ const config = getDefaultConfig({
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_ID || 'b56e18d47c72ab683b10814fe9495694',
   // Injective's native EVM (1439 testnet, 1776 mainnet), not the deprecated inEVM.
   chains: [INJECTIVE_EVM],
+  transports: { [INJECTIVE_EVM.id]: evmTransport },
   ssr: true,
 })
 

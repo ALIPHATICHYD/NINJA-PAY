@@ -1,10 +1,9 @@
 import { ChainGrpcBankApi, MsgMultiSend } from '@injectivelabs/sdk-ts'
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK } from './constants'
+import { ENDPOINTS } from './network'
 import { DENOMS, sameDenom, type TokenInfo } from './tokens'
 import { BalanceState, PayrollOutput } from './types'
 
-const endpoints = getNetworkEndpoints(NETWORK)
+const endpoints = ENDPOINTS
 const bankApi = new ChainGrpcBankApi(endpoints.grpc)
 
 export type Coin = { denom: string; amount: string }
