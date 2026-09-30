@@ -7,20 +7,36 @@
 
 import {
   MsgSend,
-  MsgBroadcasterWithPk,
+  BaseAccount,
+  ChainRestAuthApi,
+  ChainRestTendermintApi,
+  TxRestApi,
+  createTransaction,
+  getTxRawFromTxRawOrDirectSignResponse,
+  type Msgs,
 } from '@injectivelabs/sdk-ts'
 import { getNetworkEndpoints } from '@injectivelabs/networks'
+import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
 import { NETWORK, CHAIN_ID, DENOMS } from './constants'
 
 const endpoints = getNetworkEndpoints(NETWORK)
 
-// Helper to convert amount to proper chain format
+/**
+ * Convert a human-readable amount ("1.5") to base units ("1500000" for 6 decimals).
+ * String-based, so there is no floating-point rounding. Throws instead of
+ * silently truncating when the amount has more decimals than the token supports.
+ */
 export function toChainAmount(amount: string, decimals: number = 18): string {
-  const parts = amount.split('.')
-  const wholePart = parts[0]
-  const fracPart = (parts[1] || '').padEnd(decimals, '0').slice(0, decimals)
-  const result = wholePart + fracPart
-  return result.replace(/^0+(?!$)/, '0')
+  const trimmed = amount.trim()
+  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '' || trimmed === '.') {
+    throw new Error(`Invalid amount "${amount}"`)
+  }
+  const [wholePart = '', fracPart = ''] = trimmed.split('.')
+  if (fracPart.length > decimals) {
+    throw new Error(`Amount has more than ${decimals} decimal places`)
+  }
+  const result = (wholePart + fracPart.padEnd(decimals, '0')).replace(/^0+(?=\d)/, '')
+  return result === '' ? '0' : result
 }
 
 interface TransactionOptions {
@@ -107,9 +123,103 @@ export async function getUserAddress(chainId: string = CHAIN_ID): Promise<string
   }
 }
 
+/** The injected Keplr or Leap provider (both expose the same Keplr API). */
+function getCosmosWallet(): { name: 'Keplr' | 'Leap'; provider: any } {
+  if (isKeplrAvailable()) return { name: 'Keplr', provider: (window as any).keplr }
+  if (isLeapAvailable()) return { name: 'Leap', provider: (window as any).leap }
+  throw new Error('No Web3 wallet available. Please install Keplr or Leap.')
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  bytes.forEach(b => { binary += String.fromCharCode(b) })
+  return btoa(binary)
+}
+
+// Fallback gas limits if simulation is unavailable (e.g. first-ever tx from an account).
+const FALLBACK_GAS = { base: 150_000, perMsg: 50_000 }
+const GAS_BUFFER = 1.3
+
 /**
- * Send tokens (INJ or USDC) via Keplr or Leap wallet
- * Properly handles both token types with correct denominations
+ * Build, sign (SIGN_MODE_DIRECT via Keplr/Leap), simulate, and broadcast a
+ * Cosmos transaction on Injective. Resolves with the tx hash once the tx is
+ * included in a block; rejects if the wallet refuses or the chain rejects it.
+ */
+export async function signAndBroadcast(
+  msgs: Msgs | Msgs[],
+  chainId: string = CHAIN_ID,
+  memo = '',
+): Promise<string> {
+  const wallet = getCosmosWallet()
+  const { provider } = wallet
+  await provider.enable(chainId)
+  const key = await provider.getKey(chainId)
+
+  if (key.isNanoLedger) {
+    // Injective + Ledger needs EIP-712 (amino) signing, which this path does not implement yet.
+    throw new Error(`Ledger accounts in ${wallet.name} are not supported yet. Use a software account.`)
+  }
+
+  const address = key.bech32Address
+  const pubKey = toBase64(key.pubKey)
+
+  const [accountResponse, latestBlock] = await Promise.all([
+    new ChainRestAuthApi(endpoints.rest).fetchAccount(address).catch((error: unknown) => {
+      // The chain only creates an account once it has received funds.
+      if (String((error as Error)?.message ?? error).includes('not found')) {
+        throw new Error(
+          `Your ${wallet.name} account ${address} has no INJ on Injective testnet yet. ` +
+            'Get some from https://testnet.faucet.injective.network/ and try again.'
+        )
+      }
+      throw error
+    }),
+    new ChainRestTendermintApi(endpoints.rest).fetchLatestBlock(),
+  ])
+  const account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
+  const timeoutHeight = Number(latestBlock.header.height) + DEFAULT_BLOCK_TIMEOUT_HEIGHT
+  const msgCount = Array.isArray(msgs) ? msgs.length : 1
+  const txApi = new TxRestApi(endpoints.rest)
+
+  const build = (gas: number) =>
+    createTransaction({
+      message: msgs,
+      memo,
+      fee: getStdFee({ gas: gas.toString() }),
+      pubKey,
+      sequence: account.sequence,
+      accountNumber: account.accountNumber,
+      chainId,
+      timeoutHeight,
+    })
+
+  // Simulate with an empty signature to size the gas limit.
+  let gas = FALLBACK_GAS.base + FALLBACK_GAS.perMsg * msgCount
+  try {
+    const { txRaw } = build(gas)
+    txRaw.signatures = [new Uint8Array(0)]
+    const { gasInfo } = await txApi.simulate(txRaw)
+    gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
+  } catch (error) {
+    console.warn('Gas simulation failed, using fallback gas limit:', error)
+  }
+
+  const { signDoc } = build(gas)
+  const signResponse = await provider.getOfflineSigner(chainId).signDirect(address, signDoc)
+  const txRaw = getTxRawFromTxRawOrDirectSignResponse(signResponse)
+
+  const result = await txApi.broadcast(txRaw)
+  if (result.code !== 0) {
+    throw new Error(result.rawLog || `Transaction failed with code ${result.code}`)
+  }
+  return result.txHash
+}
+
+/**
+ * Send INJ or USDC via Keplr or Leap.
+ *
+ * @param amount human-readable amount (e.g. "1.5"). Converted to base units
+ *               here, exactly once. Do not pass base units.
  */
 export async function sendToken(
   recipientAddress: string,
@@ -119,70 +229,27 @@ export async function sendToken(
   options?: Partial<TransactionOptions>,
 ): Promise<string> {
   try {
-    // Validate recipient address format
     if (!recipientAddress.startsWith('inj1') || recipientAddress.length < 40) {
       throw new Error('Invalid Injective address. Must start with "inj1"')
     }
 
-    // Validate amount
-    const parsedAmount = parseFloat(amount)
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      throw new Error('Amount must be a positive number')
-    }
-
-    // Get wallet signer
-    let wallet: any = null
-    let walletName: string = ''
-
-    if (isKeplrAvailable()) {
-      wallet = (window as any).keplr
-      walletName = 'Keplr'
-    } else if (isLeapAvailable()) {
-      wallet = (window as any).leap
-      walletName = 'Leap'
-    } else {
-      throw new Error('No Web3 wallet available. Please install Keplr or Leap.')
-    }
-
-    const userAddr = await getUserAddress(chainId)
-    const denom = token === 'USDC' ? DENOMS.USDC : DENOMS.INJ
     const decimals = token === 'USDC' ? 6 : 18
     const chainAmount = toChainAmount(amount, decimals)
+    if (chainAmount === '0') {
+      throw new Error('Amount must be greater than zero')
+    }
 
-    console.log(`Sending ${amount} ${token} from ${userAddr} to ${recipientAddress} using ${walletName}`)
-
-    // Create MsgSend message using Injective SDK
+    const sender = await getUserAddress(chainId)
     const msgSend = MsgSend.fromJSON({
-      srcInjectiveAddress: userAddr,
+      srcInjectiveAddress: sender,
       dstInjectiveAddress: recipientAddress,
       amount: {
-        denom,
+        denom: token === 'USDC' ? DENOMS.USDC : DENOMS.INJ,
         amount: chainAmount,
       },
     })
 
-    // Get offline signer from wallet
-    const offlineSigner = wallet.getOfflineSignerOnlyMethods
-      ? await wallet.getOfflineSignerOnlyMethods(chainId)
-      : await wallet.getOfflineSigner(chainId)
-
-    // Broadcast transaction
-    const broadcaster = new MsgBroadcasterWithPk({
-      network: NETWORK,
-      privateKey: offlineSigner,
-      simulateTx: true,
-    })
-
-    const txResponse = await broadcaster.broadcast({
-      msgs: msgSend,
-    })
-
-    if (!txResponse || !txResponse.txHash) {
-      throw new Error('Transaction failed - no hash returned from broadcaster')
-    }
-
-    console.log(`Transaction successful: ${txResponse.txHash}`)
-    return txResponse.txHash
+    return await signAndBroadcast(msgSend, chainId, options?.memo)
   } catch (error: any) {
     const errorMessage = error?.message || 'Failed to send token'
     console.error(`sendToken error for ${token}:`, error)

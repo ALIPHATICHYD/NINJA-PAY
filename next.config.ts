@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    // Only compile the modules actually imported from these large packages.
+    optimizePackageImports: [
+      "@injectivelabs/sdk-ts",
+      "@injectivelabs/wallet-ts",
+      "@injectivelabs/networks",
+      "@injectivelabs/utils",
+      "viem",
+    ],
+  },
 };
 
 export default nextConfig;

@@ -6,7 +6,7 @@ import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { fromWei } from '@/lib/injective/bank'
-import { toUSDCChainFormat } from '@/lib/injective/usdc-testnet'
+import { MEMO_PAYROLL } from '@/lib/injective/activity'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
@@ -48,16 +48,10 @@ export default function PayrollPage() {
     setLoading(true)
     setStatus({ type: null, message: '' })
     try {
-      // For USDC: convert amounts toche chain format, for INJ: use as-is
-      const recipientsList = recipients.map(r => ({
-        address: r.address,
-        amount: token === 'USDC' ? toUSDCChainFormat(parseFloat(r.amount).toString()) : fromWei(r.amount),
-        label: r.label,
-      }))
-
-      // Dispatch via Cosmos for both tokens
+      // One transaction per recipient. sendToken takes the human-readable
+      // amount and converts to base units once.
       for (const recipient of recipients) {
-        await sendToken(recipient.address, token === 'USDC' ? toUSDCChainFormat(parseFloat(recipient.amount).toString()) : fromWei(recipient.amount), token)
+        await sendToken(recipient.address, recipient.amount.trim(), token, MEMO_PAYROLL)
       }
 
       setStatus({ 

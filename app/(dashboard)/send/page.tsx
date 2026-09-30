@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
@@ -8,7 +8,6 @@ import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
-import { toUSDCChainFormat, isValidUSDCAmount } from '@/lib/injective/usdc-testnet'
 
 const TESTNET_EXPLORER = 'https://testnet.explorer.injective.network/transaction'
 
@@ -28,6 +27,12 @@ export default function SendPage() {
   const [tab, setTab] = useState<'send' | 'offramp'>('send')
   const [sendToken, setSendToken] = useState<'INJ' | 'USDC'>('USDC')
   const [recipient, setRecipient] = useState('')
+
+  // Prefill from /send?to=<address> (used by the Beneficiaries "Send" button).
+  useEffect(() => {
+    const to = new URLSearchParams(window.location.search).get('to')
+    if (to && /^(inj1[0-9a-z]{38}|0x[0-9a-fA-F]{40})$/.test(to)) setRecipient(to)
+  }, [])
   const [amount, setAmount] = useState('')
   const [txHash, setTxHash] = useState('')
   const [sendStatus, setSendStatus] = useState<{ type: 'idle' | 'pending' | 'success' | 'error'; message: string }>({ 
@@ -64,15 +69,15 @@ export default function SendPage() {
           return
         }
 
-        const amountInChainFormat = toUSDCChainFormat(parsedAmt.toString())
-        if (!isValidUSDCAmount(amountInChainFormat)) {
+        if (!/^\d*\.?\d{0,6}$/.test(amount.trim())) {
           setSendStatus({ type: 'error', message: `Invalid USDC amount. Max decimals: 6` })
           return
         }
 
-        const hash = await cosmosSendToken(recipient, amountInChainFormat, 'USDC')
+        // sendToken takes the human-readable amount and converts to base units once
+        const hash = await cosmosSendToken(recipient, amount.trim(), 'USDC')
         setTxHash(hash)
-        setSendStatus({ type: 'success', message: `USDC transfer initiated! Transaction: ${hash.slice(0, 16)}...` })
+        setSendStatus({ type: 'success', message: `USDC sent. Transaction: ${hash.slice(0, 16)}...` })
         setAmount('')
         setRecipient('')
       } else {
@@ -84,12 +89,9 @@ export default function SendPage() {
             return
           }
 
-          const { toChainAmount } = await import('@/lib/injective/cosmos-transactions')
-          const amountInWei = toChainAmount(amount, 18)
-
-          const hash = await cosmosSendToken(recipient, amountInWei, 'INJ')
+          const hash = await cosmosSendToken(recipient, amount.trim(), 'INJ')
           setTxHash(hash)
-          setSendStatus({ type: 'success', message: `INJ transfer initiated! Transaction: ${hash.slice(0, 16)}...` })
+          setSendStatus({ type: 'success', message: `INJ sent. Transaction: ${hash.slice(0, 16)}...` })
           setAmount('')
           setRecipient('')
         } else if (isValidEthAddr) {
@@ -260,7 +262,7 @@ export default function SendPage() {
                   href={`${TESTNET_EXPLORER}/${injTxHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent-text)' }}
                 >
                   View on explorer <ExternalLink size={11} />
                 </a>

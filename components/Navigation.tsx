@@ -29,7 +29,7 @@ export function Navigation() {
         position: 'sticky',
         top: 0,
         zIndex: 50,
-        background: 'rgba(8, 10, 14, 0.88)',
+        background: 'rgba(11, 24, 43, 0.86)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border)',
@@ -107,7 +107,7 @@ export function Navigation() {
                   color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
                   transition: 'color 0.15s, background 0.15s',
                   textDecoration: 'none',
-                  background: active ? 'rgba(91,88,240,0.12)' : 'transparent',
+                  background: active ? 'var(--accent-subtle)' : 'transparent',
                   whiteSpace: 'nowrap',
                 }}
                 onMouseEnter={e => {

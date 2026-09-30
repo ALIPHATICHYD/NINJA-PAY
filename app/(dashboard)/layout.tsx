@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Navigation } from '@/components/Navigation'
+import { Web3Providers } from '@/components/Web3Providers'
 
 export default function DashboardLayout({
   children,
@@ -9,6 +10,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
+    <Web3Providers>
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
       <Navigation />
 
@@ -54,5 +56,6 @@ export default function DashboardLayout({
         </div>
       </footer>
     </div>
+    </Web3Providers>
   )
 }
