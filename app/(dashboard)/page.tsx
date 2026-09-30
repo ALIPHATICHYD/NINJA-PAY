@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import {
   Send,
+  QrCode,
   CreditCard,
   Share2,
   Users2,
@@ -30,6 +31,7 @@ import { formatUsd, sumUsd, usdValue } from '@/lib/prices'
 
 const FEATURES = [
   { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDC to any wallet.',   href: '/send' },
+  { icon: QrCode,       title: 'Receive',       desc: 'Show your address or request an amount.', href: '/receive' },
   { icon: CreditCard,   title: 'Bills',         desc: 'Pay airtime, data, electricity, cable.',href: '/bills' },
   { icon: Share2,       title: 'Claims',        desc: 'Create shareable token-drop links.',     href: '/claims' },
   { icon: Users2,       title: 'Beneficiaries', desc: 'Manage saved recipients.',               href: '/beneficiaries' },

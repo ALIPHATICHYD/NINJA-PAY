@@ -7,6 +7,7 @@ import { User } from 'lucide-react'
 
 const NAV_LINKS = [
   { label: 'Send',          href: '/send' },
+  { label: 'Receive',       href: '/receive' },
   { label: 'Bills',         href: '/bills' },
   { label: 'Claims',        href: '/claims' },
   { label: 'Beneficiaries', href: '/beneficiaries' },

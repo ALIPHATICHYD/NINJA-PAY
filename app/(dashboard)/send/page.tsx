@@ -25,6 +25,7 @@ import {
 } from '@/lib/injective/fees'
 import { INJECTIVE_EVM } from '@/lib/injective/network'
 import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
+import { parsePaymentRequest } from '@/lib/payment-request'
 
 
 export default function SendPage() {
@@ -44,12 +45,20 @@ export default function SendPage() {
   const [sendToken, setSendToken] = useState<'INJ' | 'USDC'>('USDC')
   const [recipient, setRecipient] = useState('')
 
-  // Prefill from /send?to=<address> (used by the Beneficiaries "Send" button).
-  useEffect(() => {
-    const to = new URLSearchParams(window.location.search).get('to')
-    if (to && parseAccountAddress(to)) setRecipient(to)
-  }, [])
   const [amount, setAmount] = useState('')
+  // A payment-request link (/send?to=…&token=…&amount=…) from someone's Receive page.
+  const [requested, setRequested] = useState<{ amount: string; token: 'INJ' | 'USDC' } | null>(null)
+
+  // Prefill from the link: /send?to=<address> (the Beneficiaries "Send" button) or a payment request.
+  useEffect(() => {
+    const request = parsePaymentRequest(window.location.search)
+    if (request.to) setRecipient(request.to)
+    if (request.token) setSendToken(request.token)
+    if (request.to && request.token && request.amount) {
+      setAmount(request.amount)
+      setRequested({ amount: request.amount, token: request.token })
+    }
+  }, [])
   const [txHash, setTxHash] = useState('')
   const [sendStatus, setSendStatus] = useState<{ type: 'idle' | 'pending' | 'success' | 'error'; message: string }>({ 
     type: 'idle', 
@@ -206,6 +215,13 @@ export default function SendPage() {
       {/* ─── Send Tokens tab ─── */}
       {tab === 'send' && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {requested && (
+            <div className="alert-warning" style={{ fontSize: '12px', lineHeight: 1.5 }}>
+              This link asks you to send {requested.amount} {requested.token}. NinjaPay doesn&apos;t know who made it, so check the
+              address with the person before you send.
+            </div>
+          )}
+
           {/* Network/Token selector */}
           <div style={{ display: 'flex', gap: '12px' }}>
             <div style={{ flex: 1 }}>
