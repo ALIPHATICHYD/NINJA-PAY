@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
-/* Expose brand tokens as Tailwind utilities (bg-page, text-ink, bg-ocean, ...). */
+/* Expose brand tokens as Tailwind utilities (bg-page, text-ink, bg-ocean, font-display, ...). */
 @theme inline {
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: var(--font-ui-face), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-display-face), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, monospace;
   --color-page: var(--bg-primary);
   --color-page-2: var(--bg-secondary);
   --color-surface: var(--bg-card);
@@ -20,75 +21,57 @@
   --color-ocean-subtle: var(--accent-subtle);
   --color-coral: var(--warning);
   --color-coral-subtle: var(--warning-subtle);
+  --color-lime: var(--success);
+  --color-lemon: var(--pending);
   --color-snow: #eeefff;
-  --color-sky: #aac2ff;
-  --color-midnight: #0b182b;
+  --color-space-gray: #121212;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /*
- * Tokens follow Injective's published brand palette (injective.com):
- * Ocean #4d3dff accent, Snow #eeefff text, Midnight 900/800/700 surfaces,
- * Sky scale for secondary text, Coral/Lime for status only.
- * Variable names are unchanged so the dashboard picks them up.
+ * Tokens follow Injective's brand (injective.com/brand), at the owner's direction:
+ * Black page (injective.com's theme colour), Space Gray #121212 cards, Ocean #4d3dff for
+ * actions only, Snow #eeefff text. Secondary colours carry state only: Lime confirmed,
+ * Lemon pending, Coral warnings and "not live". This deliberately overrides the
+ * .claude/skills design-taste rules that ban purple accents and pure black.
+ * Dark only, like injective.com. Variable names are unchanged so the dashboard picks them up.
  */
 :root {
-  --bg-primary: #0b182b;          /* Midnight 900 */
-  --bg-secondary: #0f1f37;
-  --bg-card: #13263f;
-  --bg-hover: #182e4b;            /* Midnight 800 */
-  --bg-glass: rgba(19, 38, 63, 0.72);
-  --bg-band: #193d6d;             /* Midnight 700 */
-  --border: #1d3656;
-  --border-light: #314b87;        /* Sky 800 */
-  --text-primary: #eeefff;        /* Snow */
-  --text-secondary: #aac2ff;      /* Sky 400 */
-  --text-muted: #87a7f3;          /* Sky 500 */
+  color-scheme: dark;
+  --bg-primary: #000000;          /* Black */
+  --bg-secondary: #0a0a0c;        /* inputs, alternate bands */
+  --bg-card: #121212;             /* Space Gray */
+  --bg-hover: #1b1b22;            /* raised; neutral biased toward Ocean */
+  --bg-glass: rgba(18, 18, 18, 0.72);
+  --bg-band: #121212;
+  --border: #26262e;
+  --border-light: #3d3d4a;
+  --text-primary: #eeefff;        /* Snow, 16.4:1 on Space Gray */
+  --text-secondary: #b3b4c8;      /* 9.2:1 on Space Gray */
+  --text-muted: #8b8ca3;          /* 5.7:1 on Space Gray */
   --accent: #4d3dff;              /* Ocean */
-  --accent-hover: #5359f9;        /* Ocean tint */
-  --accent-text: #aac2ff;         /* accent-coloured text on dark, AA safe */
-  --accent-fg: #ffffff;
-  --accent-subtle: rgba(77, 61, 255, 0.16);
-  --accent-glow: rgba(77, 61, 255, 0.28);
-  --accent-border: rgba(135, 167, 243, 0.28);
+  --accent-hover: #3a2be0;        /* darker, so Snow labels stay above AA */
+  --accent-text: #a59cff;         /* Ocean lifted for text: Ocean itself is 3.1:1 on Space Gray */
+  --accent-fg: #eeefff;           /* Snow on Ocean, 5.4:1 */
+  --accent-subtle: rgba(77, 61, 255, 0.14);
+  --accent-glow: rgba(77, 61, 255, 0.35);
+  --accent-border: rgba(165, 156, 255, 0.3);
   --accent-gradient: #4d3dff;     /* solid: no gradients on brand surfaces */
-  --success: #ceffc8;             /* Lime */
+  --success: #ceffc8;             /* Lime: confirmed on chain */
   --success-subtle: rgba(206, 255, 200, 0.1);
-  --error: #ff7a85;
+  --pending: #e8ff5f;             /* Lemon: broadcast, waiting for a block */
+  --pending-subtle: rgba(232, 255, 95, 0.1);
+  --error: #ff7a85;               /* outside Injective's palette: failures must not read as Coral */
   --error-subtle: rgba(255, 122, 133, 0.1);
-  --warning: #ffa36e;             /* Coral */
+  --warning: #ffa36e;             /* Coral: warnings and "not live yet" */
   --warning-subtle: rgba(255, 163, 110, 0.12);
   --inj-color: #0fc;
   --usdc-color: #2775ca;
   --usdt-color: #26a17b;
-  --shadow-tint: rgba(4, 10, 22, 0.55);
+  --shadow-tint: rgba(0, 0, 0, 0.6);
   --radius-card: 16px;
   --radius-input: 8px;
   --radius-pill: 9999px;
-}
-
-/* Landing page only: light variant on Snow / Sky. The dashboard stays dark. */
-@media (prefers-color-scheme: light) {
-  .theme-auto {
-    --bg-primary: #fcfdff;        /* Sky 50 */
-    --bg-secondary: #eeefff;      /* Snow */
-    --bg-card: #ffffff;
-    --bg-hover: #ebf0ff;          /* Sky 100 */
-    --bg-glass: rgba(255, 255, 255, 0.8);
-    --bg-band: #0b182b;           /* stats band stays Midnight in both modes */
-    --border: #d4e0ff;            /* Sky 200 */
-    --border-light: #aac2ff;      /* Sky 400 */
-    --text-primary: #0b182b;      /* Midnight 900 */
-    --text-secondary: #314b87;    /* Sky 800 */
-    --text-muted: #4669b9;        /* Sky 700 */
-    --accent-text: #3a2bdb;
-    --accent-subtle: rgba(77, 61, 255, 0.08);
-    --accent-border: rgba(77, 61, 255, 0.22);
-    --warning: #9a4a12;
-    --warning-subtle: rgba(255, 163, 110, 0.18);
-    --shadow-tint: rgba(25, 61, 109, 0.12);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
 }
 
 /* Resets live in the base layer so Tailwind utilities (px-*, mx-auto, text-*) can override them. */
@@ -106,7 +89,7 @@ html {
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui-face), system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
@@ -122,7 +105,7 @@ body {
 ::selection { background: var(--accent-subtle); color: var(--text-primary); }
 
 /* Focus */
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 /* Base resets */
 a { color: inherit; text-decoration: none; }
@@ -324,14 +307,14 @@ input, select, textarea { font-family: inherit; }
   padding: 10px 22px;
   background: var(--error-subtle);
   color: var(--error);
-  border: 1px solid rgba(240,79,91,0.2);
+  border: 1px solid color-mix(in srgb, var(--error) 20%, transparent);
   border-radius: var(--radius-pill);
   font-size: 14px;
   font-weight: 500;
   transition: background 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.btn-danger:hover { background: rgba(240,79,91,0.18); border-color: rgba(240,79,91,0.35); }
+.btn-danger:hover { background: color-mix(in srgb, var(--error) 18%, transparent); border-color: color-mix(in srgb, var(--error) 35%, transparent); }
 
 /* ─── Inputs ─── */
 .input {
@@ -437,7 +420,7 @@ input, select, textarea { font-family: inherit; }
 .alert-success {
   padding: 12px 16px;
   background: var(--success-subtle);
-  border: 1px solid rgba(16,214,122,0.25);
+  border: 1px solid color-mix(in srgb, var(--success) 25%, transparent);
   border-radius: 9px;
   color: var(--success);
   font-size: 14px;
@@ -445,7 +428,7 @@ input, select, textarea { font-family: inherit; }
 .alert-error {
   padding: 12px 16px;
   background: var(--error-subtle);
-  border: 1px solid rgba(240,79,91,0.25);
+  border: 1px solid color-mix(in srgb, var(--error) 25%, transparent);
   border-radius: 9px;
   color: var(--error);
   font-size: 14px;
@@ -453,7 +436,7 @@ input, select, textarea { font-family: inherit; }
 .alert-warning {
   padding: 12px 16px;
   background: var(--warning-subtle);
-  border: 1px solid rgba(245,158,11,0.25);
+  border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
   border-radius: 9px;
   color: var(--warning);
   font-size: 14px;
@@ -514,7 +497,7 @@ input, select, textarea { font-family: inherit; }
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4,10,22,0.75);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   z-index: 100;
@@ -539,8 +522,8 @@ input, select, textarea { font-family: inherit; }
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255,255,255,0.25);
-  border-top-color: white;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.65s linear infinite;
   flex-shrink: 0;
@@ -567,7 +550,7 @@ input, select, textarea { font-family: inherit; }
   flex-shrink: 0;
 }
 .step-dot-active { background: var(--accent); color: var(--accent-fg); }
-.step-dot-done { background: var(--success-subtle); color: var(--success); border: 1px solid rgba(16,214,122,0.25); }
+.step-dot-done { background: var(--success-subtle); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 25%, transparent); }
 .step-dot-inactive { background: var(--bg-hover); color: var(--text-muted); border: 1px solid var(--border); }
 
 /* ─── Accent text (solid, AA-safe; was a gradient) ─── */
@@ -701,7 +684,7 @@ input, select, textarea { font-family: inherit; }
 
 /* ─── Navbar glass effect ─── */
 .navbar-glass {
-  background: rgba(11,24,43,0.86);
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }

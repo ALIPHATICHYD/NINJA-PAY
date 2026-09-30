@@ -1,9 +1,19 @@
-import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import type { Metadata, Viewport } from 'next'
+import { Figtree, Geist_Mono, Newsreader } from 'next/font/google'
 import './globals.css'
 
-const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans', display: 'swap' })
-const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' })
+// Injective's brand pairs ABC Marist (old-style serif) with TT Commons (geometric sans).
+// Both are commercial, so Newsreader and Figtree stand in. To use licensed files, swap these
+// two for next/font/local and keep the same `variable` names; nothing else changes.
+const display = Newsreader({
+  subsets: ['latin'],
+  variable: '--font-display-face',
+  display: 'swap',
+  style: ['normal', 'italic'],
+  axes: ['opsz'],
+})
+const ui = Figtree({ subsets: ['latin'], variable: '--font-ui-face', display: 'swap' })
+const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' })
 
 const title = 'NinjaPay | Crypto Payments & Payroll on Injective'
 const description =
@@ -31,6 +41,11 @@ export const metadata: Metadata = {
   },
 }
 
+export const viewport: Viewport = {
+  themeColor: '#000000',
+  colorScheme: 'dark',
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -39,7 +54,7 @@ export default function RootLayout({
   return (
     // suppressHydrationWarning: browser extensions (e.g. QuillBot's data-qb-installed) add
     // attributes to <html> before React hydrates. This only silences attribute diffs on this element.
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${display.variable} ${ui.variable} ${mono.variable}`} suppressHydrationWarning>
       <body>
         {children}
       </body>

@@ -112,7 +112,7 @@ function FeatureCell({
     band: 'bg-band text-snow border-transparent',
     plain: 'bg-surface text-ink border-line hover:border-line-strong hover:bg-surface-hover',
   }
-  const descTone = tone === 'ocean' ? 'text-snow/90' : tone === 'band' ? 'text-sky' : 'text-ink-2'
+  const descTone = tone === 'ocean' ? 'text-snow/90' : tone === 'band' ? 'text-ink-2' : 'text-ink-2'
   const iconTone = tone === 'plain' ? 'bg-ocean-subtle text-ocean-text' : 'bg-snow/10 text-snow'
   return (
     <Link
@@ -144,7 +144,7 @@ function FeatureCell({
 
 export default function LandingPage() {
   return (
-    <div className="theme-auto min-h-[100dvh] overflow-x-hidden bg-page font-sans text-ink">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-page font-sans text-ink">
       {/* Navbar */}
       <nav className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_srgb,var(--bg-primary)_86%,transparent)] backdrop-blur-lg">
         <div className={`${container} flex h-16 items-center justify-between`}>
@@ -191,12 +191,12 @@ export default function LandingPage() {
             <dl className="mt-10 grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-4">
               {NETWORK_STATS.map((s, i) => (
                 <Reveal key={s.label} delay={i * 0.08} className="flex flex-col-reverse">
-                  <dt className="mt-2 text-sm text-sky">{s.label}</dt>
+                  <dt className="mt-2 text-sm text-ink-2">{s.label}</dt>
                   <dd className="font-mono text-4xl font-medium tracking-tight md:text-5xl">{s.value}</dd>
                 </Reveal>
               ))}
             </dl>
-            <p className="mt-10 text-sm text-sky">
+            <p className="mt-10 text-sm text-ink-2">
               Network figures as published on{' '}
               <a href="https://injective.com" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-snow">
                 injective.com
@@ -326,7 +326,7 @@ export default function LandingPage() {
               </div>
               <Link
                 href="/send"
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-snow px-7 py-3.5 text-[15px] font-semibold text-midnight transition duration-300 hover:-translate-y-px hover:bg-white active:translate-y-0 active:scale-[0.98]"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-snow px-7 py-3.5 text-[15px] font-semibold text-black transition duration-300 hover:-translate-y-px hover:bg-white active:translate-y-0 active:scale-[0.98]"
               >
                 Launch App
                 <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
