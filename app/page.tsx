@@ -80,12 +80,23 @@ const APP_LINKS = [
   { label: 'Analytics', href: '/analytics' },
 ]
 
+const SOCIAL_LINKS = [{ label: 'X', href: 'https://x.com/NINJA_PAY', icon: XIcon }]
+
 const container = 'mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8'
 const btnPrimary =
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-ocean px-6 py-3 text-[15px] font-semibold text-snow transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px hover:bg-ocean-hover active:translate-y-0 active:scale-[0.98]'
 const btnSecondary =
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line-strong px-6 py-3 text-[15px] font-medium text-ink transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px hover:bg-surface-hover active:translate-y-0 active:scale-[0.98]'
 const h2 = 'font-display text-4xl font-normal leading-[1.05] tracking-[-0.015em] text-ink md:text-5xl'
+
+// lucide-react has no X logo, so the mark is drawn inline.
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" className={className}>
+      <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
+    </svg>
+  )
+}
 
 function Logo() {
   return (
@@ -352,7 +363,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-line">
-        <div className={`${container} grid gap-10 py-14 sm:grid-cols-2 md:grid-cols-[2fr_1fr_1fr]`}>
+        <div className={`${container} grid gap-10 py-14 sm:grid-cols-2 md:grid-cols-[2fr_1fr_1fr_1fr]`}>
           <div>
             <Logo />
             <p className="mt-4 max-w-[36ch] text-sm leading-relaxed text-ink-2">
@@ -384,6 +395,25 @@ export default function LandingPage() {
                   Injective By Examples
                 </a>
               </li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-ink">Socials</p>
+            <ul className="mt-4 grid gap-3">
+              {SOCIAL_LINKS.map(({ label, href, icon: Icon }) => (
+                <li key={href}>
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-ink-2 transition-colors hover:text-ink"
+                  >
+                    {/* Inline, not flex, so the label shares a baseline with the other footer columns. */}
+                    <Icon className="mr-2 inline-block h-3.5 w-3.5 align-[-0.15em]" />
+                    {label}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
