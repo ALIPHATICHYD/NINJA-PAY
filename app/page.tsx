@@ -19,14 +19,19 @@ import { HeroArt } from '@/components/landing/HeroArt'
 import { Reveal } from '@/components/landing/Reveal'
 import { Steps } from '@/components/landing/Steps'
 import { Faq } from '@/components/landing/Faq'
+import { Marquee } from '@/components/landing/Marquee'
+import { CountUp } from '@/components/landing/CountUp'
 
 // Network figures as published on injective.com ("Injective by the Numbers").
-const NETWORK_STATS = [
-  { value: '0.59s', label: 'Block time' },
-  { value: '$0.0001', label: 'Median transaction cost' },
-  { value: '3.00B', label: 'Onchain transactions' },
-  { value: '3', label: 'Wallets: Keplr, Leap, MetaMask' },
+// `count` figures roll up once in view; the rest render as written.
+const NETWORK_STATS: { label: string; text?: string; count?: { value: number; decimals?: number; suffix?: string } }[] = [
+  { label: 'Block time', count: { value: 0.59, decimals: 2, suffix: 's' } },
+  { label: 'Median transaction cost', text: '$0.0001' },
+  { label: 'Onchain transactions', count: { value: 3, decimals: 2, suffix: 'B' } },
+  { label: 'Wallets: Keplr, Leap, MetaMask', count: { value: 3 } },
 ]
+
+const MARQUEE = ['Send INJ', 'Send USDC', 'Batch payroll', 'Claim links', 'Keplr', 'Leap', 'MetaMask', 'Non-custodial']
 
 const WHY = [
   { icon: Shield, title: 'Non-Custodial', desc: 'You hold your keys. NinjaPay never takes custody of your funds.' },
@@ -182,6 +187,8 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <Marquee items={MARQUEE} />
+
         {/* Network figures */}
         <section className="bg-band text-snow">
           <div className={`${container} py-16 md:py-20`}>
@@ -192,7 +199,9 @@ export default function LandingPage() {
               {NETWORK_STATS.map((s, i) => (
                 <Reveal key={s.label} delay={i * 0.08} className="flex flex-col-reverse">
                   <dt className="mt-2 text-sm text-ink-2">{s.label}</dt>
-                  <dd className="font-mono text-4xl font-medium tracking-tight md:text-5xl">{s.value}</dd>
+                  <dd className="font-mono text-4xl font-medium tracking-tight tabular-nums md:text-5xl">
+                    {s.count ? <CountUp {...s.count} /> : s.text}
+                  </dd>
                 </Reveal>
               ))}
             </dl>

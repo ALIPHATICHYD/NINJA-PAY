@@ -712,6 +712,11 @@ input, select, textarea { font-family: inherit; }
   to   { transform: scale(1.08); opacity: 0.78; }
 }
 
+/* ─── Landing marquee ─── */
+.marquee-track { animation: marquee 42s linear infinite; }
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+
 /* ─── Reduced motion ─── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -721,4 +726,5 @@ input, select, textarea { font-family: inherit; }
     scroll-behavior: auto !important;
   }
   .reveal, .reveal-left, .reveal-right { opacity: 1; transform: none; }
+  .marquee-track { animation: none; }
 }
