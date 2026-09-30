@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
@@ -23,7 +24,7 @@ import {
   maxInjAfterFee,
   networkFee,
 } from '@/lib/injective/fees'
-import { INJECTIVE_EVM } from '@/lib/injective/network'
+import { FAUCETS, INJECTIVE_EVM } from '@/lib/injective/network'
 import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
 import { parsePaymentRequest } from '@/lib/payment-request'
 
@@ -275,6 +276,11 @@ export default function SendPage() {
               </div>
             )}
           </div>
+          {!balLoading && !balError && injBalance === BigInt(0) && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-10px' }}>
+              No INJ for fees yet. <Link href="/setup" style={{ color: 'var(--accent-text)' }}>Set up your wallet</Link> to add the network and get {FAUCETS ? 'test funds' : 'INJ'}.
+            </p>
+          )}
           {balError && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <AlertCircle size={14} /> {balError}

@@ -14,7 +14,10 @@ const evmTransport = ENDPOINTS.evmRpc === PUBLIC_EVM_RPC
 
 const config = getDefaultConfig({
   appName: 'NinjaPay',
-  // Replace with a real WalletConnect Cloud project ID: https://cloud.walletconnect.com
+  // WalletConnect (mobile and QR-code wallets) needs NinjaPay's own WalletConnect
+  // Cloud project id, with the site's domains on its allowlist. The fallback is a
+  // shared id kept only so local development works; set NEXT_PUBLIC_WALLETCONNECT_ID
+  // for every deployment.
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_ID || 'b56e18d47c72ab683b10814fe9495694',
   // Injective's native EVM (1439 testnet, 1776 mainnet), not the deprecated inEVM.
   chains: [INJECTIVE_EVM],

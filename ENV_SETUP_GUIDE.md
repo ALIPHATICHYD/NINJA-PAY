@@ -47,8 +47,8 @@ This document outlines all environment variables used in NINJA PAY and where to 
 ---
 
 ### 🌐 WALLET CONNECT (Web3 Connectivity)
-**Status:** OPTIONAL (has default fallback)  
-**Used for:** Connecting MetaMask, Keplr, Leap, and other wallets
+**Status:** REQUIRED for any deployment (the hardcoded fallback is a shared id for local development only)  
+**Used for:** Mobile and QR-code wallets that connect through WalletConnect. Browser-extension wallets such as MetaMask connect without it. Add the site's domains to the project's allowlist.
 
 | Variable | Where to Get | Default |
 |----------|-------------|---------|

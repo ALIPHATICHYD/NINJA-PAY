@@ -31,14 +31,14 @@ export const NETWORK_LABEL = IS_MAINNET ? 'Injective' : 'Injective testnet'
 const EVM = IS_MAINNET
   ? {
       id: 1776,
-      name: 'Injective',
+      name: 'Injective EVM Mainnet',
       rpc: 'https://sentry.evm-rpc.injective.network/',
       ws: 'wss://sentry.evm-ws.injective.network',
       blockscout: 'https://blockscout.injective.network',
     }
   : {
       id: 1439,
-      name: 'Injective Testnet',
+      name: 'Injective EVM Testnet',
       rpc: 'https://k8s.testnet.json-rpc.injective.network/',
       ws: 'wss://k8s.testnet.ws.injective.network/',
       blockscout: 'https://testnet.blockscout.injective.network',
@@ -106,10 +106,17 @@ export function explorerName(hash: string): 'Blockscout' | 'InjScan' {
   return isEvmTxHash(hash) ? 'Blockscout' : 'InjScan'
 }
 
-/** Where to get test funds. Mainnet has no faucet. */
+/**
+ * Where to get test funds. Mainnet has no faucet.
+ * Source: https://docs.injective.network/developers-evm/network-information
+ */
 export const FAUCETS = IS_MAINNET
   ? null
   : {
       inj: 'https://testnet.faucet.injective.network/',
+      injAlt: 'https://cloud.google.com/application/web3/faucet/injective/testnet',
       usdc: 'https://faucet.circle.com/',
     }
+
+/** Injective's own page on getting mainnet INJ, which the network-information page points to. */
+export const GET_INJ_URL = 'https://injective.com/getinj'

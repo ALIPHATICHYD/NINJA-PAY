@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Copy, Share2 } from 'lucide-react'
+import { Share2 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
+import { CopyButton } from '@/components/CopyButton'
 import { QrCode } from '@/components/QrCode'
 import { toInjectiveAddress } from '@/lib/injective/address'
 import { IS_MAINNET, NETWORK_LABEL } from '@/lib/injective/network'
@@ -11,20 +12,6 @@ import { TOKENS, type TokenSymbol } from '@/lib/injective/tokens'
 import { paymentRequestUrl, requestAmountBase } from '@/lib/payment-request'
 
 type OpenRequest = { token: TokenSymbol; amount: string; amountBase: bigint; baseline: bigint; url: string }
-
-function CopyButton({ value, label }: { value: string; label: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () =>
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    }, () => {})
-  return (
-    <button onClick={copy} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
-      {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> {label}</>}
-    </button>
-  )
-}
 
 export default function ReceivePage() {
   const { address, isConnected } = useWallet()

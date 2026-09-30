@@ -66,6 +66,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 |---|---|---|---|
 | Send INJ | `/send` | Working on testnet | Native value transfer from the connected EVM wallet through wagmi `useSendTransaction`. The recipient can be typed as `inj1…` or `0x…`; an `inj1…` address is converted to its `0x…` form. |
 | Send USDC | `/send` | Signing verified on testnet; Send page not yet exercised | Builds a Cosmos `MsgSend` to the recipient's `inj1…` form (either format is accepted), simulates gas, signs with Keplr/Leap (`SIGN_MODE_DIRECT`), and waits for block inclusion. Ledger accounts are not supported yet. |
+| Wallet setup | `/setup` | Working | Adds or switches the wallet to Injective's EVM network and adds USDC to its token list in one click each, with the values for adding them by hand. Links to the INJ and Circle USDC testnet faucets (on mainnet, Injective's page on getting INJ) and to Keplr and Leap. Linked from the landing page and from Send when the account has no INJ. |
 | Receive | `/receive` | Working | Shows the wallet's account as `inj1…` and `0x…` with a QR code for each and a network warning. **Ask for a set amount** makes a link and QR that open `/send` with the address, token and amount filled in; the page reports the payment as received once the account's balance of that token on Injective has gone up by at least that amount. Person-to-person only. |
 | Payroll | `/payroll` | Partial | Sends one signed transaction per recipient through the Cosmos path. The UI describes a single `MsgMultiSend`, but that builder (`createMsgMultiSendPayroll`) is not wired up. |
 | Claim links: create | `/claims` | Working on testnet (INJ verified) | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
@@ -184,6 +185,7 @@ components/
   StatusChip.tsx, TxStatus.tsx   Transfer state chip and status line with explorer link
   ChainHealthNotice.tsx       "Sending is paused" and scheduled-upgrade banners
   QrCode.tsx                  Dark-on-white QR code as one SVG path
+  CopyButton.tsx              Copy-to-clipboard button
 hooks/
   useWallet.ts                Thin wrapper over wagmi useAccount
   useCosmosTransaction.ts     Keplr/Leap connection and sendToken
@@ -259,7 +261,7 @@ Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visib
 | `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD and indexer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
 | `NEXT_PUBLIC_INJECTIVE_EVM_RPC` | No | `components/Web3Providers.tsx`, `lib/injective/health.ts` | EVM JSON-RPC for reads. A keyless provider URL, or `/api/evm-rpc` to use the server proxy below. The public RPC stays as a fallback. |
 | `INJECTIVE_EVM_RPC_URL` | No (server-only) | `app/api/evm-rpc/route.ts` | A premium EVM RPC URL with its API key. The proxy forwards only read methods and `eth_sendRawTransaction`, falls back to the public RPC, and logs nothing. Anyone who can reach the route can use it, so add rate limiting before relying on it. |
-| `NEXT_PUBLIC_WALLETCONNECT_ID` | Recommended | `components/Web3Providers.tsx` | From [WalletConnect Cloud](https://cloud.walletconnect.com). A shared fallback ID is hardcoded; use your own for anything public. |
+| `NEXT_PUBLIC_WALLETCONNECT_ID` | Required for any deployment | `components/Web3Providers.tsx` | NinjaPay's own project id from [WalletConnect Cloud](https://cloud.walletconnect.com), with the site's domains on its allowlist. Mobile and QR-code wallets connect through it. A shared fallback id is hardcoded only so local development works. |
 | `NEXT_PUBLIC_BACKEND_URL` | No | `lib/injective/constants.ts` | Defaults to `http://localhost:3001`. No backend ships with this repo. |
 | `NEXT_PUBLIC_PAYSTACK_KEY` | No | `lib/paystack.ts` | Not used by any page. Use a **public** key only (`pk_test_…`). |
 | `NEXT_PUBLIC_VTPASS_USERNAME` / `NEXT_PUBLIC_VTPASS_PASSWORD` | No | `lib/vtpass.ts` | Not used by any page. These are credentials and **must not ship to the browser**; move them server-side before enabling bills. |
