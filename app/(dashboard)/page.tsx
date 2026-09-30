@@ -11,12 +11,11 @@ import {
   ArrowUpRight,
   ArrowRight,
   Briefcase,
-  TrendingUp,
   DollarSign,
 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
-import { useUSDCConversion } from '@/hooks/useUSDCConversion'
+import { usePrices } from '@/hooks/usePrices'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useActivity } from '@/hooks/useActivity'
 import { ACTIVITY_LABELS, coinValue, formatCoinAmount } from '@/lib/injective/activity'
@@ -27,6 +26,7 @@ import { formatBaseUnits } from '@/lib/money'
 import { INJ, USDC } from '@/lib/injective/tokens'
 import { isSameAccount, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
+import { formatUsd, sumUsd, usdValue } from '@/lib/prices'
 
 const FEATURES = [
   { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDC to any wallet.',   href: '/send' },
@@ -41,29 +41,24 @@ const FEATURES = [
 export default function DashboardHome() {
   const { isConnected, address } = useWallet()
   const { inj, usdc, loading: balLoading } = useBalance(address)
-  const { injUsdcRate, usdcPrice, loading: priceLoading } = useUSDCConversion(1)
+  const { prices, loading: priceLoading } = usePrices()
   const { userAddress: cosmosAddress } = useCosmosTransaction()
   const injectiveAddress = toInjectiveAddress(address)
   const keplrIsOtherAccount = !!cosmosAddress && !!address && !isSameAccount(cosmosAddress, address)
   const { items: activity, loading: activityLoading } = useActivity()
   const [beneficiaries] = useBeneficiaries()
 
-  // Outgoing value in USDC terms (INJ converted at the live rate).
-  const injRate = parseFloat(injUsdcRate) || 0
-  const sentUsdc = activity
-    .filter(tx => tx.success && tx.direction === 'out')
-    .reduce((sum, tx) => sum + tx.coins.reduce((s, c) => s + coinValue(c) * (c.token === 'INJ' ? injRate : c.token === 'USDC' || c.token === 'USDT' ? 1 : 0), 0), 0)
+  // Outgoing value at today's Injective oracle prices; null if a token has no fresh price.
+  const sentUsd = sumUsd(
+    activity
+      .filter(tx => tx.success && tx.direction === 'out')
+      .flatMap(tx => tx.coins.map(c => usdValue(coinValue(c), c.token, prices))),
+  )
   const recent = activity.slice(0, 5)
 
   const injDisplay = balLoading ? '—' : formatBaseUnits(inj, INJ.decimals, 4)
   const usdcDisplay = balLoading ? '—' : formatBaseUnits(usdc, USDC.decimals, 2)
 
-  // Conversion calculations
-  const injValue = balLoading ? 0 : Number(formatBaseUnits(inj, INJ.decimals))
-  const usdcValue = balLoading ? 0 : Number(formatBaseUnits(usdc, USDC.decimals))
-  const injInUsdc = injValue * (parseFloat(injUsdcRate) || 0)
-  const totalUsdc = usdcValue + injInUsdc
-  
 
   /* ── Disconnected state ── */
   if (!isConnected) {
@@ -229,15 +224,15 @@ export default function DashboardHome() {
         {/* Off-ramp status (not live) */}
         <OfframpUnavailable />
 
-        {/* USDC Pricing & Conversion Widget */}
+        {/* Prices from Injective's oracle */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
             <div className="icon-box" style={{ background: 'linear-gradient(135deg, #2775ca 0%, #1e5ba8 100%)' }}>
               <DollarSign size={16} />
             </div>
             <div>
-              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>USDC Rates</p>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Live market prices</p>
+              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Prices</p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>From Injective&apos;s Pyth oracle. Indicative only.</p>
             </div>
           </div>
 
@@ -245,27 +240,27 @@ export default function DashboardHome() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 INJ</span>
               <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent-text)' }}>
-                {priceLoading ? '...' : `${(parseFloat(injUsdcRate) || 0).toFixed(4)} USDC`}
+                {priceLoading ? '…' : prices.INJ ? formatUsd(prices.INJ.usd) : 'Unavailable'}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 USDC</span>
               <span style={{ fontSize: '14px', fontWeight: '700', color: '#2775ca' }}>
-                ${(parseFloat(usdcPrice) || 1).toFixed(2)}
+                {priceLoading ? '…' : prices.USDC ? formatUsd(prices.USDC.usd, 4) : 'Unavailable'}
               </span>
             </div>
           </div>
 
-          <Link href="/send" className="btn-secondary" style={{ width: '100%', padding: '8px', fontSize: '12px' }}>
-            <TrendingUp size={12} /> View All Rates
-          </Link>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Injective has no naira price, so NinjaPay shows no naira rate. One will come only from a licensed partner&apos;s quote.
+          </p>
         </div>
       </div>
 
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
         {[
-          { label: 'Total Sent', value: activityLoading ? '…' : `$${sentUsdc.toFixed(2)}` },
+          { label: 'Total Sent', value: activityLoading || priceLoading ? '…' : formatUsd(sentUsd) },
           { label: 'Transactions', value: activityLoading ? '…' : String(activity.length) },
           { label: 'Beneficiaries', value: String(beneficiaries.length) },
         ].map(s => (

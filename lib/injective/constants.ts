@@ -1,11 +1,6 @@
 // Network configuration lives in network.ts (set NEXT_PUBLIC_INJECTIVE_NETWORK).
 export { NETWORK, CHAIN_ID } from './network'
 
-// Exchange market IDs
-export const MARKETS = {
-  INJ_USDC: 'INJ/USDC',
-}
-
 // Backend configuration
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
 

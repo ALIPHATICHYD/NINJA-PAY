@@ -17,7 +17,7 @@ describe('EVM RPC proxy', () => {
 
   it('forwards allowed methods to the provider', async () => {
     vi.stubEnv('INJECTIVE_EVM_RPC_URL', PREMIUM)
-    const fetchMock = vi.fn(async () => new Response('{"jsonrpc":"2.0","id":1,"result":"0x59f"}'))
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('{"jsonrpc":"2.0","id":1,"result":"0x59f"}'))
     vi.stubGlobal('fetch', fetchMock)
     const response = await call({ jsonrpc: '2.0', id: 1, method: 'eth_chainId' })
     expect(response.status).toBe(200)

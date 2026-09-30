@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { eachDayOfInterval, eachWeekOfInterval, format, isAfter, startOfDay, startOfWeek, subDays } from 'date-fns'
 import { RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
-import { useTokenPrice } from '@/hooks/useTokenPrice'
-import { useUSDCConversion } from '@/hooks/useUSDCConversion'
+import { usePrices } from '@/hooks/usePrices'
 import { useActivity } from '@/hooks/useActivity'
 import { NETWORK_LABEL } from '@/lib/injective/network'
 import { ACTIVITY_LABELS, coinValue, type ActivityItem, type ActivityType } from '@/lib/injective/activity'
+import { formatUsd, sumUsd, usdValue } from '@/lib/prices'
 
 type Period = '7D' | '30D' | '90D'
 
@@ -25,8 +25,7 @@ const TYPE_COLORS: Record<ActivityType, string> = {
 
 export default function AnalyticsPage() {
   const { isConnected } = useWallet()
-  const { injUsd } = useTokenPrice()
-  const { usdcPrice } = useUSDCConversion(1)
+  const { prices, loading: pricesLoading } = usePrices()
   const { items, loading, error, refetch } = useActivity()
   const [period, setPeriod] = useState<Period>('30D')
   const [hoveredBar, setHoveredBar] = useState<number | null>(null)
@@ -39,22 +38,17 @@ export default function AnalyticsPage() {
     )
   }
 
-  // USD value of a transfer. Tokens without a known price count as $0.
-  const injPrice = Number(injUsd) || 0
-  const usdcUsd = Number(usdcPrice) || 1
-  const usdValue = (tx: ActivityItem) =>
-    tx.coins.reduce((sum, c) => {
-      const price = c.token === 'INJ' ? injPrice : c.token === 'USDC' ? usdcUsd : c.token === 'USDT' ? 1 : 0
-      return sum + coinValue(c) * price
-    }, 0)
+  // USD value of a transfer at today's Injective oracle price, or null when a token in it has no fresh price.
+  const txUsd = (tx: ActivityItem) => sumUsd(tx.coins.map(c => usdValue(coinValue(c), c.token, prices)))
 
   const now = new Date()
   const start = startOfDay(subDays(now, PERIOD_DAYS[period] - 1))
   const periodTxs = items.filter(tx => tx.success && !isAfter(start, tx.timestamp))
 
   // Claim reclaims are your own funds coming back, so they are not counted as volume.
-  const sentUsd = periodTxs.filter(t => t.direction === 'out').reduce((s, t) => s + usdValue(t), 0)
-  const receivedUsd = periodTxs.filter(t => t.direction === 'in' && t.type !== 'claim-reclaim').reduce((s, t) => s + usdValue(t), 0)
+  const sentUsd = sumUsd(periodTxs.filter(t => t.direction === 'out').map(txUsd))
+  const receivedUsd = sumUsd(periodTxs.filter(t => t.direction === 'in' && t.type !== 'claim-reclaim').map(txUsd))
+  const unpriced = !pricesLoading && periodTxs.some(t => txUsd(t) === null)
   const counterparties = new Set(periodTxs.map(t => t.counterparty))
 
   // Bars: one per day for 7D, one per week for 30D and 90D, including empty ones.
@@ -67,7 +61,7 @@ export default function AnalyticsPage() {
     if (tx.type === 'claim-reclaim') continue
     const key = (weekly ? startOfWeek(tx.timestamp, { weekStartsOn: 1 }) : startOfDay(tx.timestamp)).getTime()
     const bar = bars.find(b => b.key === key)
-    if (bar) bar.value += usdValue(tx)
+    if (bar) bar.value += txUsd(tx) ?? 0
   }
   const maxVal = Math.max(0, ...bars.map(b => b.value))
 
@@ -107,8 +101,8 @@ export default function AnalyticsPage() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '20px' }}>
             {[
-              { label: 'Sent', value: `$${sentUsd.toFixed(2)}` },
-              { label: 'Received', value: `$${receivedUsd.toFixed(2)}` },
+              { label: 'Sent', value: pricesLoading ? '…' : formatUsd(sentUsd) },
+              { label: 'Received', value: pricesLoading ? '…' : formatUsd(receivedUsd) },
               { label: 'Transactions', value: `${periodTxs.length}` },
               { label: 'Counterparties', value: `${counterparties.size}` },
             ].map(stat => (
@@ -120,6 +114,12 @@ export default function AnalyticsPage() {
               </div>
             ))}
           </div>
+
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-8px', marginBottom: '20px' }}>
+            {unpriced
+              ? "Injective has no current price for some of these tokens, so totals that include them aren't shown and the chart leaves them out."
+              : "USD values use today's price from Injective's Pyth oracle and are indicative only."}
+          </p>
 
           <div className="card" style={{ marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>

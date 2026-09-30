@@ -71,7 +71,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
 | Transactions | `/transactions` | Working | Reads bank transfers for your Keplr/Leap account and your EVM wallet's `inj1` address straight from Injective testnet. Claim activity is labelled by matching escrow addresses to claim pools. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…` or `0x…`, stores the `inj1…` form, and spots the same account saved twice in different formats. **Send** prefills `/send` with the address. |
-| Analytics | `/analytics` | Working | Sent and received volume in USD, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It uses the same on-chain history as Transactions. |
+| Analytics | `/analytics` | Working | Sent and received volume in USD at today's Injective oracle price, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It uses the same on-chain history as Transactions. USD totals are hidden when a token has no current price. |
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No rate is quoted and no bank details are collected. |
 | Bill payments (airtime, data, electricity, cable) | `/bills` | Not live | Form is disabled; no payment is taken and nothing is sent to a provider. |
 | Wallet connection | all app routes | Working | RainbowKit (EVM wallets) plus Keplr/Leap for the Cosmos path. Keplr/Leap is only asked to connect when the user clicks **Connect Keplr or Leap**; later visits reconnect quietly. |
@@ -102,12 +102,12 @@ flowchart LR
   SDK -- "balances (gRPC)" --> COSMOS
 
   UI -- "claim pools, tx history" --> SB[("Supabase<br/>Postgres")]
-  UI -- "INJ / USDC price" --> CG["CoinGecko API"]
+  UI -- "INJ / USDC price (Pyth, REST)" --> COSMOS
 ```
 
 - **EVM rail.** RainbowKit and wagmi handle connection and signing for MetaMask and other EVM wallets. This is how INJ is sent.
 - **Cosmos rail.** Keplr or Leap sign Cosmos SDK messages (`MsgSend`, and eventually `MsgMultiSend`) built with `@injectivelabs/sdk-ts`. Balances come from the bank module over gRPC (`lib/injective/bank.ts`).
-- **Data.** Supabase stores claim-pool metadata and is meant to store transaction history. CoinGecko supplies INJ and USDC prices for display.
+- **Data.** Supabase stores claim-pool metadata and is meant to store transaction history. INJ and USDC prices come from the Pyth prices Injective keeps on chain (`lib/prices.ts`), are shown as indicative, and are hidden once they are more than 10 minutes old. Injective has no naira price, so the app shows no naira rate; that will come only from a licensed partner's quote.
 - **Rendering.** The landing page (`/`) is a Server Component and does not load the wallet stack. `Web3Providers` is mounted only in `app/(dashboard)/layout.tsx` and `app/claim/layout.tsx`.
 
 ### Stack
@@ -188,7 +188,7 @@ hooks/
   useBalance.ts               INJ/USDC balances from the bank module
   useChainHealth.ts           Chain id and block freshness for the rail a page sends on
   useActivity.ts              On-chain history for the connected accounts
-  useTokenPrice.ts, useUSDCConversion.ts, useExchangeRate.ts
+  usePrices.ts                Indicative INJ and USDC prices, refreshed each minute
 lib/
   injective/
     network.ts                Network, chain ids, endpoints, explorers, faucets
@@ -202,8 +202,9 @@ lib/
     claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
     activity.ts               Transaction history from the chain
     constants.ts              Re-exports network settings, env-backed config
-    broadcast.ts, evm-config.ts, exchange.ts, usdc-testnet.ts, types.ts
+    broadcast.ts, evm-config.ts, types.ts
   money.ts                    Exact amount <-> base-unit conversion
+  prices.ts                   INJ and USDC prices from Injective's Pyth oracle
   supabase.ts                 Claim pools and transaction history
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
@@ -420,11 +421,12 @@ These are verified against the current code. They are the priority list before a
 | 4 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
 | 5 | Low | The escrow key for re-copying a link and reclaiming is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. | `lib/injective/claim-escrow.ts` |
 | 6 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
-| 7 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx`, `lib/injective/usdc-testnet.ts` |
+| 7 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx` |
 | 8 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error. Injective needs EIP-712 (amino) signing for Ledger, which is not implemented. | `lib/injective/cosmos-transactions.ts` |
 
 **Fixed:**
 
+- Prices come from Injective instead of CoinGecko: the Pyth INJ/USD and USDC/USD prices the chain keeps in its oracle module, read by feed id. A price more than 10 minutes old is shown as unavailable, and USD totals are hidden rather than counting an unpriced token as $0 or USDC as exactly $1. The hardcoded ₦1,600 "parallel market" rate and every naira conversion helper are gone; no naira rate is shown until a licensed partner quotes one.
 - Chain endpoints are configurable (`NEXT_PUBLIC_INJECTIVE_*`), with an optional server proxy that keeps a premium EVM RPC key off the client. Send, Payroll, Claims and the claim page check that the endpoint reports the expected chain id and a block from the last minute before allowing a send, re-checking every 30 seconds, and they warn when governance has scheduled a chain upgrade (`lib/injective/health.ts`).
 - Transaction links go to the explorer that matches the hash (Blockscout for EVM, InjScan for Cosmos) on every page, and Send shows one status line per transfer: waiting for signature, pending, confirmed, or failed. A reverted INJ transfer used to show nothing, because wagmi's receipt wait throws on a revert; it now shows **Failed**.
 - USDC transfers run Circle's compliance hook on Injective. When the hook runs out of gas (`types.ErrorOutOfGas`), which Injective's docs say is not a real restriction, wallet transactions and claim payouts now retry once with twice the gas. A real restriction is reported as the token issuer's rule, and NinjaPay says it doesn't screen transfers. Claim payouts and refunds size gas by simulation instead of a fixed 200,000. Keplr/Leap no longer opens an approval window on page load, and the unused `NEXT_PUBLIC_ESCROW_WALLET` setting is gone.
