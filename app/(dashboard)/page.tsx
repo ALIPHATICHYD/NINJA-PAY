@@ -22,7 +22,8 @@ import { useActivity } from '@/hooks/useActivity'
 import { ACTIVITY_LABELS, EXPLORER_TX_URL, coinValue, formatCoinAmount } from '@/lib/injective/activity'
 import { useBeneficiaries } from '@/lib/beneficiaries'
 import { format } from 'date-fns'
-import { fromWei } from '@/lib/injective/bank'
+import { formatBaseUnits } from '@/lib/money'
+import { INJ, USDC } from '@/lib/injective/tokens'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 
 const FEATURES = [
@@ -50,12 +51,12 @@ export default function DashboardHome() {
     .reduce((sum, tx) => sum + tx.coins.reduce((s, c) => s + coinValue(c) * (c.token === 'INJ' ? injRate : c.token === 'USDC' || c.token === 'USDT' ? 1 : 0), 0), 0)
   const recent = activity.slice(0, 5)
 
-  const injDisplay = balLoading ? '—' : parseFloat(fromWei(inj)).toFixed(4)
-  const usdcDisplay = balLoading ? '—' : parseFloat(fromWei(usdc)).toFixed(2)
+  const injDisplay = balLoading ? '—' : formatBaseUnits(inj, INJ.decimals, 4)
+  const usdcDisplay = balLoading ? '—' : formatBaseUnits(usdc, USDC.decimals, 2)
 
   // Conversion calculations
-  const injValue = balLoading ? 0 : parseFloat(fromWei(inj))
-  const usdcValue = balLoading ? 0 : parseFloat(fromWei(usdc))
+  const injValue = balLoading ? 0 : Number(formatBaseUnits(inj, INJ.decimals))
+  const usdcValue = balLoading ? 0 : Number(formatBaseUnits(usdc, USDC.decimals))
   const injInUsdc = injValue * (parseFloat(injUsdcRate) || 0)
   const totalUsdc = usdcValue + injInUsdc
   

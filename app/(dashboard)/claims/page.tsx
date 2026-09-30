@@ -10,12 +10,14 @@ import {
   SUPABASE_SETUP_MESSAGE,
 } from '@/lib/supabase'
 import { signAndBroadcast } from '@/lib/injective/cosmos-transactions'
+import { resolveHeldDenom } from '@/lib/injective/bank'
+import { TOKENS } from '@/lib/injective/tokens'
+import { formatBaseUnits } from '@/lib/money'
 import {
   planEscrow,
   createEscrowKey,
   buildFundingMsg,
   buildClaimLink,
-  formatBaseUnits,
   saveEscrowKey,
   loadEscrowKey,
   sweepEscrow,
@@ -123,7 +125,7 @@ export default function ClaimsPage() {
     setStatus({ type: null, message: '' })
 
     try {
-      const plan = planEscrow(token, amount, count)
+      const plan = planEscrow(token, amount, count, await resolveHeldDenom(creatorAddress, TOKENS[token]))
       const escrow = createEscrowKey()
       const linkCode = newLinkCode()
 

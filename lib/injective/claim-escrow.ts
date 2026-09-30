@@ -13,13 +13,14 @@
 
 import { MsgSend, MsgBroadcasterWithPk, PrivateKey } from '@injectivelabs/sdk-ts'
 import { DEFAULT_GAS_PRICE } from '@injectivelabs/utils'
-import { NETWORK, DENOMS } from './constants'
-import { fetchBalance } from './bank'
-import { toChainAmount } from './cosmos-transactions'
+import { NETWORK } from './constants'
+import { DENOMS, TOKENS, sameDenom } from './tokens'
+import { fetchAllBalances, balanceOf } from './bank'
+import { toChainAmount } from '../money'
 
 export type ClaimToken = 'INJ' | 'USDC'
 
-export const TOKEN_DECIMALS: Record<ClaimToken, number> = { INJ: 18, USDC: 6 }
+export const TOKEN_DECIMALS: Record<ClaimToken, number> = { INJ: TOKENS.INJ.decimals, USDC: TOKENS.USDC.decimals }
 const TOKEN_DENOM: Record<ClaimToken, string> = { INJ: DENOMS.INJ, USDC: DENOMS.USDC }
 
 // Every escrow transaction (claim payout or sweep) is a single MsgSend with a
@@ -33,14 +34,6 @@ export const ESCROW_TX_FEE = BigInt(ESCROW_TX_GAS) * ESCROW_GAS_PRICE
 const FEE_RESERVE_PER_TX = ESCROW_TX_FEE * BigInt(3)
 
 const KEY_FRAGMENT_PARAM = 'k'
-
-/** Convert base units ("1500000", 6) back to a human-readable amount ("1.5"). No floats. */
-export function formatBaseUnits(base: string | bigint, decimals: number): string {
-  const digits = BigInt(base).toString().padStart(decimals + 1, '0')
-  const whole = digits.slice(0, digits.length - decimals)
-  const frac = digits.slice(digits.length - decimals).replace(/0+$/, '')
-  return frac ? `${whole}.${frac}` : whole
-}
 
 /**
  * Split a total (in base units) into `count` equal shares. Any indivisible
@@ -65,13 +58,22 @@ export type EscrowPlan = {
   fundingCoins: { denom: string; amount: string }[]
 }
 
-export function planEscrow(token: ClaimToken, totalAmount: string, recipientCount: number): EscrowPlan {
+/**
+ * @param denom the exact spelling of the token's denom in the creator's
+ *   balance (see resolveHeldDenom). Defaults to the configured denom.
+ */
+export function planEscrow(
+  token: ClaimToken,
+  totalAmount: string,
+  recipientCount: number,
+  denom: string = TOKEN_DENOM[token],
+): EscrowPlan {
   const totalBase = BigInt(toChainAmount(totalAmount, TOKEN_DECIMALS[token]))
   const shares = splitEqually(totalBase, recipientCount)
   const feeReserve = FEE_RESERVE_PER_TX * BigInt(recipientCount + 1)
 
   const coins = new Map<string, bigint>()
-  coins.set(TOKEN_DENOM[token], totalBase)
+  coins.set(denom, totalBase)
   coins.set(DENOMS.INJ, (coins.get(DENOMS.INJ) ?? BigInt(0)) + feeReserve)
 
   const fundingCoins = [...coins.entries()]
@@ -141,12 +143,6 @@ async function broadcastFromEscrow(privateKeyHex: string, msg: MsgSend): Promise
   return result.txHash
 }
 
-export async function getEscrowBalances(escrowAddress: string): Promise<{ inj: bigint; usdc: bigint }> {
-  const balance = await fetchBalance(escrowAddress)
-  if (balance.error) throw new Error('Could not read the claim pool balance. Try again.')
-  return { inj: BigInt(balance.inj), usdc: BigInt(balance.usdc) }
-}
-
 /** Pay one share from the escrow to the claimer. */
 export async function payShareFromEscrow(
   privateKeyHex: string,
@@ -155,37 +151,59 @@ export async function payShareFromEscrow(
   amountBase: string,
 ): Promise<string> {
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
-  const balances = await getEscrowBalances(escrowAddress)
+  let held: { denom: string; amount: string }[]
+  try {
+    held = await fetchAllBalances(escrowAddress)
+  } catch {
+    throw new Error('Could not read the claim pool balance. Try again.')
+  }
+  const inj = BigInt(balanceOf(held, DENOMS.INJ))
+  const tokenCoin = held.find(c => sameDenom(c.denom, TOKEN_DENOM[token]))
+  const available = BigInt(tokenCoin?.amount ?? '0')
   const needed = BigInt(amountBase)
 
-  if (token === 'INJ' ? balances.inj < needed + ESCROW_TX_FEE : balances.usdc < needed) {
+  if (token === 'INJ' ? inj < needed + ESCROW_TX_FEE : available < needed) {
     throw new Error('This claim pool does not have enough funds left for your share.')
   }
-  if (balances.inj < ESCROW_TX_FEE) {
+  if (inj < ESCROW_TX_FEE) {
     throw new Error('This claim pool has run out of INJ to pay network fees.')
   }
 
   const msg = MsgSend.fromJSON({
     srcInjectiveAddress: escrowAddress,
     dstInjectiveAddress: recipient,
-    amount: { denom: TOKEN_DENOM[token], amount: amountBase },
+    // Use the escrow's own spelling of the denom so the chain matches the coins it holds.
+    amount: { denom: tokenCoin?.denom ?? TOKEN_DENOM[token], amount: amountBase },
   })
   return broadcastFromEscrow(privateKeyHex, msg)
 }
 
-/** Return everything left in the escrow (minus the sweep's own fee) to `refundTo`. */
+/**
+ * Return everything left in the escrow (minus the sweep's own fee) to
+ * `refundTo`: every token it holds, not only INJ and USDC, so nothing is
+ * stranded (for example USDC from before NinjaPay moved to native USDC).
+ */
 export async function sweepEscrow(privateKeyHex: string, refundTo: string): Promise<string> {
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
-  const { inj, usdc } = await getEscrowBalances(escrowAddress)
+  let held: { denom: string; amount: string }[]
+  try {
+    held = await fetchAllBalances(escrowAddress)
+  } catch {
+    throw new Error('Could not read the claim pool balance. Try again.')
+  }
+  const inj = BigInt(balanceOf(held, DENOMS.INJ))
 
   if (inj < ESCROW_TX_FEE) {
     throw new Error('The claim pool has no INJ left to pay the network fee for a refund.')
   }
 
-  const coins: { denom: string; amount: string }[] = []
-  const injRefund = inj - ESCROW_TX_FEE
-  if (injRefund > BigInt(0)) coins.push({ denom: DENOMS.INJ, amount: injRefund.toString() })
-  if (usdc > BigInt(0)) coins.push({ denom: DENOMS.USDC, amount: usdc.toString() })
+  const coins = held
+    .map(c => ({
+      denom: c.denom,
+      amount: sameDenom(c.denom, DENOMS.INJ) ? (inj - ESCROW_TX_FEE).toString() : c.amount,
+    }))
+    .filter(c => BigInt(c.amount) > BigInt(0))
+    .sort((a, b) => (a.denom < b.denom ? -1 : a.denom > b.denom ? 1 : 0))
   if (coins.length === 0) throw new Error('Nothing left to reclaim.')
 
   const msg = MsgSend.fromJSON({

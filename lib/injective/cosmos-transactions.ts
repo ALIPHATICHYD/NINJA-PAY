@@ -17,27 +17,13 @@ import {
 } from '@injectivelabs/sdk-ts'
 import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
-import { NETWORK, CHAIN_ID, DENOMS } from './constants'
+import { NETWORK, CHAIN_ID } from './constants'
+import { FAUCETS, NETWORK_LABEL } from './network'
+import { TOKENS } from './tokens'
+import { resolveHeldDenom } from './bank'
+import { toChainAmount } from '../money'
 
 const endpoints = getNetworkEndpoints(NETWORK)
-
-/**
- * Convert a human-readable amount ("1.5") to base units ("1500000" for 6 decimals).
- * String-based, so there is no floating-point rounding. Throws instead of
- * silently truncating when the amount has more decimals than the token supports.
- */
-export function toChainAmount(amount: string, decimals: number = 18): string {
-  const trimmed = amount.trim()
-  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '' || trimmed === '.') {
-    throw new Error(`Invalid amount "${amount}"`)
-  }
-  const [wholePart = '', fracPart = ''] = trimmed.split('.')
-  if (fracPart.length > decimals) {
-    throw new Error(`Amount has more than ${decimals} decimal places`)
-  }
-  const result = (wholePart + fracPart.padEnd(decimals, '0')).replace(/^0+(?=\d)/, '')
-  return result === '' ? '0' : result
-}
 
 interface TransactionOptions {
   memo?: string
@@ -168,8 +154,8 @@ export async function signAndBroadcast(
       // The chain only creates an account once it has received funds.
       if (String((error as Error)?.message ?? error).includes('not found')) {
         throw new Error(
-          `Your ${wallet.name} account ${address} has no INJ on Injective testnet yet. ` +
-            'Get some from https://testnet.faucet.injective.network/ and try again.'
+          `Your ${wallet.name} account ${address} has no INJ on ${NETWORK_LABEL} yet. ` +
+            (FAUCETS ? `Get some from ${FAUCETS.inj} and try again.` : 'Fund it with INJ and try again.')
         )
       }
       throw error
@@ -233,8 +219,7 @@ export async function sendToken(
       throw new Error('Invalid Injective address. Must start with "inj1"')
     }
 
-    const decimals = token === 'USDC' ? 6 : 18
-    const chainAmount = toChainAmount(amount, decimals)
+    const chainAmount = toChainAmount(amount, TOKENS[token].decimals)
     if (chainAmount === '0') {
       throw new Error('Amount must be greater than zero')
     }
@@ -244,7 +229,7 @@ export async function sendToken(
       srcInjectiveAddress: sender,
       dstInjectiveAddress: recipientAddress,
       amount: {
-        denom: token === 'USDC' ? DENOMS.USDC : DENOMS.INJ,
+        denom: await resolveHeldDenom(sender, TOKENS[token]),
         amount: chainAmount,
       },
     })

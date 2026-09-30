@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
-import { fromWei } from '@/lib/injective/bank'
+import { formatBaseUnits } from '@/lib/money'
+import { USDC } from '@/lib/injective/tokens'
 import { CreditCard, Phone, Wifi, Zap, Tv, AlertCircle } from 'lucide-react'
 
 type BillType = 'airtime' | 'data' | 'electricity' | 'cable'
@@ -38,7 +39,7 @@ export default function BillsPage() {
   const [identifier, setIdentifier] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentToken, setPaymentToken] = useState<'NGN' | 'USDC'>('USDC')
-  const availableUsdc = usdc ? parseFloat(fromWei(usdc)).toFixed(2) : '0'
+  const availableUsdc = formatBaseUnits(usdc || '0', USDC.decimals, 2)
 
   if (!isConnected) {
     return (

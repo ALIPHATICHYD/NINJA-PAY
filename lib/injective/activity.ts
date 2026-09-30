@@ -2,13 +2,15 @@
  * On-chain activity for Injective (Cosmos) accounts, read from the chain's
  * REST API. The chain is the source of truth: nothing here is cached or mocked.
  *
- * Covers bank transfers (MsgSend, MsgMultiSend) on the network in constants.ts.
- * EVM-rail sends (MetaMask on the inEVM chain) live on a different chain and are
- * not included.
+ * Covers bank transfers (MsgSend, MsgMultiSend) on the network in network.ts.
+ * Transfers sent from an EVM wallet (MetaMask) are EVM transactions on the
+ * same chain and are not parsed here yet.
  */
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK, DENOMS } from './constants'
+import { NETWORK } from './constants'
+import { EXPLORERS } from './network'
+import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
 
@@ -33,16 +35,19 @@ export type EscrowResolver = (addresses: string[]) => Promise<Map<string, Escrow
 
 export const MEMO_PAYROLL = 'ninjapay:payroll'
 
-const TOKENS: Record<string, { token: string; decimals: number }> = {
-  [DENOMS.INJ]: { token: 'INJ', decimals: 18 },
-  [DENOMS.USDC]: { token: 'USDC', decimals: 6 },
+// Keyed by lowercase denom: erc20: denoms may arrive checksummed or not.
+const KNOWN_DENOMS: Record<string, { token: string; decimals: number }> = {
+  [INJ.denom.toLowerCase()]: { token: INJ.symbol, decimals: INJ.decimals },
+  [USDC.denom.toLowerCase()]: { token: USDC.symbol, decimals: USDC.decimals },
+  // Polygon USDC.e used before the move to native USDC. Not Circle's native USDC.
+  [LEGACY_PEGGY_USDC_DENOM.toLowerCase()]: { token: 'USDC.e (legacy)', decimals: 6 },
   // Peggy-bridged USDT handed out by the Injective testnet faucet
-  peggy0x87aB3B4C8661e07D6372361211B96ed4Dc36B1B5: { token: 'USDT', decimals: 6 },
+  peggy0x87ab3b4c8661e07d6372361211b96ed4dc36b1b5: { token: 'USDT', decimals: 6 },
 }
 
 function toCoins(amount: { denom: string; amount: string }[]): ActivityCoin[] {
   return amount.map(c => {
-    const known = TOKENS[c.denom]
+    const known = KNOWN_DENOMS[c.denom.toLowerCase()]
     return {
       denom: c.denom,
       amountBase: c.amount,
@@ -173,4 +178,5 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   payroll: 'Payroll',
 }
 
-export const EXPLORER_TX_URL = 'https://testnet.explorer.injective.network/transaction/'
+/** InjScan transaction page for a Cosmos tx hash. */
+export const EXPLORER_TX_URL = `${EXPLORERS.cosmos}/transaction/`

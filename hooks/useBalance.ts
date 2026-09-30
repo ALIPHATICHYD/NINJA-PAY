@@ -1,84 +1,53 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useBalance as useWagmiBalance } from 'wagmi'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getInjectiveAddress } from '@injectivelabs/sdk-ts'
+import { balanceOf, fetchAllBalances } from '@/lib/injective/bank'
+import { DENOMS } from '@/lib/injective/tokens'
 
 interface BalanceReturn {
-  inj: string    // raw wei string for native INJ on EVM
-  usdc: string   // raw 6-decimal string for USDC on Cosmos
+  inj: string    // base units, 18 decimals
+  usdc: string   // base units, 6 decimals (Circle's native USDC)
   loading: boolean
   error?: string
   refetch: () => void
 }
 
+/** The inj1 form of an address, or null if it is neither a valid inj1 nor 0x address. */
+function toInjectiveAddress(address: string | null): string | null {
+  if (!address) return null
+  if (address.startsWith('inj1')) return address
+  try {
+    return getInjectiveAddress(address)
+  } catch {
+    return null
+  }
+}
+
 /**
- * Returns the connected wallet's token balances.
- * - `inj` is in wei (18 decimals) from EVM via wagmi
- * - `usdc` is fetched from Cosmos bank API (6 decimals)
+ * INJ and USDC balances (base units) of the connected wallet.
+ *
+ * Both come from the bank module for the account's inj1 address, which is the
+ * same account as its 0x address. USDC follows the MultiVM Token Standard, so
+ * this is also its ERC-20 balance: no Keplr prompt is needed to read it.
  */
 export function useBalance(address: string | null): BalanceReturn {
-  const { data, isLoading, error, refetch } = useWagmiBalance({
-    address: address as `0x${string}` | undefined,
-    query: { enabled: !!address },
+  const injectiveAddress = useMemo(() => toInjectiveAddress(address), [address])
+
+  const query = useQuery({
+    queryKey: ['bank-balances', injectiveAddress],
+    queryFn: () => fetchAllBalances(injectiveAddress!),
+    enabled: !!injectiveAddress,
+    refetchInterval: 30_000,
   })
 
-  const [usdcBalance, setUsdcBalance] = useState('0')
-  const [usdcLoading, setUsdcLoading] = useState(false)
-  const [usdcError, setUsdcError] = useState<string>()
-
-  // Fetch USDC balance from Cosmos chain
-  useEffect(() => {
-    if (!address) {
-      setUsdcBalance('0')
-      return
-    }
-
-    const fetchUSDCBalance = async () => {
-      setUsdcLoading(true)
-      setUsdcError(undefined)
-
-      try {
-        const { fetchBalance } = await import('@/lib/injective/bank')
-
-        // Try to fetch from Cosmos chain using the address
-        // If address is EVM (0x...), we need to convert to Injective address
-        let injectiveAddress = address
-
-        // If it's an EVM address, we'll need the Cosmos address from Keplr
-        if (address.startsWith('0x')) {
-          try {
-            const { getUserAddress } = await import('@/lib/injective/cosmos-transactions')
-            injectiveAddress = await getUserAddress()
-          } catch {
-            // Keplr not available, can't fetch USDC balance
-            setUsdcBalance('0')
-            setUsdcLoading(false)
-            return
-          }
-        }
-
-        const balances = await fetchBalance(injectiveAddress)
-        setUsdcBalance(balances.usdc || '0')
-      } catch (err: any) {
-        console.error('Failed to fetch USDC balance:', err)
-        setUsdcError(err.message)
-        setUsdcBalance('0')
-      } finally {
-        setUsdcLoading(false)
-      }
-    }
-
-    fetchUSDCBalance()
-  }, [address])
-
+  const balances = query.data ?? []
   return {
-    inj: data ? data.value.toString() : '0',
-    usdc: usdcBalance,
-    loading: isLoading || usdcLoading,
-    error: error?.message || usdcError,
-    refetch: () => {
-      refetch()
-      // Note: USDC refetch would need to be implemented separately
-    },
+    inj: balanceOf(balances, DENOMS.INJ),
+    usdc: balanceOf(balances, DENOMS.USDC),
+    loading: query.isLoading,
+    error: query.error ? 'Could not load your balance. Try again.' : undefined,
+    refetch: () => { void query.refetch() },
   }
 }

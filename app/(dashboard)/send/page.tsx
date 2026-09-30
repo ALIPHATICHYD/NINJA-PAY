@@ -8,8 +8,10 @@ import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
+import { formatBaseUnits } from '@/lib/money'
+import { USDC } from '@/lib/injective/tokens'
+import { EXPLORERS, INJECTIVE_EVM } from '@/lib/injective/network'
 
-const TESTNET_EXPLORER = 'https://testnet.explorer.injective.network/transaction'
 
 export default function SendPage() {
   const { address, isConnected } = useWallet()
@@ -46,7 +48,7 @@ export default function SendPage() {
 
   // Balance formatting
   const maxINJ = parseFloat(formatEther(BigInt(inj || '0')))
-  const maxUSDC = usdc ? parseFloat(usdc) / 1e6 : 0 // USDC has 6 decimals
+  const maxUSDC = Number(formatBaseUnits(usdc || '0', USDC.decimals))
   const maxAmount = sendToken === 'USDC' ? maxUSDC : maxINJ
   const parsedAmt = parseFloat(amount) || 0
   
@@ -259,7 +261,7 @@ export default function SendPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>Transaction confirmed!</span>
                 <a
-                  href={`${TESTNET_EXPLORER}/${injTxHash}`}
+                  href={`${EXPLORERS.evm}/tx/${injTxHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent-text)' }}
@@ -282,7 +284,7 @@ export default function SendPage() {
           </button>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
-            {sendToken === 'USDC' ? 'USDC on Injective Cosmos · Low fees' : 'INJ EVM Testnet · Fees paid in INJ'}
+            {sendToken === 'USDC' ? 'USDC on Injective · Low fees' : `${INJECTIVE_EVM.name} EVM (chain ${INJECTIVE_EVM.id}) · Fees paid in INJ`}
           </p>
         </div>
       )}
