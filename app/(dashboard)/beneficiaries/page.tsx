@@ -2,17 +2,9 @@
 
 import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
-import { Plus, Trash2, Send, Users2 } from 'lucide-react'
+import { Plus, Trash2, Send, Users2, Search } from 'lucide-react'
+import { useBeneficiaries, type Beneficiary } from '@/lib/beneficiaries'
 import Link from 'next/link'
-
-interface Beneficiary {
-  id: string; name: string; address: string; tag?: string; addedAt: string
-}
-
-const MOCK_BENEFICIARIES: Beneficiary[] = [
-  { id: '1', name: 'Alex — DevOps', address: 'inj1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s', tag: 'Team', addedAt: '2026-03-10' },
-  { id: '2', name: 'Sara — Design', address: 'inj1b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9st', tag: 'Team', addedAt: '2026-03-11' },
-]
 
 const TAG_COLORS: Record<string, { bg: string; color: string }> = {
   Team:   { bg: 'var(--accent-subtle)',   color: 'var(--accent-text)' },
@@ -33,7 +25,7 @@ export default function BeneficiariesPage() {
   const { isConnected } = useWallet()
 
   const [showForm, setShowForm]   = useState(false)
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(MOCK_BENEFICIARIES)
+  const [beneficiaries, setBeneficiaryList] = useBeneficiaries()
   const [name, setName]           = useState('')
   const [address, setAddress]     = useState('')
   const [tag, setTag]             = useState('')
@@ -47,9 +39,10 @@ export default function BeneficiariesPage() {
 
   const handleAdd = () => {
     if (!name || !address) { setStatus({ type: 'error', message: 'Name and address are required.' }); return }
-    if (!address.startsWith('inj1')) { setStatus({ type: 'error', message: 'Must be a valid Injective address (inj1...)' }); return }
-    const newB: Beneficiary = { id: Date.now().toString(), name, address, tag: tag || undefined, addedAt: new Date().toISOString().split('T')[0] }
-    setBeneficiaries(prev => [newB, ...prev])
+    if (!/^inj1[0-9a-z]{38}$/.test(address.trim())) { setStatus({ type: 'error', message: 'Must be a valid Injective address (inj1...)' }); return }
+    if (beneficiaries.some(b => b.address === address.trim())) { setStatus({ type: 'error', message: 'That address is already saved.' }); return }
+    const newB: Beneficiary = { id: crypto.randomUUID(), name: name.trim(), address: address.trim(), tag: tag.trim() || undefined, addedAt: new Date().toISOString().split('T')[0] }
+    setBeneficiaryList([newB, ...beneficiaries])
     setStatus({ type: 'success', message: `${name} added to beneficiaries.` })
     setName(''); setAddress(''); setTag(''); setShowForm(false)
   }
@@ -85,7 +78,7 @@ export default function BeneficiariesPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label className="label">Name / Label</label>
-              <input className="input" placeholder="e.g. Alex — DevOps" value={name} onChange={e => setName(e.target.value)} />
+              <input className="input" placeholder="e.g. Ada, Design lead" value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div>
               <label className="label">Tag (Optional)</label>
@@ -106,10 +99,7 @@ export default function BeneficiariesPage() {
 
       {/* Search */}
       <div style={{ position: 'relative', marginBottom: '16px' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
-          <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.4" />
-          <path d="M10 10L13 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-        </svg>
+        <Search size={14} aria-hidden="true" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
         <input className="input" placeholder="Search by name or address..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '36px' }} />
       </div>
 
@@ -117,14 +107,14 @@ export default function BeneficiariesPage() {
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
           <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Saved — {filtered.length}
+            Saved ({filtered.length})
           </p>
         </div>
         {filtered.length === 0 ? (
           <div className="empty-state">
             <Users2 size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 12px' }} />
-            <p style={{ fontWeight: '500' }}>No beneficiaries found</p>
-            <p>Add wallet addresses for quick sending.</p>
+            <p style={{ fontWeight: '500' }}>{beneficiaries.length === 0 ? 'No beneficiaries yet' : 'No matches'}</p>
+            <p>{beneficiaries.length === 0 ? 'Saved addresses are stored in this browser only.' : 'Try a different name or address.'}</p>
           </div>
         ) : (
           filtered.map(b => {
@@ -174,7 +164,7 @@ export default function BeneficiariesPage() {
                     <Send size={12} /> Send
                   </Link>
                   <button
-                    onClick={() => setBeneficiaries(prev => prev.filter(x => x.id !== b.id))}
+                    onClick={() => setBeneficiaryList(beneficiaries.filter(x => x.id !== b.id))}
                     className="btn-ghost"
                     style={{ color: 'var(--error)', padding: '6px 8px' }}
                   >

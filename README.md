@@ -65,13 +65,13 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Feature | Route | Status | What actually happens today |
 |---|---|---|---|
 | Send INJ to a `0x…` address | `/send` | Working on testnet | Native value transfer through wagmi `useSendTransaction` on the EVM chain configured in `components/Web3Providers.tsx`. |
-| Send INJ or USDC to an `inj1…` address | `/send` | Implemented, awaiting a funded testnet run | Builds a Cosmos `MsgSend`, simulates gas, signs with Keplr/Leap (`SIGN_MODE_DIRECT`), and waits for block inclusion. Ledger accounts are not supported yet. |
+| Send INJ or USDC to an `inj1…` address | `/send` | Signing verified on testnet; Send page not yet exercised | Builds a Cosmos `MsgSend`, simulates gas, signs with Keplr/Leap (`SIGN_MODE_DIRECT`), and waits for block inclusion. Ledger accounts are not supported yet. |
 | Payroll | `/payroll` | Partial | Sends one signed transaction per recipient through the Cosmos path. The UI describes a single `MsgMultiSend`, but that builder (`createMsgMultiSendPayroll`) is not wired up. |
-| Claim links: create | `/claims` | Implemented, awaiting a funded testnet run | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
-| Claim links: redeem | `/claim/[claimId]` | Implemented, awaiting a funded testnet run | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
-| Transactions | `/transactions` | Mock data | Renders a hardcoded `MOCK_TXS` list. |
-| Beneficiaries | `/beneficiaries` | Local only | In-memory list seeded with sample entries; nothing is persisted. |
-| Analytics | `/analytics` | Wired, no data | Reads the Supabase `transactions` table, but nothing writes to it yet (`recordTransaction` is never called). |
+| Claim links: create | `/claims` | Working on testnet (INJ verified) | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
+| Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
+| Transactions | `/transactions` | Working | Reads bank transfers for your Keplr/Leap account and your EVM wallet's `inj1` address straight from Injective testnet. Claim activity is labelled by matching escrow addresses to claim pools. |
+| Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. **Send** prefills `/send` with the address. |
+| Analytics | `/analytics` | Working | Sent and received volume in USD, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It uses the same on-chain history as Transactions. |
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No rate is quoted and no bank details are collected. |
 | Bill payments (airtime, data, electricity, cable) | `/bills` | Not live | Form is disabled; no payment is taken and nothing is sent to a provider. |
 | Wallet connection | all app routes | Working | RainbowKit (EVM wallets) plus direct Keplr/Leap detection for the Cosmos path. |
@@ -209,7 +209,7 @@ public/
 git clone https://github.com/ALIPHATICHYD/NINJA-PAY.git
 cd NINJA-PAY
 npm install
-touch .env.local             # then fill it in from the Environment variables table below
+cp .env.example .env.local   # then fill in your Supabase URL and anon key
 npm run dev
 ```
 
@@ -305,7 +305,7 @@ create table if not exists claims (
 );
 ```
 
-If you created the tables from an earlier version of this README, run the `alter table` and `create table claims` statements above as a migration. The claims code looks for the constraint names `claims_one_per_share` and `claims_one_per_claimer`, so keep them as written.
+If you created the tables from an earlier version of this README, run the `alter table` and `create table claims` statements above as a migration. Older databases may also be missing `transactions.user_address`, which makes `create index ... transactions_user_created_idx` fail with `column "user_address" does not exist`. Add it first with `alter table transactions add column if not exists user_address text;`. The claims code looks for the constraint names `claims_one_per_share` and `claims_one_per_claimer`, so keep them as written.
 
 ### Row Level Security
 
@@ -391,11 +391,11 @@ These are verified against the current code. They are the priority list before a
 
 | # | Severity | Issue | Where |
 |---|---|---|---|
-| 1 | Medium | A claim reservation left `pending` (for example, the tab closed after reserving but before the payout confirmed) keeps that share locked. Nothing expires stale reservations yet. If the payout did land on-chain, the row simply never flips to `paid`. | `lib/supabase.ts` |
-| 2 | Medium | Claim links are bearer secrets and one-claim-per-address is database-enforced, not on-chain. See the trust model under [Claim links](#claim-links-claims--claimclaimid). | `lib/injective/claim-escrow.ts` |
-| 3 | Medium | Payroll sends N separate transactions instead of one atomic `MsgMultiSend`, even though the UI says otherwise. | `app/(dashboard)/payroll/page.tsx` |
-| 4 | Medium | The EVM chain ID is inconsistent (`2424` in `Web3Providers.tsx`, `0x968` = 2408 in `evm-config.ts`), and both target inEVM RPCs. | `components/Web3Providers.tsx`, `lib/injective/evm-config.ts` |
-| 5 | Medium | `recordTransaction` is never called, so `/analytics` has no data. `/transactions` and `/beneficiaries` render hardcoded sample data. | `lib/supabase.ts`, dashboard pages |
+| 1 | High | The configured USDC denom (`peggy0x2791…`) has a total supply of **0** on Injective testnet, so USDC sends, payroll, and USDC claim pools cannot work there. The testnet faucet hands out Peggy USDT (`peggy0x87aB3B4C8661e07D6372361211B96ed4Dc36B1B5`, 6 decimals) instead. | `lib/injective/constants.ts` |
+| 2 | Medium | A claim reservation left `pending` (for example, the tab closed after reserving but before the payout confirmed) keeps that share locked. Nothing expires stale reservations yet. If the payout did land on-chain, the row simply never flips to `paid`. | `lib/supabase.ts` |
+| 3 | Medium | Claim links are bearer secrets and one-claim-per-address is database-enforced, not on-chain. See the trust model under [Claim links](#claim-links-claims--claimclaimid). | `lib/injective/claim-escrow.ts` |
+| 4 | Medium | Payroll sends N separate transactions instead of one atomic `MsgMultiSend`, even though the UI says otherwise. | `app/(dashboard)/payroll/page.tsx` |
+| 5 | Medium | The EVM chain ID is inconsistent (`2424` in `Web3Providers.tsx`, `0x968` = 2408 in `evm-config.ts`), and both target inEVM RPCs. | `components/Web3Providers.tsx`, `lib/injective/evm-config.ts` |
 | 6 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
 | 7 | Low | The escrow key for re-copying a link and reclaiming is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. | `lib/injective/claim-escrow.ts` |
 | 8 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
@@ -410,6 +410,7 @@ These are verified against the current code. They are the priority list before a
 - Claim links now move real funds through a creator-funded escrow. Previously nothing was escrowed and the claimer's own wallet paid itself.
 - The claim page reads the token from the pool's `token` column (it used to read the split type), and unwraps `params` with `use()` as Next.js 16 requires.
 - The "Percentage" and "Custom" split options were removed. They had no inputs behind them and always split equally.
+- Transactions, Analytics, and the dashboard home now show real on-chain history instead of mock data. Beneficiaries starts empty and persists in the browser. The Supabase `transactions` table is no longer read or written, so it can be dropped.
 
 ---
 

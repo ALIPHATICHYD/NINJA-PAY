@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { createClaimPool, getClaimPoolsByCreator, getClaimsForPools } from '@/lib/supabase'
+import {
+  createClaimPool,
+  getClaimPoolsByCreator,
+  getClaimsForPools,
+  isSupabaseConfigured,
+  SUPABASE_SETUP_MESSAGE,
+} from '@/lib/supabase'
 import { signAndBroadcast } from '@/lib/injective/cosmos-transactions'
 import {
   planEscrow,
@@ -72,13 +78,15 @@ export default function ClaimsPage() {
           }
         })
       )
+    } catch (e) {
+      setStatus({ type: 'error', message: errorMessage(e, 'Failed to load your claim pools.') })
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (creatorAddress) loadClaims(creatorAddress)
+    if (creatorAddress && isSupabaseConfigured) loadClaims(creatorAddress)
     else setLoading(false)
   }, [creatorAddress, loadClaims])
 
@@ -171,6 +179,14 @@ export default function ClaimsPage() {
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 2000)
     })
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div style={{ maxWidth: '520px', margin: '0 auto' }}>
+        <div className="alert-warning">{SUPABASE_SETUP_MESSAGE} Claim links store pool details there.</div>
+      </div>
+    )
   }
 
   if (!walletReady) {

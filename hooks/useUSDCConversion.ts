@@ -10,6 +10,7 @@ import {
   getUSDCPrice,
   getUSDCRedemptionRatio,
 } from '@/lib/injective/usdc-testnet'
+import { PRICE_REFRESH_MS } from '@/lib/prices'
 
 interface UseUSDCConversionReturn {
   // Prices
@@ -81,7 +82,7 @@ export function useUSDCConversion(usdcNgnRate: number = 1600): UseUSDCConversion
 
   // Poll for price updates every 30 seconds
   useEffect(() => {
-    const interval = setInterval(fetchPrices, 30000)
+    const interval = setInterval(fetchPrices, PRICE_REFRESH_MS)
     return () => clearInterval(interval)
   }, [fetchPrices])
 
@@ -160,7 +161,7 @@ export function useUSDCPrice(): {
 
   // Poll every 30 seconds
   useEffect(() => {
-    const interval = setInterval(fetchPrice, 30000)
+    const interval = setInterval(fetchPrice, PRICE_REFRESH_MS)
     return () => clearInterval(interval)
   }, [fetchPrice])
 

@@ -4,10 +4,16 @@ import { ClaimPool, ClaimRecord } from './injective/types'
 
 let _supabase: SupabaseClient | null = null
 
+/** False when .env.local is missing the Supabase URL or anon key. Check before calling any helper. */
+export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_KEY)
+
+export const SUPABASE_SETUP_MESSAGE =
+  'Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local, then restart the dev server.'
+
 function getSupabase(): SupabaseClient {
   if (!_supabase) {
-    if (!SUPABASE_URL) {
-      throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured.')
+    if (!isSupabaseConfigured) {
+      throw new Error(SUPABASE_SETUP_MESSAGE)
     }
     _supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
   }
@@ -123,6 +129,32 @@ export async function getClaimPoolsByCreator(creatorAddress: string): Promise<Cl
     return []
   }
   return (data || []).map(toClaimPool)
+}
+
+/**
+ * Map claim-pool escrow addresses to their pool, so on-chain activity with an
+ * escrow can be labelled as a claim. Addresses that are not escrows are omitted.
+ */
+export async function resolveClaimEscrows(
+  addresses: string[]
+): Promise<Map<string, { poolName: string; creatorAddress: string }>> {
+  const result = new Map<string, { poolName: string; creatorAddress: string }>()
+  if (!isSupabaseConfigured || addresses.length === 0) return result
+  const { data, error } = await supabase
+    .from('claim_pools')
+    .select('escrow_address, name, link_code, creator_address')
+    .in('escrow_address', addresses)
+  if (error) {
+    console.error('Failed to resolve claim escrows:', error)
+    return result
+  }
+  for (const row of data ?? []) {
+    result.set(row.escrow_address, {
+      poolName: row.name || `Claim ${String(row.link_code).slice(0, 4)}`,
+      creatorAddress: row.creator_address,
+    })
+  }
+  return result
 }
 
 function toClaimRecord(row: ClaimRow): ClaimRecord {

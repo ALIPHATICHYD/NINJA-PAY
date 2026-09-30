@@ -1,40 +1,34 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { eachDayOfInterval, eachWeekOfInterval, format, isAfter, startOfDay, startOfWeek, subDays } from 'date-fns'
+import { RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useTokenPrice } from '@/hooks/useTokenPrice'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
-import { getTransactionHistory } from '@/lib/supabase'
-import { TrendingUp, TrendingDown, RefreshCcw } from 'lucide-react'
-import { formatEther } from 'viem'
-import { format, subDays, isAfter } from 'date-fns'
+import { useActivity } from '@/hooks/useActivity'
+import { ACTIVITY_LABELS, coinValue, type ActivityItem, type ActivityType } from '@/lib/injective/activity'
 
 type Period = '7D' | '30D' | '90D'
 
-export default function AnalyticsPage() {
-  const { address, isConnected } = useWallet()
-  const { injUsd } = useTokenPrice()
-  const { injUsdcRate, usdcPrice } = useUSDCConversion(1)
-  const [period, setPeriod] = useState<Period>('30D')
-  
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
+const PERIOD_DAYS: Record<Period, number> = { '7D': 7, '30D': 30, '90D': 90 }
 
-  useEffect(() => {
-    let mounted = true
-    async function fetchTx() {
-      if (!address) return
-      setLoading(true)
-      const data = await getTransactionHistory(address, 500) // fetch up to 500
-      if (mounted) {
-        setTransactions(data)
-        setLoading(false)
-      }
-    }
-    fetchTx()
-    return () => { mounted = false }
-  }, [address])
+const TYPE_COLORS: Record<ActivityType, string> = {
+  send: 'var(--accent)',
+  receive: 'var(--success)',
+  'claim-fund': 'var(--inj-color)',
+  'claim-received': 'var(--inj-color)',
+  'claim-reclaim': 'var(--text-muted)',
+  payroll: 'var(--warning)',
+}
+
+export default function AnalyticsPage() {
+  const { isConnected } = useWallet()
+  const { injUsd } = useTokenPrice()
+  const { usdcPrice } = useUSDCConversion(1)
+  const { items, loading, error, refetch } = useActivity()
+  const [period, setPeriod] = useState<Period>('30D')
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
 
   if (!isConnected) {
     return (
@@ -44,172 +38,150 @@ export default function AnalyticsPage() {
     )
   }
 
-  // Filter transactions by period
-  const cutoffDays = period === '7D' ? 7 : period === '30D' ? 30 : 90
-  const cutoffDate = subDays(new Date(), cutoffDays)
-  
-  const periodTxs = transactions.filter(tx => 
-    tx.status !== 'failed' && isAfter(new Date(tx.created_at), cutoffDate)
-  )
+  // USD value of a transfer. Tokens without a known price count as $0.
+  const injPrice = Number(injUsd) || 0
+  const usdcUsd = Number(usdcPrice) || 1
+  const usdValue = (tx: ActivityItem) =>
+    tx.coins.reduce((sum, c) => {
+      const price = c.token === 'INJ' ? injPrice : c.token === 'USDC' ? usdcUsd : c.token === 'USDT' ? 1 : 0
+      return sum + coinValue(c) * price
+    }, 0)
 
-  // Calculate stats
-  let totalWei = BigInt(0)
-  const uniqueRecipients = new Set<string>()
-  const breakdown: Record<string, number> = { send: 0, bills: 0, payroll: 0, claim: 0 }
+  const now = new Date()
+  const start = startOfDay(subDays(now, PERIOD_DAYS[period] - 1))
+  const periodTxs = items.filter(tx => tx.success && !isAfter(start, tx.timestamp))
 
-  periodTxs.forEach(tx => {
-    try {
-      totalWei += BigInt(tx.amount || '0')
-    } catch(e) {}
-    if (tx.recipient) uniqueRecipients.add(tx.recipient)
-    breakdown[tx.type] = (breakdown[tx.type] || 0) + 1
-  })
+  // Claim reclaims are your own funds coming back, so they are not counted as volume.
+  const sentUsd = periodTxs.filter(t => t.direction === 'out').reduce((s, t) => s + usdValue(t), 0)
+  const receivedUsd = periodTxs.filter(t => t.direction === 'in' && t.type !== 'claim-reclaim').reduce((s, t) => s + usdValue(t), 0)
+  const counterparties = new Set(periodTxs.map(t => t.counterparty))
 
-  // Convert to USD values using injUsd
-  const totalVolumeUSD = parseFloat(formatEther(totalWei)) * (injUsd || 0)
-  const avgTxUSD = periodTxs.length > 0 ? totalVolumeUSD / periodTxs.length : 0
-
-  // Build chart bars
-  const groupingFormat = period === '7D' ? 'EEE' : period === '30D' ? 'w' : 'MMM'
-  const chartDataMap: Record<string, number> = {}
-
-  periodTxs.forEach(tx => {
-    const key = period === '30D' 
-      ? `W${format(new Date(tx.created_at), 'w')}` // Week number
-      : format(new Date(tx.created_at), groupingFormat)
-    
-    let usd = 0
-    try { usd = parseFloat(formatEther(BigInt(tx.amount || '0'))) * (injUsd || 0) } catch(e) {}
-    chartDataMap[key] = (chartDataMap[key] || 0) + usd
-  })
-
-  // Format bars based on the period (this is simplified to just show available data)
-  const bars = Object.keys(chartDataMap).map(k => ({ month: k, value: chartDataMap[k] }))
-  // If no data, provide an empty structure
-  if (bars.length === 0) {
-    bars.push({ month: 'None', value: 0 })
+  // Bars: one per day for 7D, one per week for 30D and 90D, including empty ones.
+  const weekly = period !== '7D'
+  const bucketStarts = weekly
+    ? eachWeekOfInterval({ start, end: now }, { weekStartsOn: 1 })
+    : eachDayOfInterval({ start, end: now })
+  const bars = bucketStarts.map(bucket => ({ label: format(bucket, weekly ? 'd MMM' : 'EEE'), key: bucket.getTime(), value: 0 }))
+  for (const tx of periodTxs) {
+    if (tx.type === 'claim-reclaim') continue
+    const key = (weekly ? startOfWeek(tx.timestamp, { weekStartsOn: 1 }) : startOfDay(tx.timestamp)).getTime()
+    const bar = bars.find(b => b.key === key)
+    if (bar) bar.value += usdValue(tx)
   }
+  const maxVal = Math.max(0, ...bars.map(b => b.value))
 
-  const maxVal = Math.max(...bars.map(b => b.value))
-
-  // Breakdown percentages
-  const txCount = periodTxs.length || 1
-  const bData = [
-    { type: 'Send',    count: breakdown.send || 0,    pct: Math.round(((breakdown.send || 0)/txCount)*100),    color: 'var(--accent)' },
-    { type: 'Bills',   count: breakdown.bills || 0,   pct: Math.round(((breakdown.bills || 0)/txCount)*100),   color: 'var(--warning)' },
-    { type: 'Payroll', count: breakdown.payroll || 0, pct: Math.round(((breakdown.payroll || 0)/txCount)*100), color: '#a78bfa' },
-    { type: 'Claims',  count: breakdown.claim || 0,   pct: Math.round(((breakdown.claim || 0)/txCount)*100),   color: 'var(--inj-color)' },
-  ].filter(b => b.count > 0).sort((a,b) => b.count - a.count)
+  const counts = new Map<ActivityType, number>()
+  periodTxs.forEach(t => counts.set(t.type, (counts.get(t.type) ?? 0) + 1))
+  const total = periodTxs.length || 1
+  const breakdown = [...counts.entries()]
+    .map(([type, count]) => ({ type, count, pct: Math.round((count / total) * 100) }))
+    .sort((a, b) => b.count - a.count)
 
   return (
     <div style={{ maxWidth: '820px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Analytics</h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Overview of your on-chain activity.</p>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your Injective testnet activity, read directly from the chain.</p>
         </div>
-        <div className="seg-control" style={{ width: 'fit-content' }}>
-          {(['7D', '30D', '90D'] as Period[]).map(p => (
-            <button key={p} onClick={() => setPeriod(p)} className={`seg-btn${period === p ? ' active' : ''}`}>{p}</button>
-          ))}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
+            <RefreshCcw size={12} /> {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <div className="seg-control" style={{ width: 'fit-content' }}>
+            {(['7D', '30D', '90D'] as Period[]).map(p => (
+              <button key={p} onClick={() => setPeriod(p)} className={`seg-btn${period === p ? ' active' : ''}`}>{p}</button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center' }}>
-          <RefreshCcw size={24} className="spinner" style={{ color: 'var(--accent-text)', margin: '0 auto' }} />
+      {error && <div className="alert-error" style={{ marginBottom: '16px' }}>{error}</div>}
+
+      {loading && items.length === 0 ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+          {[0, 1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: '84px', borderRadius: '10px' }} />)}
         </div>
       ) : (
         <>
-          {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '20px' }}>
             {[
-              { label: 'Total Volume',     value: `$${totalVolumeUSD.toFixed(2)}`, trend: '', up: true },
-              { label: 'Transactions',     value: `${periodTxs.length}`,          trend: '', up: true },
-              { label: 'Avg Transaction',  value: `$${avgTxUSD.toFixed(2)}`,       trend: '', up: true },
-              { label: 'Beneficiaries',    value: `${uniqueRecipients.size}`,      trend: '', up: true },
+              { label: 'Sent', value: `$${sentUsd.toFixed(2)}` },
+              { label: 'Received', value: `$${receivedUsd.toFixed(2)}` },
+              { label: 'Transactions', value: `${periodTxs.length}` },
+              { label: 'Counterparties', value: `${counterparties.size}` },
             ].map(stat => (
               <div key={stat.label} className="card-sm">
-                <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>
-                  {stat.label}
-                </p>
-                <p style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+                <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '10px' }}>{stat.label}</p>
+                <p style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', fontFamily: 'var(--font-geist-mono), monospace' }}>
                   {stat.value}
                 </p>
               </div>
             ))}
           </div>
 
-          {/* Bar chart */}
           <div className="card" style={{ marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Volume (USD)</h3>
-              <span className="badge badge-accent">{period}</span>
+              <span className="badge badge-accent">{weekly ? 'Weekly' : 'Daily'}</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '160px', padding: '0 4px' }}>
               {bars.map((b, i) => {
                 const hovered = hoveredBar === i
-                const height = maxVal === 0 ? 0 : Math.max((b.value / maxVal) * 140, 4)
+                const height = maxVal === 0 || b.value === 0 ? 2 : Math.max((b.value / maxVal) * 130, 4)
                 return (
                   <div
-                    key={i}
-                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                    key={b.key}
+                    style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}
                     onMouseEnter={() => setHoveredBar(i)}
                     onMouseLeave={() => setHoveredBar(null)}
                   >
-                    {/* Tooltip */}
                     <div
                       style={{
                         fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)',
                         background: 'var(--bg-hover)', border: '1px solid var(--border-light)',
                         borderRadius: '5px', padding: '2px 7px',
-                        opacity: hovered ? 1 : 0, transition: 'opacity 0.15s',
-                        whiteSpace: 'nowrap',
+                        opacity: hovered ? 1 : 0, transition: 'opacity 0.15s', whiteSpace: 'nowrap',
                       }}
                     >
                       ${b.value.toFixed(2)}
                     </div>
-                    {/* Bar */}
-                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '130px' }}>
+                    <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', height: '130px' }}>
                       <div
                         style={{
                           width: '100%',
                           height: `${height}px`,
-                          background: hovered ? 'var(--accent-gradient)' : 'var(--accent-subtle)',
+                          background: hovered ? 'var(--accent)' : 'var(--accent-subtle)',
                           border: `1px solid ${hovered ? 'transparent' : 'var(--accent-border)'}`,
                           borderRadius: '5px 5px 0 0',
-                          transition: 'all 0.2s',
-                          position: 'relative',
-                          overflow: 'hidden',
+                          transition: 'background 0.2s',
                         }}
                       />
                     </div>
-                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '500' }}>{b.month}</p>
+                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: '100%' }}>
+                      {period === '90D' && i % 2 === 1 ? '' : b.label}
+                    </p>
                   </div>
                 )
               })}
             </div>
           </div>
 
-          {/* Breakdown */}
           <div className="card">
             <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '20px' }}>Transaction Breakdown</h3>
-            {bData.length === 0 ? (
+            {breakdown.length === 0 ? (
               <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No transactions in this period.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {bData.map(row => (
+                {breakdown.map(row => (
                   <div key={row.type}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: row.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>{row.type}</span>
-                      </div>
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{row.count} txns · {row.pct}%</span>
+                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>{ACTIVITY_LABELS[row.type]}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{row.count} {row.count === 1 ? 'txn' : 'txns'}, {row.pct}%</span>
                     </div>
                     <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${row.pct}%`, background: row.color, opacity: 0.8 }} />
+                      <div className="progress-fill" style={{ width: `${row.pct}%`, background: TYPE_COLORS[row.type], opacity: 0.8 }} />
                     </div>
                   </div>
                 ))}

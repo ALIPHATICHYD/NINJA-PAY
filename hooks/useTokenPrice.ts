@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getPrices, PRICE_REFRESH_MS } from '@/lib/prices'
 
 interface TokenPrices {
   injUsd: number
@@ -19,20 +20,12 @@ export function useTokenPrice(): TokenPrices {
     let mounted = true
 
     const fetchPrice = async () => {
-      try {
-        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=injective-protocol&vs_currencies=usd')
-        const data = await res.json()
-        if (mounted && data['injective-protocol']) {
-          setPrices(prev => ({ ...prev, injUsd: data['injective-protocol'].usd, loading: false }))
-        }
-      } catch (err) {
-        console.error('Failed to fetch INJ price:', err)
-        if (mounted) setPrices(prev => ({ ...prev, loading: false }))
-      }
+      const { injUsd } = await getPrices()
+      if (mounted) setPrices(prev => ({ ...prev, injUsd: injUsd ?? prev.injUsd, loading: false }))
     }
 
     fetchPrice()
-    const interval = setInterval(fetchPrice, 30000) // update every 30s
+    const interval = setInterval(fetchPrice, PRICE_REFRESH_MS)
     return () => {
       mounted = false
       clearInterval(interval)

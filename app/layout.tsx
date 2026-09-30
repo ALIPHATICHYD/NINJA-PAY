@@ -37,7 +37,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    // suppressHydrationWarning: browser extensions (e.g. QuillBot's data-qb-installed) add
+    // attributes to <html> before React hydrates. This only silences attribute diffs on this element.
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body>
         {children}
       </body>

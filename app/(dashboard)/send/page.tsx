@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
@@ -27,6 +27,12 @@ export default function SendPage() {
   const [tab, setTab] = useState<'send' | 'offramp'>('send')
   const [sendToken, setSendToken] = useState<'INJ' | 'USDC'>('USDC')
   const [recipient, setRecipient] = useState('')
+
+  // Prefill from /send?to=<address> (used by the Beneficiaries "Send" button).
+  useEffect(() => {
+    const to = new URLSearchParams(window.location.search).get('to')
+    if (to && /^(inj1[0-9a-z]{38}|0x[0-9a-fA-F]{40})$/.test(to)) setRecipient(to)
+  }, [])
   const [amount, setAmount] = useState('')
   const [txHash, setTxHash] = useState('')
   const [sendStatus, setSendStatus] = useState<{ type: 'idle' | 'pending' | 'success' | 'error'; message: string }>({ 

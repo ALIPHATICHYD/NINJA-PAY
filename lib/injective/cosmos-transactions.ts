@@ -164,7 +164,16 @@ export async function signAndBroadcast(
   const pubKey = toBase64(key.pubKey)
 
   const [accountResponse, latestBlock] = await Promise.all([
-    new ChainRestAuthApi(endpoints.rest).fetchAccount(address),
+    new ChainRestAuthApi(endpoints.rest).fetchAccount(address).catch((error: unknown) => {
+      // The chain only creates an account once it has received funds.
+      if (String((error as Error)?.message ?? error).includes('not found')) {
+        throw new Error(
+          `Your ${wallet.name} account ${address} has no INJ on Injective testnet yet. ` +
+            'Get some from https://testnet.faucet.injective.network/ and try again.'
+        )
+      }
+      throw error
+    }),
     new ChainRestTendermintApi(endpoints.rest).fetchLatestBlock(),
   ])
   const account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()

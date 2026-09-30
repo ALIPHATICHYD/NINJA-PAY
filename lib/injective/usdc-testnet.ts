@@ -7,6 +7,7 @@
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { NETWORK, MARKETS, USDC_TESTNET_CONFIG, DENOMS } from './constants'
+import { getPrices } from '../prices'
 
 const endpoints = getNetworkEndpoints(NETWORK)
 
@@ -28,65 +29,24 @@ function fromChainFormat(chainAmount: string | number, decimals: number): string
 }
 
 /**
- * Fetch live USDC price in USD from CoinGecko
+ * USDC price in USD (shared, cached feed). Falls back to $1.
  */
 export async function getUSDCPrice(): Promise<string> {
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=usd'
-    )
-    const data = await response.json()
-    
-    if (data['usd-coin']?.usd) {
-      return data['usd-coin'].usd.toString()
-    }
-    
-    return '1' // USDC should be ~$1
-  } catch (error) {
-    console.error('Failed to fetch USDC price:', error)
-    return '1' // Fallback to $1
-  }
+  const { usdcUsd } = await getPrices()
+  return String(usdcUsd ?? 1)
 }
 
 /**
- * Fetch live INJ/USDC price from CoinGecko
+ * INJ price in USD, used as the INJ/USDC rate (shared, cached feed). "0" if unknown.
  */
 export async function getINJUSDCPriceFromOrderbook(): Promise<string> {
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=injective-protocol&vs_currencies=usd'
-    )
-    const data = await response.json()
-    const injPrice = data['injective-protocol']?.usd
-
-    if (!injPrice) {
-      console.warn('Failed to fetch INJ price')
-      return '0'
-    }
-
-    return injPrice.toString()
-  } catch (error) {
-    console.error('Failed to fetch INJ/USDC price from CoinGecko:', error)
-    return '0'
-  }
+  const { injUsd } = await getPrices()
+  return String(injUsd ?? 0)
 }
 
-/**
- * Fetch live INJ/USDC price from CoinGecko (fallback)
- */
+/** Same as getINJUSDCPriceFromOrderbook; kept for existing callers. */
 export async function getINJUSDCPriceFromCoinGecko(): Promise<string> {
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=injective-protocol&vs_currencies=usd'
-    )
-    const data = await response.json()
-    const injUsdPrice = data['injective-protocol']?.usd || '0'
-    
-    return injUsdPrice.toString()
-  } catch (error) {
-    console.error('Failed to fetch INJ price from CoinGecko:', error)
-    return '0'
-  }
+  return getINJUSDCPriceFromOrderbook()
 }
 
 /**

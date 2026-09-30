@@ -18,6 +18,10 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useActivity } from '@/hooks/useActivity'
+import { ACTIVITY_LABELS, EXPLORER_TX_URL, coinValue, formatCoinAmount } from '@/lib/injective/activity'
+import { useBeneficiaries } from '@/lib/beneficiaries'
+import { format } from 'date-fns'
 import { fromWei } from '@/lib/injective/bank'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 
@@ -36,6 +40,15 @@ export default function DashboardHome() {
   const { inj, usdc, loading: balLoading } = useBalance(address)
   const { injUsdcRate, usdcPrice, loading: priceLoading } = useUSDCConversion(1)
   const { userAddress: cosmosAddress, isReady: cosmosReady } = useCosmosTransaction()
+  const { items: activity, loading: activityLoading } = useActivity()
+  const [beneficiaries] = useBeneficiaries()
+
+  // Outgoing value in USDC terms (INJ converted at the live rate).
+  const injRate = parseFloat(injUsdcRate) || 0
+  const sentUsdc = activity
+    .filter(tx => tx.success && tx.direction === 'out')
+    .reduce((sum, tx) => sum + tx.coins.reduce((s, c) => s + coinValue(c) * (c.token === 'INJ' ? injRate : c.token === 'USDC' || c.token === 'USDT' ? 1 : 0), 0), 0)
+  const recent = activity.slice(0, 5)
 
   const injDisplay = balLoading ? '—' : parseFloat(fromWei(inj)).toFixed(4)
   const usdcDisplay = balLoading ? '—' : parseFloat(fromWei(usdc)).toFixed(2)
@@ -260,9 +273,9 @@ export default function DashboardHome() {
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
         {[
-          { label: 'Total Sent', value: '—' },
-          { label: 'Transactions', value: '—' },
-          { label: 'Beneficiaries', value: '—' },
+          { label: 'Total Sent', value: activityLoading ? '…' : `$${sentUsdc.toFixed(2)}` },
+          { label: 'Transactions', value: activityLoading ? '…' : String(activity.length) },
+          { label: 'Beneficiaries', value: String(beneficiaries.length) },
         ].map(s => (
           <div key={s.label} className="card-sm">
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -340,7 +353,12 @@ export default function DashboardHome() {
             View all <ArrowUpRight size={12} />
           </Link>
         </div>
-        <div className="empty-state">
+        {activityLoading && recent.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {[0, 1, 2].map(i => <div key={i} className="skeleton" style={{ height: '18px' }} />)}
+          </div>
+        ) : recent.length === 0 ? (
+          <div className="empty-state">
           <div
             style={{
               width: '44px',
@@ -358,12 +376,35 @@ export default function DashboardHome() {
           </div>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: '500' }}>No transactions yet</p>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Start by sending INJ to another wallet or paying a bill.
+            Start by sending INJ or creating a claim link.
           </p>
           <Link href="/send" style={{ display: 'inline-block', marginTop: '16px', fontSize: '13px', color: 'var(--accent-text)' }}>
             Send your first transaction
           </Link>
         </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {recent.map((tx, i) => (
+              <a
+                key={`${tx.hash}-${i}`}
+                href={`${EXPLORER_TX_URL}${tx.hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '12px 0', borderTop: i === 0 ? 'none' : '1px solid var(--border)', textDecoration: 'none' }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                    {ACTIVITY_LABELS[tx.type]}{tx.label ? `: ${tx.label}` : ''}
+                  </p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{format(tx.timestamp, 'd MMM, HH:mm')}</p>
+                </div>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-geist-mono), monospace', whiteSpace: 'nowrap' }}>
+                  {tx.direction === 'out' ? '−' : '+'}{tx.coins.map(c => `${formatCoinAmount(c, 4)} ${c.token}`).join(' + ')}
+                </p>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

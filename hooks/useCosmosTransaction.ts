@@ -21,7 +21,7 @@ interface UseCosmosTxReturn {
 
   // Methods
   initializeWallet: () => Promise<void>
-  sendToken: (recipientAddress: string, amount: string, token: 'INJ' | 'USDC') => Promise<string>
+  sendToken: (recipientAddress: string, amount: string, token: 'INJ' | 'USDC', memo?: string) => Promise<string>
   reset: () => void
 }
 
@@ -69,7 +69,7 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
   }, [isReady, initializeWallet])
 
   const sendTokenFn = useCallback(
-    async (recipientAddress: string, amount: string, token: 'INJ' | 'USDC'): Promise<string> => {
+    async (recipientAddress: string, amount: string, token: 'INJ' | 'USDC', memo?: string): Promise<string> => {
       if (!userAddress) {
         throw new Error('Wallet not initialized. Please connect your wallet first.')
       }
@@ -79,7 +79,7 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
 
       try {
         // amount is human-readable ("1.5"); sendToken converts to base units once
-        const txHash = await sendToken(recipientAddress, amount, CHAIN_ID, token)
+        const txHash = await sendToken(recipientAddress, amount, CHAIN_ID, token, { memo })
         console.log(`✓ ${token} transfer successful: ${txHash}`)
         return txHash
       } catch (err: any) {

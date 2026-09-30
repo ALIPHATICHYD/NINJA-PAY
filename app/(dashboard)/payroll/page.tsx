@@ -6,6 +6,7 @@ import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { fromWei } from '@/lib/injective/bank'
+import { MEMO_PAYROLL } from '@/lib/injective/activity'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
@@ -50,7 +51,7 @@ export default function PayrollPage() {
       // One transaction per recipient. sendToken takes the human-readable
       // amount and converts to base units once.
       for (const recipient of recipients) {
-        await sendToken(recipient.address, recipient.amount.trim(), token)
+        await sendToken(recipient.address, recipient.amount.trim(), token, MEMO_PAYROLL)
       }
 
       setStatus({ 

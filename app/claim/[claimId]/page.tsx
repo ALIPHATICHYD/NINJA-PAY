@@ -15,6 +15,7 @@ import {
   reserveClaimShare,
   markClaimPaid,
   releaseClaim,
+  isSupabaseConfigured,
 } from '@/lib/supabase'
 import { escrowAddressFromKey, readKeyFromFragment, payShareFromEscrow } from '@/lib/injective/claim-escrow'
 import type { ClaimPool } from '@/lib/injective/types'
@@ -79,6 +80,10 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
 
   // Load the pool and read the escrow key from the URL fragment (never sent to a server).
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false)
+      return
+    }
     let active = true
     ;(async () => {
       try {
@@ -159,6 +164,9 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     )
   }
 
+  if (!isSupabaseConfigured) {
+    return <Notice title="Claims are unavailable" body="This NinjaPay instance has no database configured, so claim links cannot be loaded." />
+  }
   if (!pool) {
     return <Notice title="Claim not found" body="This claim link does not exist. Check that you copied the whole link." />
   }
