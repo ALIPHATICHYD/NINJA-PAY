@@ -6,6 +6,7 @@ import { ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useActivity } from '@/hooks/useActivity'
 import { StatusChip } from '@/components/StatusChip'
+import { NETWORK_LABEL } from '@/lib/injective/network'
 import {
   ACTIVITY_LABELS,
   EXPLORER_TX_URL,
@@ -64,7 +65,7 @@ export default function TransactionsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', gap: '12px', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Transactions</h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your Injective testnet transfers, read directly from the chain.</p>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your {NETWORK_LABEL} transfers, read directly from the chain.</p>
         </div>
         <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
           <RefreshCcw size={12} /> {loading ? 'Refreshing…' : 'Refresh'}
@@ -146,8 +147,8 @@ export default function TransactionsPage() {
       )}
 
       <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-        Shows bank transfers on Injective testnet for your Keplr/Leap account and your EVM wallet&apos;s inj1 address.
-        Sends made on the separate inEVM chain are not listed.
+        Shows bank transfers on {NETWORK_LABEL} for your Keplr/Leap account and your EVM wallet&apos;s inj1 address.
+        Transfers sent from an EVM wallet (MetaMask) are not listed yet.
       </p>
     </div>
   )

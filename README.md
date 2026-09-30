@@ -128,18 +128,17 @@ flowchart LR
 
 ## Networks, tokens, and denominations
 
-All network constants live in `lib/injective/constants.ts`, `lib/injective/evm-config.ts`, and `components/Web3Providers.tsx`.
+All network settings live in `lib/injective/network.ts`. Set `NEXT_PUBLIC_INJECTIVE_NETWORK=mainnet` to target mainnet; anything else (including unset) means testnet.
 
-| Setting | Value | Source |
+| Setting | Testnet | Mainnet |
 |---|---|---|
-| Cosmos network | `Network.Testnet` | `lib/injective/constants.ts` |
-| Cosmos chain ID | `injective-888` (`ChainId.Testnet`) | `@injectivelabs/ts-types` |
-| EVM chain used by RainbowKit | ID `2424`, RPC `https://testnet.rpc.inevm.com/http` | `components/Web3Providers.tsx` |
-| EVM chain used by "add network" helpers | ID `0x968` (2408), RPCs `testnet.rpc.inevm.com`, `testnet.evm.injective.network` | `lib/injective/evm-config.ts` |
-| Explorer | `https://testnet.explorer.injective.network` | both |
+| Cosmos chain ID | `injective-888` | `injective-1` |
+| EVM chain ID (wagmi, RainbowKit, "add network") | `1439` (`0x59f`) | `1776` (`0x6f0`) |
+| EVM JSON-RPC | `https://k8s.testnet.json-rpc.injective.network/` | `https://sentry.evm-rpc.injective.network/` |
+| EVM explorer (0x transaction hashes) | `https://testnet.blockscout.injective.network` | `https://blockscout.injective.network` |
+| Cosmos explorer (Cosmos transaction hashes) | `https://testnet.explorer.injective.network` | `https://injscan.com` |
 
-> [!WARNING]
-> The two EVM chain IDs above disagree, and both point at inEVM RPCs rather than Injective's native EVM. Pick one target chain and use it everywhere before relying on the EVM rail. This is tracked in [Known issues](#known-issues).
+The EVM chain ID and the Cosmos chain ID name the **same** network, so a `0x…` address and its `inj1…` form are one account with one balance ([Injective docs](https://docs.injective.network/developers/network-information)). Earlier builds pointed wallets at chain `2424`, which is inEVM; Injective's [EVM cheat sheet](https://docs.injective.network/developers-evm/evm-integrations-cheat-sheet) says not to use inEVM because it is deprecated.
 
 Token settings live in `lib/injective/tokens.ts`.
 
@@ -238,6 +237,7 @@ All variables are prefixed `NEXT_PUBLIC_`, which means **they are bundled into c
 |---|---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes, for claims and analytics | `lib/supabase.ts` | Supabase → Project Settings → API. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes, for claims and analytics | `lib/supabase.ts` | Publishable anon key. Protect tables with RLS. |
+| `NEXT_PUBLIC_INJECTIVE_NETWORK` | No | `lib/injective/network.ts` | `mainnet` to target mainnet. Defaults to testnet. |
 | `NEXT_PUBLIC_WALLETCONNECT_ID` | Recommended | `components/Web3Providers.tsx` | From [WalletConnect Cloud](https://cloud.walletconnect.com). A shared fallback ID is hardcoded; use your own for anything public. |
 | `NEXT_PUBLIC_BACKEND_URL` | No | `lib/injective/constants.ts` | Defaults to `http://localhost:3001`. No backend ships with this repo. |
 | `NEXT_PUBLIC_ESCROW_WALLET` | No | `lib/injective/constants.ts` | Reserved for future claim escrow; unused today. |
@@ -399,15 +399,15 @@ These are verified against the current code. They are the priority list before a
 | 1 | Medium | A claim reservation left `pending` (for example, the tab closed after reserving but before the payout confirmed) keeps that share locked. Nothing expires stale reservations yet. If the payout did land on-chain, the row simply never flips to `paid`. | `lib/supabase.ts` |
 | 2 | Medium | Claim links are bearer secrets and one-claim-per-address is database-enforced, not on-chain. See the trust model under [Claim links](#claim-links-claims--claimclaimid). | `lib/injective/claim-escrow.ts` |
 | 3 | Medium | Payroll sends N separate transactions instead of one atomic `MsgMultiSend`, even though the UI says otherwise. | `app/(dashboard)/payroll/page.tsx` |
-| 4 | Medium | The EVM chain ID is inconsistent (`2424` in `Web3Providers.tsx`, `0x968` = 2408 in `evm-config.ts`), and both target inEVM RPCs. | `components/Web3Providers.tsx`, `lib/injective/evm-config.ts` |
-| 5 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
-| 6 | Low | The escrow key for re-copying a link and reclaiming is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. | `lib/injective/claim-escrow.ts` |
-| 7 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
-| 8 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx`, `lib/injective/usdc-testnet.ts` |
-| 9 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error. Injective needs EIP-712 (amino) signing for Ledger, which is not implemented. | `lib/injective/cosmos-transactions.ts` |
+| 4 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
+| 5 | Low | The escrow key for re-copying a link and reclaiming is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. | `lib/injective/claim-escrow.ts` |
+| 6 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
+| 7 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx`, `lib/injective/usdc-testnet.ts` |
+| 8 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error. Injective needs EIP-712 (amino) signing for Ledger, which is not implemented. | `lib/injective/cosmos-transactions.ts` |
 
 **Fixed:**
 
+- Wallets now use Injective's native EVM (chain `1439` on testnet, `1776` on mainnet) everywhere. Before, RainbowKit used inEVM chain `2424` and the "add network" helper used `2408`.
 - USDC is now Circle's native USDC (`erc20:` denom, 6 decimals) on both networks. The old Peggy USDC.e denom had zero supply on testnet, and several screens divided USDC by 10^18 instead of 10^6.
 - Cosmos transactions are now signed by the wallet. Previously a Keplr/Leap signer was passed to `MsgBroadcasterWithPk` as a private key.
 - Amounts are converted to base units exactly once, inside `sendToken`. Previously they were converted twice, so 1 USDC was requested as 1,000,000 USDC.

@@ -1,9 +1,5 @@
-import { Network } from '@injectivelabs/networks'
-import { ChainId } from '@injectivelabs/ts-types'
-
-// Network configuration
-export const NETWORK: Network = Network.Testnet // Switch to Network.Mainnet for production
-export const CHAIN_ID = ChainId.Testnet
+// Network configuration lives in network.ts (set NEXT_PUBLIC_INJECTIVE_NETWORK).
+export { NETWORK, CHAIN_ID } from './network'
 
 // Exchange market IDs
 export const MARKETS = {

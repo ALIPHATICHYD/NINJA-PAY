@@ -17,8 +17,7 @@
  * (see `resolveHeldDenom` in bank.ts).
  */
 
-import { Network } from '@injectivelabs/networks'
-import { NETWORK } from './constants'
+import { IS_MAINNET } from './network'
 
 export type TokenSymbol = 'INJ' | 'USDC'
 
@@ -41,7 +40,7 @@ const USDC_ADDRESS: Record<'testnet' | 'mainnet', `0x${string}`> = {
   mainnet: '0xa00C59fF5a080D2b954d0c75e46E22a0c371235a',
 }
 
-const usdcAddress = USDC_ADDRESS[NETWORK === Network.Mainnet ? 'mainnet' : 'testnet']
+const usdcAddress = USDC_ADDRESS[IS_MAINNET ? 'mainnet' : 'testnet']
 
 export const INJ: TokenInfo = {
   symbol: 'INJ',

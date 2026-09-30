@@ -19,8 +19,7 @@ import {
 } from '@/lib/supabase'
 import { escrowAddressFromKey, readKeyFromFragment, payShareFromEscrow } from '@/lib/injective/claim-escrow'
 import type { ClaimPool } from '@/lib/injective/types'
-
-const EXPLORER_TX = 'https://testnet.explorer.injective.network/transaction/'
+import { EXPLORER_TX_URL } from '@/lib/injective/activity'
 
 type Status =
   | { type: 'idle' }
@@ -213,7 +212,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
               {status.message}
             </p>
             <a
-              href={`${EXPLORER_TX}${status.txHash}`}
+              href={`${EXPLORER_TX_URL}${status.txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center gap-1 text-sm text-ocean-text underline underline-offset-4"

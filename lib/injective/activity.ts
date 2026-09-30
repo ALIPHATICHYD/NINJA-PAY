@@ -2,13 +2,14 @@
  * On-chain activity for Injective (Cosmos) accounts, read from the chain's
  * REST API. The chain is the source of truth: nothing here is cached or mocked.
  *
- * Covers bank transfers (MsgSend, MsgMultiSend) on the network in constants.ts.
- * EVM-rail sends (MetaMask on the inEVM chain) live on a different chain and are
- * not included.
+ * Covers bank transfers (MsgSend, MsgMultiSend) on the network in network.ts.
+ * Transfers sent from an EVM wallet (MetaMask) are EVM transactions on the
+ * same chain and are not parsed here yet.
  */
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { NETWORK } from './constants'
+import { EXPLORERS } from './network'
 import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
@@ -177,4 +178,5 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   payroll: 'Payroll',
 }
 
-export const EXPLORER_TX_URL = 'https://testnet.explorer.injective.network/transaction/'
+/** InjScan transaction page for a Cosmos tx hash. */
+export const EXPLORER_TX_URL = `${EXPLORERS.cosmos}/transaction/`

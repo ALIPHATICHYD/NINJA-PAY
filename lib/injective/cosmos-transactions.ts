@@ -18,6 +18,7 @@ import {
 import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
 import { NETWORK, CHAIN_ID } from './constants'
+import { FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
 import { resolveHeldDenom } from './bank'
 import { toChainAmount } from '../money'
@@ -153,8 +154,8 @@ export async function signAndBroadcast(
       // The chain only creates an account once it has received funds.
       if (String((error as Error)?.message ?? error).includes('not found')) {
         throw new Error(
-          `Your ${wallet.name} account ${address} has no INJ on Injective testnet yet. ` +
-            'Get some from https://testnet.faucet.injective.network/ and try again.'
+          `Your ${wallet.name} account ${address} has no INJ on ${NETWORK_LABEL} yet. ` +
+            (FAUCETS ? `Get some from ${FAUCETS.inj} and try again.` : 'Fund it with INJ and try again.')
         )
       }
       throw error

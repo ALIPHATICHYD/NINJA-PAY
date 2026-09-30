@@ -7,6 +7,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useTokenPrice } from '@/hooks/useTokenPrice'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { useActivity } from '@/hooks/useActivity'
+import { NETWORK_LABEL } from '@/lib/injective/network'
 import { ACTIVITY_LABELS, coinValue, type ActivityItem, type ActivityType } from '@/lib/injective/activity'
 
 type Period = '7D' | '30D' | '90D'
@@ -82,7 +83,7 @@ export default function AnalyticsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Analytics</h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your Injective testnet activity, read directly from the chain.</p>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your {NETWORK_LABEL} activity, read directly from the chain.</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
