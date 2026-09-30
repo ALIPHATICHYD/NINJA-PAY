@@ -81,14 +81,13 @@ This document outlines all environment variables used in NINJA PAY and where to 
 
 ---
 
-### ⛓️ INJECTIVE BLOCKCHAIN (Backend & Escrow)
+### ⛓️ INJECTIVE BLOCKCHAIN (Backend)
 **Status:** OPTIONAL (has defaults for development)  
 **Used for:** Blockchain transactions, wallet interactions, transaction settlement
 
 | Variable | Where to Get | Default |
 |----------|-------------|---------|
 | `NEXT_PUBLIC_BACKEND_URL` | Your backend deployment | `http://localhost:3001` |
-| `NEXT_PUBLIC_ESCROW_WALLET` | Backend team / deployment docs | `` (empty) |
 
 **Setup Guide for Development:**
 1. Ensure backend server runs on `http://localhost:3001`
@@ -97,7 +96,6 @@ This document outlines all environment variables used in NINJA PAY and where to 
 **Setup Guide for Production:**
 1. Deploy backend to your hosting
 2. Set `NEXT_PUBLIC_BACKEND_URL` to production endpoint
-3. Get escrow wallet address from backend team
 
 ---
 

@@ -24,7 +24,14 @@ const STEPS = [
 
 export default function PayrollPage() {
   const { isConnected, address } = useWallet()
-  const { sendToken, userAddress: cosmosAddress, loading: cosmosLoading, error: cosmosError } = useCosmosTransaction()
+  const {
+    sendToken,
+    userAddress: cosmosAddress,
+    isReady: cosmosReady,
+    loading: cosmosLoading,
+    error: cosmosError,
+    initializeWallet: connectCosmosWallet,
+  } = useCosmosTransaction()
   // Payroll signs with Keplr/Leap, so balances and the fee check use that account once it's connected.
   const { inj, usdc, loading: balLoading } = useBalance(cosmosAddress ?? address)
 
@@ -151,10 +158,10 @@ export default function PayrollPage() {
             <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
               Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}</span>
             </p>
-            {token === 'USDC' && (
+            {!cosmosReady && (
               <div style={{ marginTop: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 10px', background: 'rgba(39, 117, 202, 0.1)', borderRadius: '6px', border: '1px solid rgba(39, 117, 202, 0.2)' }}>
                 <AlertCircle size={14} style={{ color: '#2775ca', marginTop: '2px', flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', color: '#2775ca', lineHeight: '1.4' }}>USDC uses Cosmos wallet (Keplr). Make sure to connect above.</span>
+                <span style={{ fontSize: '11px', color: '#2775ca', lineHeight: '1.4' }}>Payroll is signed with Keplr or Leap for now. You&apos;ll connect it on the review step.</span>
               </div>
             )}
           </div>
@@ -267,6 +274,16 @@ export default function PayrollPage() {
             </div>
           </div>
 
+          {!cosmosReady && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgb(59,130,246)', borderRadius: '8px' }}>
+              <AlertCircle size={14} style={{ color: 'rgb(59,130,246)', flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: '180px', fontSize: '12px', color: 'rgb(59,130,246)' }}>Payroll is signed with Keplr or Leap for now.</span>
+              <button onClick={connectCosmosWallet} disabled={cosmosLoading} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                {cosmosLoading ? 'Connecting…' : 'Connect Keplr or Leap'}
+              </button>
+            </div>
+          )}
+
           {fundsError && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
@@ -300,7 +317,7 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>

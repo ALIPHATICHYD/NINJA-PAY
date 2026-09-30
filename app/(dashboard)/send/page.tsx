@@ -32,7 +32,8 @@ export default function SendPage() {
     isReady: cosmosReady, 
     sendToken: cosmosSendToken, 
     loading: cosmosLoading, 
-    error: cosmosError 
+    error: cosmosError,
+    initializeWallet: connectCosmosWallet,
   } = useCosmosTransaction()
 
   const [tab, setTab] = useState<'send' | 'offramp'>('send')
@@ -102,6 +103,7 @@ export default function SendPage() {
     : null
 
   const canSend = !!to && !isOwnAddress && !balLoading && !balError &&
+    (sendToken === 'INJ' || cosmosReady) &&
     amountBase !== null && amountBase > BigInt(0) && !overBalance && feeCheck.ok
 
   const handleSend = async () => {
@@ -113,7 +115,7 @@ export default function SendPage() {
       if (sendToken === 'USDC') {
         // Cosmos USDC send
         if (!cosmosReady) {
-          setSendStatus({ type: 'error', message: 'Cosmos wallet not connected. Click "Connect USDC" first.' })
+          setSendStatus({ type: 'error', message: 'Connect Keplr or Leap to send USDC.' })
           return
         }
 
@@ -193,9 +195,12 @@ export default function SendPage() {
 
           {/* Connection status for USDC */}
           {sendToken === 'USDC' && !cosmosReady && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgb(59,130,246)', borderRadius: '8px' }}>
-              <AlertCircle size={14} style={{ color: 'rgb(59,130,246)' }} />
-              <span style={{ fontSize: '12px', color: 'rgb(59,130,246)' }}>USDC requires Keplr/Cosmos wallet. Connect above to send USDC.</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgb(59,130,246)', borderRadius: '8px' }}>
+              <AlertCircle size={14} style={{ color: 'rgb(59,130,246)', flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: '180px', fontSize: '12px', color: 'rgb(59,130,246)' }}>USDC sends are signed with Keplr or Leap for now.</span>
+              <button onClick={connectCosmosWallet} disabled={cosmosLoading} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                {cosmosLoading ? 'Connecting…' : 'Connect Keplr or Leap'}
+              </button>
             </div>
           )}
 

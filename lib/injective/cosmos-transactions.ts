@@ -22,6 +22,7 @@ import { FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
 import { balanceOf, fetchAllBalances, resolveHeldDenom } from './bank'
 import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
+import { HOOK_RESTRICTION_MESSAGE, describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction } from './transfer-errors'
 import { toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
@@ -127,6 +128,8 @@ function toBase64(bytes: Uint8Array): string {
 // Fallback gas limits if simulation is unavailable (e.g. first-ever tx from an account).
 const FALLBACK_GAS = { base: 150_000, perMsg: 50_000 }
 const GAS_BUFFER = 1.3
+// Gas multiplier for the one retry after USDC's compliance hook runs out of gas.
+const HOOK_RETRY_FACTOR = 2
 
 /**
  * Build, sign (SIGN_MODE_DIRECT via Keplr/Leap), simulate, and broadcast a
@@ -136,11 +139,40 @@ const GAS_BUFFER = 1.3
  * Before the wallet's signing window opens, it checks that the account holds
  * enough INJ for the simulated fee plus any INJ the messages send, and
  * rejects with a plain explanation if not.
+ *
+ * USDC transfers run Circle's compliance hook. If the hook runs out of gas
+ * (not a real restriction, per Injective's docs), the transaction is rebuilt
+ * once with twice the gas and the wallet asks the user to sign again. A real
+ * restriction is reported neutrally, without retrying.
  */
 export async function signAndBroadcast(
   msgs: Msgs | Msgs[],
   chainId: string = CHAIN_ID,
   memo = '',
+): Promise<string> {
+  try {
+    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER)
+  } catch (error) {
+    if (!isHookOutOfGas(errorMessage(error))) throw readable(error)
+  }
+  try {
+    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER * HOOK_RETRY_FACTOR)
+  } catch (error) {
+    throw readable(error)
+  }
+}
+
+function readable(error: unknown): Error {
+  const message = errorMessage(error)
+  const described = describeTransferError(message)
+  return described === message && error instanceof Error ? error : new Error(described)
+}
+
+async function signAndBroadcastOnce(
+  msgs: Msgs | Msgs[],
+  chainId: string,
+  memo: string,
+  gasBuffer: number,
 ): Promise<string> {
   const wallet = getCosmosWallet()
   const { provider } = wallet
@@ -186,13 +218,16 @@ export async function signAndBroadcast(
     })
 
   // Simulate with an empty signature to size the gas limit.
-  let gas = FALLBACK_GAS.base + FALLBACK_GAS.perMsg * msgCount
+  const fallbackGas = FALLBACK_GAS.base + FALLBACK_GAS.perMsg * msgCount
+  let gas = Math.ceil(fallbackGas * (gasBuffer / GAS_BUFFER))
   try {
-    const { txRaw } = build(gas)
+    const { txRaw } = build(fallbackGas)
     txRaw.signatures = [new Uint8Array(0)]
     const { gasInfo } = await txApi.simulate(txRaw)
-    gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
+    gas = Math.ceil(Number(gasInfo.gasUsed) * gasBuffer)
   } catch (error) {
+    // A real restriction shows up in simulation: stop before the wallet opens.
+    if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
     console.warn('Gas simulation failed, using fallback gas limit:', error)
   }
 
@@ -262,23 +297,16 @@ export async function sendToken(
 
 
 /**
- * Check if user is using Ledger with wallet (Keplr or Leap)
+ * Check if the connected Keplr or Leap account is a Ledger. Asks only the
+ * wallet that signs (Keplr first, like signAndBroadcast), so a second
+ * installed wallet never opens its own approval window.
  */
 export async function isUserUsingLedger(chainId: string = CHAIN_ID): Promise<boolean> {
   try {
-    if (isKeplrAvailable()) {
-      await (window as any).keplr.enable(chainId)
-      const key = await (window as any).keplr.getKey(chainId)
-      if ((key as any).isLedger) return true
-    }
-
-    if (isLeapAvailable()) {
-      await (window as any).leap.enable(chainId)
-      const key = await (window as any).leap.getKey(chainId)
-      if ((key as any).isLedger) return true
-    }
-
-    return false
+    const { provider } = getCosmosWallet()
+    await provider.enable(chainId)
+    const key = await provider.getKey(chainId)
+    return !!key.isNanoLedger
   } catch (error) {
     console.warn('Error checking Ledger status:', error)
     return false

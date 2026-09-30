@@ -2,10 +2,9 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import {
-  initializeKeplr,
-  getUserAddress,
   sendToken,
   isKeplrAvailable,
+  isLeapAvailable,
   isUserUsingLedger,
   requestConnection,
 } from '@/lib/injective/cosmos-transactions'
@@ -25,9 +24,35 @@ interface UseCosmosTxReturn {
   reset: () => void
 }
 
+// Set once the user has connected Keplr/Leap here, so later visits can
+// reconnect quietly instead of opening an approval window on page load.
+const CONNECTED_KEY = 'ninjapay:cosmos-wallet-connected'
+
+function rememberConnection(connected: boolean) {
+  try {
+    if (connected) window.localStorage.setItem(CONNECTED_KEY, '1')
+    else window.localStorage.removeItem(CONNECTED_KEY)
+  } catch {
+    // Storage unavailable: the user just connects again next time.
+  }
+}
+
+function connectedBefore(): boolean {
+  try {
+    return window.localStorage.getItem(CONNECTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Hook for handling Cosmos transactions on Injective
  * Supports both Keplr and Leap wallets
+ *
+ * The wallet is only asked to connect when the user clicks a connect button
+ * (initializeWallet). On page load it reconnects only if the user connected
+ * here before, which needs no new approval (a locked wallet may still ask to
+ * be unlocked).
  */
 export function useCosmosTransaction(): UseCosmosTxReturn {
   const [userAddress, setUserAddress] = useState<string | null>(null)
@@ -36,12 +61,15 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const initializeWallet = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const connect = useCallback(async (quiet: boolean) => {
+    // A quiet reconnect shows no spinner and no error: nothing was asked of the user.
+    if (!quiet) {
+      setLoading(true)
+      setError(null)
+    }
 
     try {
-      if (!isKeplrAvailable() && !(window as any).leap) {
+      if (!isKeplrAvailable() && !isLeapAvailable()) {
         throw new Error('No wallet found. Please install Keplr or Leap.')
       }
 
@@ -51,22 +79,28 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
       setUserAddress(address)
       setIsLedger(usingLedger)
       setIsReady(true)
+      rememberConnection(true)
     } catch (err: any) {
-      const errorMsg = err.message || 'Failed to initialize wallet'
-      setError(errorMsg)
-      console.error('Wallet initialization error:', err)
+      if (quiet) {
+        // The approval was revoked or the wallet is locked: wait for the user to connect again.
+        rememberConnection(false)
+      } else {
+        setError(err.message || 'Failed to initialize wallet')
+        console.error('Wallet initialization error:', err)
+      }
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [])
 
-  // Auto-initialize on component mount
+  const initializeWallet = useCallback(() => connect(false), [connect])
+
+  // Reconnect quietly on mount, only if the user connected here before.
   useEffect(() => {
-    const hasWallet = isKeplrAvailable() || (typeof window !== 'undefined' && (window as any).leap)
-    if (hasWallet && !isReady) {
-      initializeWallet()
+    if ((isKeplrAvailable() || isLeapAvailable()) && connectedBefore()) {
+      connect(true)
     }
-  }, [isReady, initializeWallet])
+  }, [connect])
 
   const sendTokenFn = useCallback(
     async (recipientAddress: string, amount: string, token: 'INJ' | 'USDC', memo?: string): Promise<string> => {
