@@ -74,7 +74,8 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Transactions | `/transactions` | Working | Reads bank transfers for your Keplr/Leap account and your EVM wallet's `inj1` address straight from Injective testnet. Claim activity is labelled by matching escrow addresses to claim pools. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…`, `0x…` or a `.inj` name, stores the `inj1…` form, and spots the same account saved twice in different formats. A beneficiary saved by name keeps the name and is paid at the saved address; the list warns when the name now points somewhere else. **Send** prefills `/send` with the address. |
 | Analytics | `/analytics` | Working | Sent and received volume in USD at today's Injective oracle price, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It uses the same on-chain history as Transactions. USD totals are hidden when a token has no current price. |
-| Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No rate is quoted and no bank details are collected. |
+| Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No naira rate is quoted and no bank details are collected. |
+| INJ → USDC quote | `/send` (Off-Ramp tab) | Waiting on Injective's swap allowlist | Asks Injective's Swap precompile what the INJ/USDC spot market would give for an amount of INJ, with a 0.5% slippage floor, the market's taker fee rate, the swap's network fee and a check against the Pyth price. Quote only: no swap button and no naira amount. It shows a quote only once Injective adds the market to its swap allowlist, which NinjaPay can't do; until then it says so. |
 | Bill payments (airtime, data, electricity, cable) | `/bills` | Not live | Form is disabled; no payment is taken and nothing is sent to a provider. |
 | Wallet connection | all app routes | Working | RainbowKit (EVM wallets) plus Keplr/Leap for the Cosmos path. Keplr/Leap is only asked to connect when the user clicks **Connect Keplr or Leap**; later visits reconnect quietly. |
 
@@ -182,6 +183,7 @@ components/
   Navigation.tsx              App nav with RainbowKit ConnectButton
   Web3Providers.tsx           wagmi config, RainbowKit theme, QueryClient
   OfframpUnavailable.tsx      Honest "not live" off-ramp placeholder
+  SwapQuote.tsx               INJ → USDC quote from the Swap precompile
   StatusChip.tsx, TxStatus.tsx   Transfer state chip and status line with explorer link
   ChainHealthNotice.tsx       "Sending is paused" and scheduled-upgrade banners
   QrCode.tsx                  Dark-on-white QR code as one SVG path
@@ -194,6 +196,7 @@ hooks/
   useActivity.ts              On-chain history for the connected accounts
   usePrices.ts                Indicative INJ and USDC prices, refreshed each minute
   useRecipients.ts            Recipient fields: address or .inj name, resolved
+  useSwapQuote.ts             INJ → USDC quote, slippage floor, fee and oracle check
   useTransferChecks.ts        Pre-send checks for one transfer
 lib/
   injective/
@@ -201,6 +204,7 @@ lib/
     tokens.ts                 INJ and native USDC: denoms, decimals, contracts
     address.ts                inj1… and 0x… as one account
     names.ts                  .inj names through the Injective Name Service
+    swap.ts                   Swap precompile: INJ/USDC route, allowlist, quote maths
     transfer-checks.ts        Circuit breaker, token rules and new-address checks
     fees.ts                   INJ network fee maths and checks
     health.ts                 Chain id, block freshness and upgrade-plan checks

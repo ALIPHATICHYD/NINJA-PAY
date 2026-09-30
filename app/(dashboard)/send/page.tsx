@@ -8,6 +8,7 @@ import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useEstimateGas, useGasPrice, useSendTransaction, useTransactionReceipt, useWaitForTransactionReceipt } from 'wagmi'
 import { Send, ArrowLeftRight, AlertCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
+import { SwapQuote } from '@/components/SwapQuote'
 import { TxStatus } from '@/components/TxStatus'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
@@ -414,7 +415,12 @@ export default function SendPage() {
       )}
 
       {/* ─── Off-Ramp tab: not live ─── */}
-      {tab === 'offramp' && <OfframpUnavailable />}
+      {tab === 'offramp' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <OfframpUnavailable />
+          <SwapQuote />
+        </div>
+      )}
     </div>
   )
 }

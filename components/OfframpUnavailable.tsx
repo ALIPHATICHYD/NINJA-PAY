@@ -22,7 +22,7 @@ export function OfframpUnavailable({ className = 'card' }: { className?: string 
       </div>
       <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
         Cashing out to a Nigerian bank account isn&apos;t live. It will only launch through a
-        licensed partner, and none is connected today. Nothing here quotes a rate or moves money.
+        licensed partner, and none is connected today. Nothing here quotes a naira rate or moves money.
       </p>
       <StatusChip state="not-live" className="mt-4" />
     </div>
