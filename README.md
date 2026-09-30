@@ -341,13 +341,15 @@ These policies let any client insert or update claim rows. The funds themselves 
 ### Send (`/send`)
 
 1. The user chooses INJ or USDC and enters a recipient. It can be written as `inj1…` or `0x…`. `parseAccountAddress` in `lib/injective/address.ts` checks it (bech32 checksum for `inj1…`, EIP-55 checksum for mixed-case `0x…`), shows the other form under the field, and blocks sending to your own wallet.
+   The amount is converted to exact base units as it is typed. The page shows the network fee in INJ (fees are always paid in INJ, even for USDC; `lib/injective/fees.ts`) and disables **Send** when the sending account can't cover the amount plus the fee. **Max** leaves room for the fee when sending INJ.
 2. **INJ:** the page calls wagmi `sendTransaction({ to, value: parseEther(amount) })` with the recipient's `0x…` form. The connected EVM wallet signs, and `useWaitForTransactionReceipt` tracks confirmation.
 3. **USDC:** the page passes the recipient's `inj1…` form and the **human-readable** amount to `useCosmosTransaction().sendToken`. `sendToken` in `lib/injective/cosmos-transactions.ts` converts it to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It then builds a `MsgSend` and hands it to `signAndBroadcast`, which:
    1. fetches the account number, sequence, and latest block height from the chain's REST API;
    2. builds the transaction with `createTransaction` and a timeout height;
    3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation fails);
-   4. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`;
-   5. broadcasts it and waits until the transaction is included in a block.
+   4. checks that the account holds enough INJ for that fee plus any INJ being sent, and stops with a plain message before the wallet opens if it doesn't;
+   5. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`;
+   6. broadcasts it and waits until the transaction is included in a block.
 
 ### Payroll (`/payroll`)
 
@@ -407,6 +409,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- Send and Payroll show the network fee in INJ and block a transfer the account can't pay for, and `signAndBroadcast` re-checks against the simulated fee before the wallet opens. Before, a user with USDC but no INJ got a raw chain error after signing, **Max** could leave nothing for the fee, and amounts were compared as floats. Send and Payroll now read balances from the account that actually signs (Keplr/Leap for USDC and Payroll).
 - Every address field (Send, Payroll, Beneficiaries, the `?to=` link) accepts `inj1…` or `0x…` and treats them as one account. Before, Send routed INJ by address format (so an `inj1…` recipient needed Keplr), USDC rejected `0x…` recipients, and Payroll and Beneficiaries accepted `inj1…` only. The dashboard now shows the wallet's `inj1…` form without asking Keplr for it.
 - Wallets now use Injective's native EVM (chain `1439` on testnet, `1776` on mainnet) everywhere. Before, RainbowKit used inEVM chain `2424` and the "add network" helper used `2408`.
 - USDC is now Circle's native USDC (`erc20:` denom, 6 decimals) on both networks. The old Peggy USDC.e denom had zero supply on testnet, and several screens divided USDC by 10^18 instead of 10^6.

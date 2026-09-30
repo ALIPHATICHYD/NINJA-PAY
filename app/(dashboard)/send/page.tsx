@@ -4,20 +4,28 @@ import { useEffect, useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
-import { parseEther, formatEther } from 'viem'
+import { useEstimateGas, useGasPrice, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
-import { formatBaseUnits } from '@/lib/money'
-import { USDC } from '@/lib/injective/tokens'
+import { formatBaseUnits, toChainAmount } from '@/lib/money'
+import { INJ, TOKENS } from '@/lib/injective/tokens'
+import {
+  COSMOS_SEND_GAS,
+  EVM_TRANSFER_GAS,
+  GAS_PRICE,
+  checkFee,
+  feeShortfallMessage,
+  formatFee,
+  maxInjAfterFee,
+  networkFee,
+} from '@/lib/injective/fees'
 import { EXPLORERS, INJECTIVE_EVM } from '@/lib/injective/network'
 import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
 
 
 export default function SendPage() {
   const { address, isConnected } = useWallet()
-  const { inj, usdc } = useBalance(address)
-  
+
   // Cosmos transaction hook for USDC sends
   const { 
     userAddress: cosmosAddress, 
@@ -47,19 +55,54 @@ export default function SendPage() {
   const { sendTransaction, data: injTxHash, isPending, error: sendError, reset } = useSendTransaction()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: injTxHash })
 
-  // Balance formatting
-  const maxINJ = parseFloat(formatEther(BigInt(inj || '0')))
-  const maxUSDC = Number(formatBaseUnits(usdc || '0', USDC.decimals))
-  const maxAmount = sendToken === 'USDC' ? maxUSDC : maxINJ
-  const parsedAmt = parseFloat(amount) || 0
-  
   // The recipient may be typed as inj1… or 0x…: both are the same account.
   const to = useMemo(() => parseAccountAddress(recipient), [recipient])
   const isOwnAddress = isSameAccount(recipient, address)
-  const canSend = !!to && !isOwnAddress && parsedAmt > 0 && parsedAmt <= maxAmount
 
-  // USDC still signs through Keplr/Leap, which may hold a different account than the wallet above.
+  // USDC still signs through Keplr/Leap, which may hold a different account than the wallet.
+  // Balances and the fee check use whichever account actually sends.
   const keplrIsOtherAccount = cosmosReady && !!cosmosAddress && !!address && !isSameAccount(cosmosAddress, address)
+  const sender = sendToken === 'USDC' && cosmosAddress ? cosmosAddress : address
+  const { inj, usdc, loading: balLoading, error: balError } = useBalance(sender)
+  const injBalance = BigInt(inj || '0')
+  const tokenBalance = sendToken === 'USDC' ? BigInt(usdc || '0') : injBalance
+  const { decimals } = TOKENS[sendToken]
+
+  // Exact base units of the typed amount; null if it isn't a valid amount for this token.
+  const amountBase = useMemo(() => {
+    if (!amount.trim()) return null
+    try { return BigInt(toChainAmount(amount, decimals)) } catch { return null }
+  }, [amount, decimals])
+
+  // Network fee, always in INJ. INJ sends are EVM transfers: estimate their gas
+  // (a contract recipient can cost more than 21,000). USDC sends are Cosmos
+  // transactions, simulated exactly when signing; this is the estimate until then.
+  const { data: evmGas } = useEstimateGas({
+    account: address as `0x${string}` | undefined,
+    to: to?.evm,
+    value: BigInt(0),
+    query: { enabled: sendToken === 'INJ' && !!to && !!address },
+  })
+  const { data: evmGasPrice } = useGasPrice({ query: { enabled: sendToken === 'INJ' } })
+  const fee = sendToken === 'INJ'
+    ? networkFee(evmGas ?? EVM_TRANSFER_GAS, evmGasPrice ?? GAS_PRICE)
+    : networkFee(COSMOS_SEND_GAS)
+  const injSpend = sendToken === 'INJ' ? amountBase ?? BigInt(0) : BigInt(0)
+  const feeCheck = checkFee(injBalance, fee, injSpend)
+  const overBalance = amountBase !== null && amountBase > tokenBalance
+  const maxBase = sendToken === 'INJ' ? maxInjAfterFee(injBalance, fee) : tokenBalance
+
+  const amountError = amount.trim() && amountBase === null
+    ? `Enter a valid amount with at most ${decimals} decimal places.`
+    : overBalance
+      ? `That's more than your ${sendToken} balance.`
+      : null
+  const feeError = !balLoading && !balError && amountBase !== null && amountBase > BigInt(0) && !overBalance && !feeCheck.ok
+    ? feeShortfallMessage(feeCheck, sendToken === 'INJ')
+    : null
+
+  const canSend = !!to && !isOwnAddress && !balLoading && !balError &&
+    amountBase !== null && amountBase > BigInt(0) && !overBalance && feeCheck.ok
 
   const handleSend = async () => {
     if (!to || !amount) return
@@ -71,11 +114,6 @@ export default function SendPage() {
         // Cosmos USDC send
         if (!cosmosReady) {
           setSendStatus({ type: 'error', message: 'Cosmos wallet not connected. Click "Connect USDC" first.' })
-          return
-        }
-
-        if (!/^\d*\.?\d{0,6}$/.test(amount.trim())) {
-          setSendStatus({ type: 'error', message: `Invalid USDC amount. Max decimals: 6` })
           return
         }
 
@@ -91,7 +129,7 @@ export default function SendPage() {
         reset()
         sendTransaction({
           to: to.evm,
-          value: parseEther(amount),
+          value: amountBase!,
         })
         setSendStatus({ type: 'pending', message: 'Waiting for wallet confirmation...' })
       }
@@ -163,17 +201,32 @@ export default function SendPage() {
 
           {sendToken === 'USDC' && keplrIsOtherAccount && (
             <div className="alert-warning" style={{ fontSize: '12px' }}>
-              USDC is sent from your Keplr account {shortAddress(cosmosAddress!)}, which is not the wallet shown here. The balance below is your wallet&apos;s.
+              USDC is sent from your Keplr account {shortAddress(cosmosAddress!)}, which is not your connected wallet. The balances below are that account&apos;s.
             </div>
           )}
 
           {/* Balance info */}
-          <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Available Balance</p>
-            <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              {sendToken === 'USDC' ? maxUSDC.toFixed(2) : maxINJ.toFixed(4)} {sendToken}
-            </p>
+          <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Available Balance</p>
+              <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                {balLoading ? '—' : formatBaseUnits(tokenBalance, decimals, sendToken === 'USDC' ? 2 : 4)} {sendToken}
+              </p>
+            </div>
+            {sendToken === 'USDC' && (
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>INJ for fees</p>
+                <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  {balLoading ? '—' : formatBaseUnits(injBalance, INJ.decimals, 6)} INJ
+                </p>
+              </div>
+            )}
           </div>
+          {balError && (
+            <div className="alert-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={14} /> {balError}
+            </div>
+          )}
 
           {/* Recipient */}
           <div>
@@ -218,14 +271,28 @@ export default function SendPage() {
                 style={{ flex: 1 }}
               />
               <button
-                onClick={() => setAmount(maxAmount.toFixed(sendToken === 'USDC' ? 2 : 6))}
+                onClick={() => setAmount(formatBaseUnits(maxBase, decimals))}
+                title={sendToken === 'INJ' ? 'Your INJ balance minus room for the network fee' : undefined}
                 className="btn-ghost"
                 style={{ border: '1px solid var(--border)', borderRadius: '9px', fontSize: '12px', fontWeight: '600', padding: '0 14px', flexShrink: 0 }}
               >
                 Max
               </button>
             </div>
+            {amountError ? (
+              <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>{amountError}</p>
+            ) : (
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>
+                Network fee ≈ {formatFee(fee)} INJ{sendToken === 'USDC' && ', paid in INJ'}
+              </p>
+            )}
           </div>
+
+          {feeError && (
+            <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{feeError}</span>
+            </div>
+          )}
 
           {/* Status messages */}
           {cosmosError && sendToken === 'USDC' && (

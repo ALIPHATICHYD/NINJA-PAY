@@ -20,7 +20,8 @@ import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
 import { NETWORK, CHAIN_ID } from './constants'
 import { FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
-import { resolveHeldDenom } from './bank'
+import { balanceOf, fetchAllBalances, resolveHeldDenom } from './bank'
+import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
 import { toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
@@ -131,6 +132,10 @@ const GAS_BUFFER = 1.3
  * Build, sign (SIGN_MODE_DIRECT via Keplr/Leap), simulate, and broadcast a
  * Cosmos transaction on Injective. Resolves with the tx hash once the tx is
  * included in a block; rejects if the wallet refuses or the chain rejects it.
+ *
+ * Before the wallet's signing window opens, it checks that the account holds
+ * enough INJ for the simulated fee plus any INJ the messages send, and
+ * rejects with a plain explanation if not.
  */
 export async function signAndBroadcast(
   msgs: Msgs | Msgs[],
@@ -189,6 +194,16 @@ export async function signAndBroadcast(
     gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
   } catch (error) {
     console.warn('Gas simulation failed, using fallback gas limit:', error)
+  }
+
+  // Fees are paid in INJ, even for USDC. Check now rather than let the chain reject it.
+  const injBalance = await fetchAllBalances(address)
+    .then(balances => BigInt(balanceOf(balances, 'inj')))
+    .catch(() => null) // If the balance can't be read, let the chain decide.
+  if (injBalance !== null) {
+    const injSpend = injSpentBy(msgs, address)
+    const check = checkFee(injBalance, networkFee(BigInt(gas)), injSpend)
+    if (!check.ok) throw new Error(feeShortfallMessage(check, injSpend > BigInt(0)))
   }
 
   const { signDoc } = build(gas)

@@ -5,8 +5,9 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
-import { formatBaseUnits } from '@/lib/money'
+import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { TOKENS } from '@/lib/injective/tokens'
+import { COSMOS_SEND_GAS, checkFee, feeShortfallMessage, formatFee, networkFee } from '@/lib/injective/fees'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
 import { parseAccountAddress, shortAddress } from '@/lib/injective/address'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
@@ -23,8 +24,9 @@ const STEPS = [
 
 export default function PayrollPage() {
   const { isConnected, address } = useWallet()
-  const { inj, usdc } = useBalance(address)
-  const { sendToken, loading: cosmosLoading, error: cosmosError } = useCosmosTransaction()
+  const { sendToken, userAddress: cosmosAddress, loading: cosmosLoading, error: cosmosError } = useCosmosTransaction()
+  // Payroll signs with Keplr/Leap, so balances and the fee check use that account once it's connected.
+  const { inj, usdc, loading: balLoading } = useBalance(cosmosAddress ?? address)
 
   const [step, setStep] = useState<Step>(1)
   const [payrollName, setPayrollName] = useState('')
@@ -35,8 +37,23 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
-  const totalAmount = recipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(4)
-  const available = Number(formatBaseUnits(token === 'INJ' ? inj : usdc, TOKENS[token].decimals))
+  const { decimals } = TOKENS[token]
+  // Exact base units per row; null where the amount isn't valid for this token.
+  const amounts = useMemo(() => recipients.map(r => {
+    try { return BigInt(toChainAmount(r.amount, decimals)) } catch { return null }
+  }), [recipients, decimals])
+  const totalBase = amounts.reduce<bigint>((sum, a) => sum + (a ?? BigInt(0)), BigInt(0))
+  const totalAmount = formatBaseUnits(totalBase, decimals)
+  const balance = BigInt((token === 'INJ' ? inj : usdc) || '0')
+  const overBalance = totalBase > balance
+
+  // Fees are paid in INJ. Payroll sends one transaction per recipient today, so each one pays a fee.
+  const fee = networkFee(COSMOS_SEND_GAS) * BigInt(recipients.length)
+  const feeCheck = checkFee(BigInt(inj || '0'), fee, token === 'INJ' ? totalBase : BigInt(0))
+  const fundsError = balLoading ? null
+    : overBalance ? `The total is more than your ${token} balance of ${formatBaseUnits(balance, decimals, 4)} ${token}.`
+    : !feeCheck.ok ? feeShortfallMessage(feeCheck, token === 'INJ')
+    : null
 
   const addRecipient = () => setRecipients(prev => [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
   const removeRecipient = (id: string) => { if (recipients.length > 1) setRecipients(prev => prev.filter(r => r.id !== id)) }
@@ -46,10 +63,11 @@ export default function PayrollPage() {
   // Each row may be typed as inj1… or 0x…; both name the same account, stored as inj1.
   const accounts = useMemo(() => recipients.map(r => parseAccountAddress(r.address)?.injective ?? null), [recipients])
   const invalidRows = recipients.flatMap((r, i) => (r.address.trim() && !accounts[i] ? [i + 1] : []))
+  const invalidAmountRows = recipients.flatMap((r, i) => (r.amount.trim() && amounts[i] === null ? [i + 1] : []))
   const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
 
   const canProceedStep1 = payrollName.trim().length > 0
-  const canProceedStep2 = recipients.every((r, i) => accounts[i] && parseFloat(r.amount) > 0)
+  const canProceedStep2 = recipients.every((r, i) => accounts[i] && (amounts[i] ?? BigInt(0)) > BigInt(0))
 
   const handleDispatch = async () => {
     setLoading(true)
@@ -131,7 +149,7 @@ export default function PayrollPage() {
               ))}
             </div>
             <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-              Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{available.toFixed(4)} {token}</span>
+              Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}</span>
             </p>
             {token === 'USDC' && (
               <div style={{ marginTop: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 10px', background: 'rgba(39, 117, 202, 0.1)', borderRadius: '6px', border: '1px solid rgba(39, 117, 202, 0.2)' }}>
@@ -188,6 +206,11 @@ export default function PayrollPage() {
               {invalidRows.length === 1 ? 'Row' : 'Rows'} {invalidRows.join(', ')}: enter a valid inj1… or 0x… address.
             </p>
           )}
+          {invalidAmountRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--error)' }}>
+              {invalidAmountRows.length === 1 ? 'Row' : 'Rows'} {invalidAmountRows.join(', ')}: enter an amount with at most {decimals} decimal places.
+            </p>
+          )}
           {repeatedRows.length > 0 && (
             <p style={{ fontSize: '12px', color: 'var(--warning)' }}>
               {repeatedRows.length === 1 ? 'Row' : 'Rows'} {repeatedRows.join(', ')} {repeatedRows.length === 1 ? 'pays an account' : 'pay accounts'} already listed above (inj1… and 0x… are the same account).
@@ -236,7 +259,20 @@ export default function PayrollPage() {
                 {totalAmount} {token}
               </span>
             </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Network fee{recipients.length > 1 && ` (${recipients.length} transactions)`}
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>≈ {formatFee(fee)} INJ</span>
+            </div>
           </div>
+
+          {fundsError && (
+            <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <span>{fundsError}</span>
+            </div>
+          )}
 
           {/* Recipient list preview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -264,7 +300,7 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>
