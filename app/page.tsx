@@ -21,6 +21,7 @@ import { Steps } from '@/components/landing/Steps'
 import { Faq } from '@/components/landing/Faq'
 import { Marquee } from '@/components/landing/Marquee'
 import { CountUp } from '@/components/landing/CountUp'
+import { StatusChip } from '@/components/StatusChip'
 
 // Network figures as published on injective.com ("Injective by the Numbers").
 // `count` figures roll up once in view; the rest render as written.
@@ -129,7 +130,7 @@ function FeatureCell({
           <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
         </span>
         {tag ? (
-          <span className="rounded-full bg-coral-subtle px-3 py-1 text-xs font-semibold text-coral">{tag}</span>
+          <StatusChip state="not-live" label={tag} />
         ) : (
           <ArrowUpRight
             size={18}

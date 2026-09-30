@@ -374,6 +374,10 @@ input, select, textarea { font-family: inherit; }
 .badge-warning { background: var(--warning-subtle); color: var(--warning); }
 .badge-neutral { background: var(--bg-hover);       color: var(--text-secondary); }
 .badge-accent  { background: var(--accent-subtle);  color: var(--accent-text); }
+/* Chain state (see components/StatusChip.tsx): Lemon means broadcast and waiting for a block. */
+.badge-pending { background: var(--pending-subtle); color: var(--pending); }
+.badge-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.badge-pending .badge-dot { animation: pulse 1.6s ease-in-out infinite; }
 
 /* ─── Token pills ─── */
 .token-pill {
@@ -431,6 +435,14 @@ input, select, textarea { font-family: inherit; }
   border: 1px solid color-mix(in srgb, var(--error) 25%, transparent);
   border-radius: 9px;
   color: var(--error);
+  font-size: 14px;
+}
+.alert-pending {
+  padding: 12px 16px;
+  background: var(--pending-subtle);
+  border: 1px solid color-mix(in srgb, var(--pending) 25%, transparent);
+  border-radius: 9px;
+  color: var(--pending);
   font-size: 14px;
 }
 .alert-warning {

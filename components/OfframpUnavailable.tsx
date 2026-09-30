@@ -1,4 +1,5 @@
 import { ArrowLeftRight } from 'lucide-react'
+import { StatusChip } from '@/components/StatusChip'
 
 /**
  * Honest placeholder for the NGN off-ramp.
@@ -23,6 +24,7 @@ export function OfframpUnavailable({ className = 'card' }: { className?: string 
         Cashing out to a Nigerian bank account isn&apos;t live. It will only launch through a
         licensed partner, and none is connected today. Nothing here quotes a rate or moves money.
       </p>
+      <StatusChip state="not-live" className="mt-4" />
     </div>
   )
 }
