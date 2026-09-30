@@ -5,7 +5,8 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useUSDCConversion } from '@/hooks/useUSDCConversion'
-import { fromWei } from '@/lib/injective/bank'
+import { formatBaseUnits } from '@/lib/money'
+import { TOKENS } from '@/lib/injective/tokens'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
@@ -34,7 +35,7 @@ export default function PayrollPage() {
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
   const totalAmount = recipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(4)
-  const available = parseFloat(fromWei(token === 'INJ' ? inj : usdc))
+  const available = Number(formatBaseUnits(token === 'INJ' ? inj : usdc, TOKENS[token].decimals))
 
   const addRecipient = () => setRecipients(prev => [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
   const removeRecipient = (id: string) => { if (recipients.length > 1) setRecipients(prev => prev.filter(r => r.id !== id)) }

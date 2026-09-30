@@ -1,32 +1,35 @@
-import {
-  ChainGrpcBankApi,
-  MsgSend,
-  MsgMultiSend,
-} from '@injectivelabs/sdk-ts'
+import { ChainGrpcBankApi, MsgMultiSend } from '@injectivelabs/sdk-ts'
 import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { BigNumberInBase } from '@injectivelabs/utils'
-import { NETWORK, DENOMS } from './constants'
+import { NETWORK } from './constants'
+import { DENOMS, sameDenom, type TokenInfo } from './tokens'
 import { BalanceState, PayrollOutput } from './types'
 
 const endpoints = getNetworkEndpoints(NETWORK)
 const bankApi = new ChainGrpcBankApi(endpoints.grpc)
 
+export type Coin = { denom: string; amount: string }
+
+/** Every bank balance of an inj1 address, exactly as the chain returns them. */
+export async function fetchAllBalances(address: string): Promise<Coin[]> {
+  const response = await bankApi.fetchBalances(address)
+  return (response.balances || []).map(b => ({ denom: b.denom, amount: b.amount }))
+}
+
+/** The balance of one denom in a list of coins, matched case-insensitively. */
+export function balanceOf(balances: Coin[], denom: string): string {
+  return balances.find(b => sameDenom(b.denom, denom))?.amount || '0'
+}
+
 /**
- * Fetch INJ and USDC balances for an address
+ * Fetch INJ and USDC balances (base units) for an inj1 address.
+ * USDC is Circle's native MultiVM USDC, so this equals its ERC-20 balance.
  */
 export async function fetchBalance(address: string): Promise<BalanceState> {
   try {
-    const response = await bankApi.fetchBalances(address)
-    const balances = response.balances || []
-
-    const injBalance =
-      balances.find((b) => b.denom === DENOMS.INJ)?.amount || '0'
-    const usdcBalance =
-      balances.find((b) => b.denom === DENOMS.USDC)?.amount || '0'
-
+    const balances = await fetchAllBalances(address)
     return {
-      inj: injBalance,
-      usdc: usdcBalance,
+      inj: balanceOf(balances, DENOMS.INJ),
+      usdc: balanceOf(balances, DENOMS.USDC),
       loading: false,
     }
   } catch (error) {
@@ -41,37 +44,20 @@ export async function fetchBalance(address: string): Promise<BalanceState> {
 }
 
 /**
- * Create a MsgSend transaction to send INJ
+ * The exact denom string to put in a bank message sent by `address`.
+ *
+ * Bank denoms are case-sensitive on chain, but the native USDC denom is
+ * written both checksummed and lowercase in Injective's own references. Using
+ * the spelling the chain reports for the sender's own balance guarantees the
+ * message moves the coins the sender actually holds.
  */
-export function createMsgSendINJ(
-  recipient: string,
-  amountInWei: string
-): MsgSend {
-  return MsgSend.fromJSON({
-    srcInjectiveAddress: '', // will be set by broadcaster
-    dstInjectiveAddress: recipient,
-    amount: {
-      denom: DENOMS.INJ,
-      amount: amountInWei,
-    },
-  })
-}
-
-/**
- * Create a MsgSend transaction to send USDC
- */
-export function createMsgSendUSDC(
-  recipient: string,
-  amountInWei: string
-): MsgSend {
-  return MsgSend.fromJSON({
-    srcInjectiveAddress: '', // will be set by broadcaster
-    dstInjectiveAddress: recipient,
-    amount: {
-      denom: DENOMS.USDC,
-      amount: amountInWei,
-    },
-  })
+export async function resolveHeldDenom(address: string, token: TokenInfo): Promise<string> {
+  try {
+    const held = (await fetchAllBalances(address)).find(b => sameDenom(b.denom, token.denom))
+    return held?.denom ?? token.denom
+  } catch {
+    return token.denom
+  }
 }
 
 /**
@@ -103,20 +89,4 @@ export function createMsgMultiSendPayroll(
       ],
     })),
   })
-}
-
-/**
- * Convert amount from human-readable format to Wei
- */
-export function toWei(amount: string): string {
-  return new BigNumberInBase(amount).toWei().toFixed()
-}
-
-/**
- * Convert amount from Wei to human-readable format
- */
-export function fromWei(amountInWei: string): string {
-  return new BigNumberInBase(amountInWei)
-    .dividedBy('1000000000000000000')
-    .toFixed()
 }

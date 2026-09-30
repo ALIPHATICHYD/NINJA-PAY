@@ -5,6 +5,8 @@
  * Injective operates as an EVM chain with ChainId 1776 (0x6f0 in hex)
  */
 
+import { USDC } from './tokens'
+
 export interface InjectiveNetworkConfig {
   chainId: string
   chainName: string
@@ -220,19 +222,11 @@ export async function addTokenToWallet(
 }
 
 /**
- * Add USDC token to wallet
- * Testnet USDC address (adjust based on actual deployment)
+ * Add Circle's native USDC on Injective to the wallet's token list.
  */
-export async function addUSDCToWalletTestnet(): Promise<boolean> {
-  const USDC_TESTNET_ADDRESS = process.env.NEXT_PUBLIC_USDC_TESTNET_ADDRESS || 
-    '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174'
-  
-  return addTokenToWallet(
-    USDC_TESTNET_ADDRESS,
-    'USDC',
-    6,
-    'https://raw.githubusercontent.com/Circle/stablecoin-evm/master/docs/bridged_USDC.png'
-  )
+export async function addUSDCToWallet(): Promise<boolean> {
+  if (!USDC.evmAddress) throw new Error('USDC has no EVM contract configured')
+  return addTokenToWallet(USDC.evmAddress, USDC.symbol, USDC.decimals, USDC.logo)
 }
 
 /**

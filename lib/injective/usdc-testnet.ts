@@ -6,7 +6,8 @@
  */
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK, MARKETS, USDC_TESTNET_CONFIG, DENOMS } from './constants'
+import { NETWORK } from './constants'
+import { USDC } from './tokens'
 import { getPrices } from '../prices'
 
 const endpoints = getNetworkEndpoints(NETWORK)
@@ -110,7 +111,7 @@ export function convertNGNToUSDC(
   try {
     const amount = parseFloat(ngnAmount)
     const usdc = amount / exchangeRate
-    return usdc.toFixed(USDC_TESTNET_CONFIG.decimals)
+    return usdc.toFixed(USDC.decimals)
   } catch (error) {
     console.error('Failed to convert NGN to USDC:', error)
     return '0'
@@ -125,7 +126,7 @@ export async function convertINJToUSDC(injAmount: string): Promise<string> {
     const price = await getINJUSDCPriceFromOrderbook()
     const inj = parseFloat(injAmount)
     const rate = parseFloat(price)
-    const usdc = (inj * rate).toFixed(USDC_TESTNET_CONFIG.decimals)
+    const usdc = (inj * rate).toFixed(USDC.decimals)
     return usdc
   } catch (error) {
     console.error('Failed to convert INJ to USDC:', error)
@@ -170,7 +171,7 @@ export function formatUSDC(amount: string | number, decimals: number = 6): strin
 export function toUSDCChainFormat(amount: string): string {
   try {
     const value = parseFloat(amount)
-    const factor = Math.pow(10, USDC_TESTNET_CONFIG.decimals)
+    const factor = Math.pow(10, USDC.decimals)
     const result = value * factor
     return Math.floor(result).toString()
   } catch (error) {
@@ -185,9 +186,9 @@ export function toUSDCChainFormat(amount: string): string {
 export function fromUSDCChainFormat(chainAmount: string): string {
   try {
     const value = parseFloat(chainAmount)
-    const factor = Math.pow(10, USDC_TESTNET_CONFIG.decimals)
+    const factor = Math.pow(10, USDC.decimals)
     const result = value / factor
-    return result.toFixed(USDC_TESTNET_CONFIG.decimals)
+    return result.toFixed(USDC.decimals)
   } catch (error) {
     console.error('Failed to convert from chain format:', error)
     return '0'

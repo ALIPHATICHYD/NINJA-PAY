@@ -8,6 +8,8 @@ import { useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { Send, ArrowLeftRight, ExternalLink, AlertCircle, CheckCircle } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
+import { formatBaseUnits } from '@/lib/money'
+import { USDC } from '@/lib/injective/tokens'
 
 const TESTNET_EXPLORER = 'https://testnet.explorer.injective.network/transaction'
 
@@ -46,7 +48,7 @@ export default function SendPage() {
 
   // Balance formatting
   const maxINJ = parseFloat(formatEther(BigInt(inj || '0')))
-  const maxUSDC = usdc ? parseFloat(usdc) / 1e6 : 0 // USDC has 6 decimals
+  const maxUSDC = Number(formatBaseUnits(usdc || '0', USDC.decimals))
   const maxAmount = sendToken === 'USDC' ? maxUSDC : maxINJ
   const parsedAmt = parseFloat(amount) || 0
   

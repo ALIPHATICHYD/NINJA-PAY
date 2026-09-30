@@ -8,7 +8,8 @@
  */
 
 import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK, DENOMS } from './constants'
+import { NETWORK } from './constants'
+import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
 
@@ -33,16 +34,19 @@ export type EscrowResolver = (addresses: string[]) => Promise<Map<string, Escrow
 
 export const MEMO_PAYROLL = 'ninjapay:payroll'
 
-const TOKENS: Record<string, { token: string; decimals: number }> = {
-  [DENOMS.INJ]: { token: 'INJ', decimals: 18 },
-  [DENOMS.USDC]: { token: 'USDC', decimals: 6 },
+// Keyed by lowercase denom: erc20: denoms may arrive checksummed or not.
+const KNOWN_DENOMS: Record<string, { token: string; decimals: number }> = {
+  [INJ.denom.toLowerCase()]: { token: INJ.symbol, decimals: INJ.decimals },
+  [USDC.denom.toLowerCase()]: { token: USDC.symbol, decimals: USDC.decimals },
+  // Polygon USDC.e used before the move to native USDC. Not Circle's native USDC.
+  [LEGACY_PEGGY_USDC_DENOM.toLowerCase()]: { token: 'USDC.e (legacy)', decimals: 6 },
   // Peggy-bridged USDT handed out by the Injective testnet faucet
-  peggy0x87aB3B4C8661e07D6372361211B96ed4Dc36B1B5: { token: 'USDT', decimals: 6 },
+  peggy0x87ab3b4c8661e07d6372361211b96ed4dc36b1b5: { token: 'USDT', decimals: 6 },
 }
 
 function toCoins(amount: { denom: string; amount: string }[]): ActivityCoin[] {
   return amount.map(c => {
-    const known = TOKENS[c.denom]
+    const known = KNOWN_DENOMS[c.denom.toLowerCase()]
     return {
       denom: c.denom,
       amountBase: c.amount,
