@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
@@ -8,6 +8,7 @@ import { useUSDCConversion } from '@/hooks/useUSDCConversion'
 import { formatBaseUnits } from '@/lib/money'
 import { TOKENS } from '@/lib/injective/tokens'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
+import { parseAccountAddress, shortAddress } from '@/lib/injective/address'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
@@ -42,8 +43,13 @@ export default function PayrollPage() {
   const updateRecipient = (id: string, field: keyof PayrollRecipient, value: string) =>
     setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
 
+  // Each row may be typed as inj1… or 0x…; both name the same account, stored as inj1.
+  const accounts = useMemo(() => recipients.map(r => parseAccountAddress(r.address)?.injective ?? null), [recipients])
+  const invalidRows = recipients.flatMap((r, i) => (r.address.trim() && !accounts[i] ? [i + 1] : []))
+  const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
+
   const canProceedStep1 = payrollName.trim().length > 0
-  const canProceedStep2 = recipients.every(r => r.address.startsWith('inj1') && parseFloat(r.amount) > 0)
+  const canProceedStep2 = recipients.every((r, i) => accounts[i] && parseFloat(r.amount) > 0)
 
   const handleDispatch = async () => {
     setLoading(true)
@@ -51,8 +57,8 @@ export default function PayrollPage() {
     try {
       // One transaction per recipient. sendToken takes the human-readable
       // amount and converts to base units once.
-      for (const recipient of recipients) {
-        await sendToken(recipient.address, recipient.amount.trim(), token, MEMO_PAYROLL)
+      for (const [i, recipient] of recipients.entries()) {
+        await sendToken(accounts[i]!, recipient.amount.trim(), token, MEMO_PAYROLL)
       }
 
       setStatus({ 
@@ -161,7 +167,14 @@ export default function PayrollPage() {
             {recipients.map((rec, idx) => (
               <div key={rec.id} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 120px 38px', gap: '8px', alignItems: 'center' }}>
                 <input className="input" placeholder={`Person ${idx + 1}`} value={rec.label || ''} onChange={e => updateRecipient(rec.id, 'label', e.target.value)} style={{ fontSize: '13px' }} />
-                <input className="input input-mono" placeholder="inj1..." value={rec.address} onChange={e => updateRecipient(rec.id, 'address', e.target.value)} style={{ fontSize: '12px' }} />
+                <input
+                  className="input input-mono"
+                  placeholder="inj1… or 0x…"
+                  value={rec.address}
+                  onChange={e => updateRecipient(rec.id, 'address', e.target.value)}
+                  aria-invalid={invalidRows.includes(idx + 1)}
+                  style={{ fontSize: '12px', ...(invalidRows.includes(idx + 1) && { borderColor: 'var(--error)' }) }}
+                />
                 <input className="input" type="number" placeholder="0.00" value={rec.amount} onChange={e => updateRecipient(rec.id, 'amount', e.target.value)} min="0" step="0.01" />
                 <button onClick={() => removeRecipient(rec.id)} className="btn-ghost" disabled={recipients.length === 1} style={{ color: 'var(--error)', padding: '8px', opacity: recipients.length === 1 ? 0.3 : 1 }}>
                   <Trash2 size={14} />
@@ -169,6 +182,17 @@ export default function PayrollPage() {
               </div>
             ))}
           </div>
+
+          {invalidRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--error)' }}>
+              {invalidRows.length === 1 ? 'Row' : 'Rows'} {invalidRows.join(', ')}: enter a valid inj1… or 0x… address.
+            </p>
+          )}
+          {repeatedRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--warning)' }}>
+              {repeatedRows.length === 1 ? 'Row' : 'Rows'} {repeatedRows.join(', ')} {repeatedRows.length === 1 ? 'pays an account' : 'pay accounts'} already listed above (inj1… and 0x… are the same account).
+            </p>
+          )}
 
           {/* Running total */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: '9px', border: '1px solid var(--border)' }}>
@@ -220,7 +244,7 @@ export default function PayrollPage() {
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <div>
                   <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '2px' }}>{r.label || `Recipient ${i + 1}`}</p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.address.slice(0, 14)}...{r.address.slice(-6)}</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{shortAddress(accounts[i] ?? r.address, 14)}</p>
                 </div>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{r.amount} {token}</p>
               </div>

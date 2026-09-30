@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { Plus, Trash2, Send, Users2, Search } from 'lucide-react'
 import { useBeneficiaries, type Beneficiary } from '@/lib/beneficiaries'
+import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
 import Link from 'next/link'
 
 const TAG_COLORS: Record<string, { bg: string; color: string }> = {
@@ -33,16 +34,23 @@ export default function BeneficiariesPage() {
   const [search, setSearch]       = useState('')
   const [status, setStatus]       = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
-  const filtered = beneficiaries.filter(b =>
-    b.name.toLowerCase().includes(search.toLowerCase()) ||
-    b.address.toLowerCase().includes(search.toLowerCase())
+  // Each saved address in both formats, so a search for either one finds it.
+  const withEvm = beneficiaries.map(b => ({ ...b, evm: parseAccountAddress(b.address)?.evm }))
+  const query = search.trim().toLowerCase()
+  const filtered = withEvm.filter(b =>
+    b.name.toLowerCase().includes(query) ||
+    b.address.toLowerCase().includes(query) ||
+    !!b.evm?.toLowerCase().includes(query)
   )
 
   const handleAdd = () => {
     if (!name || !address) { setStatus({ type: 'error', message: 'Name and address are required.' }); return }
-    if (!/^inj1[0-9a-z]{38}$/.test(address.trim())) { setStatus({ type: 'error', message: 'Must be a valid Injective address (inj1...)' }); return }
-    if (beneficiaries.some(b => b.address === address.trim())) { setStatus({ type: 'error', message: 'That address is already saved.' }); return }
-    const newB: Beneficiary = { id: crypto.randomUUID(), name: name.trim(), address: address.trim(), tag: tag.trim() || undefined, addedAt: new Date().toISOString().split('T')[0] }
+    const account = parseAccountAddress(address)
+    if (!account) { setStatus({ type: 'error', message: 'Enter a valid inj1… or 0x… address.' }); return }
+    const existing = beneficiaries.find(b => isSameAccount(b.address, account.injective))
+    if (existing) { setStatus({ type: 'error', message: `That account is already saved as ${existing.name}.` }); return }
+    // Stored as inj1; the 0x form is derived when needed.
+    const newB: Beneficiary = { id: crypto.randomUUID(), name: name.trim(), address: account.injective, tag: tag.trim() || undefined, addedAt: new Date().toISOString().split('T')[0] }
     setBeneficiaryList([newB, ...beneficiaries])
     setStatus({ type: 'success', message: `${name} added to beneficiaries.` })
     setName(''); setAddress(''); setTag(''); setShowForm(false)
@@ -87,8 +95,9 @@ export default function BeneficiariesPage() {
             </div>
           </div>
           <div>
-            <label className="label">Injective Address</label>
-            <input className="input input-mono" placeholder="inj1..." value={address} onChange={e => setAddress(e.target.value)} />
+            <label className="label">Wallet Address</label>
+            <input className="input input-mono" placeholder="inj1… or 0x…" value={address} onChange={e => setAddress(e.target.value)} />
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>Either format works. inj1… and 0x… are the same Injective account.</p>
           </div>
           {status.type && <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>{status.message}</div>}
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -147,7 +156,7 @@ export default function BeneficiariesPage() {
                     )}
                   </div>
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {b.address.slice(0, 20)}...{b.address.slice(-6)}
+                    {shortAddress(b.address, 14)}{b.evm && <> · {shortAddress(b.evm, 8, 4)}</>}
                   </p>
                 </div>
 

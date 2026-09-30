@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getInjectiveAddress } from '@injectivelabs/sdk-ts'
 import { useWallet } from '@/hooks/useWallet'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { fetchActivity, type ActivityItem } from '@/lib/injective/activity'
+import { toInjectiveAddress } from '@/lib/injective/address'
 import { resolveClaimEscrows } from '@/lib/supabase'
 
 /**
@@ -18,9 +18,8 @@ export function useActivity() {
   const addresses = useMemo(() => {
     const list = new Set<string>()
     if (cosmosAddress) list.add(cosmosAddress)
-    if (evmAddress) {
-      try { list.add(getInjectiveAddress(evmAddress)) } catch { /* not a valid 0x address */ }
-    }
+    const walletAccount = toInjectiveAddress(evmAddress)
+    if (walletAccount) list.add(walletAccount)
     return [...list]
   }, [cosmosAddress, evmAddress])
 

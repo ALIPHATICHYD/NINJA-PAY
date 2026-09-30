@@ -21,6 +21,7 @@ import { NETWORK, CHAIN_ID } from './constants'
 import { FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
 import { resolveHeldDenom } from './bank'
+import { toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
 const endpoints = getNetworkEndpoints(NETWORK)
@@ -204,6 +205,7 @@ export async function signAndBroadcast(
 /**
  * Send INJ or USDC via Keplr or Leap.
  *
+ * @param recipientAddress inj1 or 0x form of the recipient; both are the same account.
  * @param amount human-readable amount (e.g. "1.5"). Converted to base units
  *               here, exactly once. Do not pass base units.
  */
@@ -215,8 +217,9 @@ export async function sendToken(
   options?: Partial<TransactionOptions>,
 ): Promise<string> {
   try {
-    if (!recipientAddress.startsWith('inj1') || recipientAddress.length < 40) {
-      throw new Error('Invalid Injective address. Must start with "inj1"')
+    const recipient = toInjectiveAddress(recipientAddress)
+    if (!recipient) {
+      throw new Error('Invalid recipient. Use an inj1… or 0x… address.')
     }
 
     const chainAmount = toChainAmount(amount, TOKENS[token].decimals)
@@ -227,7 +230,7 @@ export async function sendToken(
     const sender = await getUserAddress(chainId)
     const msgSend = MsgSend.fromJSON({
       srcInjectiveAddress: sender,
-      dstInjectiveAddress: recipientAddress,
+      dstInjectiveAddress: recipient,
       amount: {
         denom: await resolveHeldDenom(sender, TOKENS[token]),
         amount: chainAmount,

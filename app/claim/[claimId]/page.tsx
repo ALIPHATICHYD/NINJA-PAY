@@ -4,7 +4,6 @@ import { use, useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { getInjectiveAddress } from '@injectivelabs/sdk-ts'
 import { Gift, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
@@ -17,6 +16,7 @@ import {
   releaseClaim,
   isSupabaseConfigured,
 } from '@/lib/supabase'
+import { toInjectiveAddress } from '@/lib/injective/address'
 import { escrowAddressFromKey, readKeyFromFragment, payShareFromEscrow } from '@/lib/injective/claim-escrow'
 import type { ClaimPool } from '@/lib/injective/types'
 import { EXPLORER_TX_URL } from '@/lib/injective/activity'
@@ -65,8 +65,8 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     initializeWallet,
   } = useCosmosTransaction()
 
-  // Injective EVM and Cosmos addresses share a key, so a 0x address maps to an inj1 address.
-  const claimerAddress = cosmosAddress ?? (evmAddress ? getInjectiveAddress(evmAddress) : null)
+  // A 0x wallet address and its inj1 form are the same account.
+  const claimerAddress = cosmosAddress ?? toInjectiveAddress(evmAddress)
 
   const [pool, setPool] = useState<ClaimPool | null>(null)
   const [loading, setLoading] = useState(true)

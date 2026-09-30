@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getInjectiveAddress } from '@injectivelabs/sdk-ts'
+import { toInjectiveAddress } from '@/lib/injective/address'
 import { balanceOf, fetchAllBalances } from '@/lib/injective/bank'
 import { DENOMS } from '@/lib/injective/tokens'
 
@@ -12,17 +12,6 @@ interface BalanceReturn {
   loading: boolean
   error?: string
   refetch: () => void
-}
-
-/** The inj1 form of an address, or null if it is neither a valid inj1 nor 0x address. */
-function toInjectiveAddress(address: string | null): string | null {
-  if (!address) return null
-  if (address.startsWith('inj1')) return address
-  try {
-    return getInjectiveAddress(address)
-  } catch {
-    return null
-  }
 }
 
 /**

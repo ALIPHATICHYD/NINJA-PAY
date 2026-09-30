@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
@@ -11,6 +11,7 @@ import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 import { formatBaseUnits } from '@/lib/money'
 import { USDC } from '@/lib/injective/tokens'
 import { EXPLORERS, INJECTIVE_EVM } from '@/lib/injective/network'
+import { isSameAccount, parseAccountAddress, shortAddress } from '@/lib/injective/address'
 
 
 export default function SendPage() {
@@ -33,7 +34,7 @@ export default function SendPage() {
   // Prefill from /send?to=<address> (used by the Beneficiaries "Send" button).
   useEffect(() => {
     const to = new URLSearchParams(window.location.search).get('to')
-    if (to && /^(inj1[0-9a-z]{38}|0x[0-9a-fA-F]{40})$/.test(to)) setRecipient(to)
+    if (to && parseAccountAddress(to)) setRecipient(to)
   }, [])
   const [amount, setAmount] = useState('')
   const [txHash, setTxHash] = useState('')
@@ -52,14 +53,16 @@ export default function SendPage() {
   const maxAmount = sendToken === 'USDC' ? maxUSDC : maxINJ
   const parsedAmt = parseFloat(amount) || 0
   
-  // Recipient validation - both Ethereum and Cosmos addresses
-  const isValidEthAddr = recipient.startsWith('0x') && recipient.length === 42
-  const isValidCosmosAddr = recipient.startsWith('inj1') && recipient.length > 40
-  const isValidAddr = isValidEthAddr || isValidCosmosAddr
-  const canSend = isValidAddr && parsedAmt > 0 && parsedAmt <= maxAmount
+  // The recipient may be typed as inj1… or 0x…: both are the same account.
+  const to = useMemo(() => parseAccountAddress(recipient), [recipient])
+  const isOwnAddress = isSameAccount(recipient, address)
+  const canSend = !!to && !isOwnAddress && parsedAmt > 0 && parsedAmt <= maxAmount
+
+  // USDC still signs through Keplr/Leap, which may hold a different account than the wallet above.
+  const keplrIsOtherAccount = cosmosReady && !!cosmosAddress && !!address && !isSameAccount(cosmosAddress, address)
 
   const handleSend = async () => {
-    if (!isValidAddr || !amount) return
+    if (!to || !amount) return
 
     setSendStatus({ type: 'pending', message: '' })
 
@@ -77,34 +80,20 @@ export default function SendPage() {
         }
 
         // sendToken takes the human-readable amount and converts to base units once
-        const hash = await cosmosSendToken(recipient, amount.trim(), 'USDC')
+        const hash = await cosmosSendToken(to.injective, amount.trim(), 'USDC')
         setTxHash(hash)
         setSendStatus({ type: 'success', message: `USDC sent. Transaction: ${hash.slice(0, 16)}...` })
         setAmount('')
         setRecipient('')
       } else {
-        // INJ send - support both Cosmos (inj1) and EVM (0x) addresses
-        if (isValidCosmosAddr) {
-          // Cosmos path: use Keplr/Leap
-          if (!cosmosReady) {
-            setSendStatus({ type: 'error', message: 'Cosmos wallet not connected. Please connect first.' })
-            return
-          }
-
-          const hash = await cosmosSendToken(recipient, amount.trim(), 'INJ')
-          setTxHash(hash)
-          setSendStatus({ type: 'success', message: `INJ sent. Transaction: ${hash.slice(0, 16)}...` })
-          setAmount('')
-          setRecipient('')
-        } else if (isValidEthAddr) {
-          // EVM path: use MetaMask/Wagmi
-          reset()
-          sendTransaction({
-            to: recipient as `0x${string}`,
-            value: parseEther(amount),
-          })
-          setSendStatus({ type: 'pending', message: 'Waiting for wallet confirmation...' })
-        }
+        // INJ goes from the connected wallet as a native EVM transfer. An inj1
+        // recipient is converted to its 0x form: same account, same balance.
+        reset()
+        sendTransaction({
+          to: to.evm,
+          value: parseEther(amount),
+        })
+        setSendStatus({ type: 'pending', message: 'Waiting for wallet confirmation...' })
       }
     } catch (error: any) {
       setSendStatus({ type: 'error', message: error.message || 'Transaction failed' })
@@ -172,6 +161,12 @@ export default function SendPage() {
             </div>
           )}
 
+          {sendToken === 'USDC' && keplrIsOtherAccount && (
+            <div className="alert-warning" style={{ fontSize: '12px' }}>
+              USDC is sent from your Keplr account {shortAddress(cosmosAddress!)}, which is not the wallet shown here. The balance below is your wallet&apos;s.
+            </div>
+          )}
+
           {/* Balance info */}
           <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Available Balance</p>
@@ -186,14 +181,24 @@ export default function SendPage() {
             <input
               className="input input-mono"
               type="text"
-              placeholder={sendToken === 'USDC' ? 'inj1... or 0x...' : 'inj1... or 0x...'}
+              placeholder="inj1… or 0x…"
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
               style={{ fontSize: '12px' }}
             />
-            {recipient && !isValidAddr && (
+            {recipient.trim() && !to && (
               <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>
-                Enter a valid {sendToken === 'USDC' ? 'Cosmos (inj1...) or EVM (0x...)' : 'Cosmos (inj1...) or EVM (0x...)'} address.
+                Enter a valid inj1… or 0x… address.
+              </p>
+            )}
+            {to && isOwnAddress && (
+              <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>
+                That&apos;s your own wallet address.
+              </p>
+            )}
+            {to && !isOwnAddress && (
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
+                Same account as {recipient.trim().startsWith('0x') ? shortAddress(to.injective, 14) : shortAddress(to.evm, 12)}
               </p>
             )}
           </div>

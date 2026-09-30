@@ -24,6 +24,7 @@ import { useBeneficiaries } from '@/lib/beneficiaries'
 import { format } from 'date-fns'
 import { formatBaseUnits } from '@/lib/money'
 import { INJ, USDC } from '@/lib/injective/tokens'
+import { isSameAccount, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 
 const FEATURES = [
@@ -40,7 +41,9 @@ export default function DashboardHome() {
   const { isConnected, address } = useWallet()
   const { inj, usdc, loading: balLoading } = useBalance(address)
   const { injUsdcRate, usdcPrice, loading: priceLoading } = useUSDCConversion(1)
-  const { userAddress: cosmosAddress, isReady: cosmosReady } = useCosmosTransaction()
+  const { userAddress: cosmosAddress } = useCosmosTransaction()
+  const injectiveAddress = toInjectiveAddress(address)
+  const keplrIsOtherAccount = !!cosmosAddress && !!address && !isSameAccount(cosmosAddress, address)
   const { items: activity, loading: activityLoading } = useActivity()
   const [beneficiaries] = useBeneficiaries()
 
@@ -163,63 +166,50 @@ export default function DashboardHome() {
             </div>
           </div>
 
-          {/* Address */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 10px',
-                background: 'var(--success-subtle)',
-                border: '1px solid rgba(16,214,122,0.2)',
-                borderRadius: '20px',
-              }}
-            >
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)' }} />
-              <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: '600' }}>Injective</span>
-            </div>
-            <div
-              className="copy-field"
-              style={{ flex: 1, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
-              onClick={() => navigator.clipboard.writeText(address || '')}
-              title="Click to copy"
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {address?.slice(0, 14)}...{address?.slice(-6)}
-              </span>
-            </div>
+          {/* Address: one account, written two ways */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '22px' }}>
+            {[
+              { format: 'EVM', value: address },
+              { format: 'Cosmos', value: injectiveAddress },
+            ].map(({ format, value }) => value && (
+              <div key={format} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    minWidth: '76px',
+                    padding: '4px 10px',
+                    background: 'var(--success-subtle)',
+                    border: '1px solid rgba(16,214,122,0.2)',
+                    borderRadius: '20px',
+                  }}
+                >
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)' }} />
+                  <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: '600' }}>{format}</span>
+                </div>
+                <div
+                  className="copy-field"
+                  style={{ flex: 1, minWidth: 0, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
+                  onClick={() => navigator.clipboard.writeText(value)}
+                  title="Click to copy"
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {shortAddress(value, 14)}
+                  </span>
+                </div>
+              </div>
+            ))}
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Same account in two formats. Either one receives funds.
+            </p>
+            {keplrIsOtherAccount && (
+              <p style={{ fontSize: '11px', color: 'var(--warning)' }}>
+                Keplr is signed in to a different account ({shortAddress(cosmosAddress!, 12)}). USDC sends come from that account.
+              </p>
+            )}
           </div>
-
-          {/* Cosmos address badge */}
-          {cosmosReady && cosmosAddress && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '4px 10px',
-                  background: 'rgba(39, 117, 202, 0.1)',
-                  border: '1px solid rgba(39, 117, 202, 0.3)',
-                  borderRadius: '20px',
-                }}
-              >
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2775ca' }} />
-                <span style={{ fontSize: '11px', color: '#2775ca', fontWeight: '600' }}>Cosmos</span>
-              </div>
-              <div
-                className="copy-field"
-                style={{ flex: 1, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
-                onClick={() => navigator.clipboard.writeText(cosmosAddress || '')}
-                title="Click to copy"
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {cosmosAddress?.slice(0, 14)}...{cosmosAddress?.slice(-6)}
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* Quick actions */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
