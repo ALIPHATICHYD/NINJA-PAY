@@ -4,9 +4,10 @@ import { use, useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { getInjectiveAddress } from '@injectivelabs/sdk-ts'
 import { Gift, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
+import { useChainHealth } from '@/hooks/useChainHealth'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import {
   getClaimPoolByLink,
@@ -17,9 +18,10 @@ import {
   releaseClaim,
   isSupabaseConfigured,
 } from '@/lib/supabase'
+import { toInjectiveAddress } from '@/lib/injective/address'
 import { escrowAddressFromKey, readKeyFromFragment, payShareFromEscrow } from '@/lib/injective/claim-escrow'
 import type { ClaimPool } from '@/lib/injective/types'
-import { EXPLORER_TX_URL } from '@/lib/injective/activity'
+import { explorerName, explorerTxUrl } from '@/lib/injective/network'
 
 type Status =
   | { type: 'idle' }
@@ -56,6 +58,7 @@ function Notice({ title, body }: { title: string; body: string }) {
 
 export default function PublicClaimPage({ params }: { params: Promise<{ claimId: string }> }) {
   const { claimId } = use(params)
+  const chainHealth = useChainHealth('cosmos')
 
   const { address: evmAddress } = useWallet()
   const {
@@ -65,8 +68,8 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     initializeWallet,
   } = useCosmosTransaction()
 
-  // Injective EVM and Cosmos addresses share a key, so a 0x address maps to an inj1 address.
-  const claimerAddress = cosmosAddress ?? (evmAddress ? getInjectiveAddress(evmAddress) : null)
+  // A 0x wallet address and its inj1 form are the same account.
+  const claimerAddress = cosmosAddress ?? toInjectiveAddress(evmAddress)
 
   const [pool, setPool] = useState<ClaimPool | null>(null)
   const [loading, setLoading] = useState(true)
@@ -212,12 +215,12 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
               {status.message}
             </p>
             <a
-              href={`${EXPLORER_TX_URL}${status.txHash}`}
+              href={explorerTxUrl(status.txHash)}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center gap-1 text-sm text-ocean-text underline underline-offset-4"
             >
-              View transaction <ExternalLink size={13} aria-hidden="true" />
+              View on {explorerName(status.txHash)} <ExternalLink size={13} aria-hidden="true" />
             </a>
           </div>
         ) : alreadyClaimed ? (
@@ -242,13 +245,16 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
             {cosmosError && <p className="text-sm text-coral">{cosmosError}</p>}
           </div>
         ) : (
+          <div className="flex flex-col gap-3">
+          <ChainHealthNotice state={chainHealth} />
           <button
             onClick={handleClaim}
-            disabled={claiming}
+            disabled={claiming || !chainHealth.canSend}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-ocean px-6 py-3.5 text-[15px] font-semibold text-snow transition hover:bg-ocean-hover active:scale-[0.98] disabled:opacity-50"
           >
             {claiming ? <><span className="spinner" /> Claiming…</> : `Claim ${shareAmount} ${pool.token}`}
           </button>
+          </div>
         )}
 
         {status.type === 'error' && (

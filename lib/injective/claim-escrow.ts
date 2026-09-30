@@ -14,24 +14,30 @@
 import { MsgSend, MsgBroadcasterWithPk, PrivateKey } from '@injectivelabs/sdk-ts'
 import { DEFAULT_GAS_PRICE } from '@injectivelabs/utils'
 import { NETWORK } from './constants'
+import { ENDPOINTS } from './network'
 import { DENOMS, TOKENS, sameDenom } from './tokens'
-import { fetchAllBalances, balanceOf } from './bank'
+import { fetchAllBalances, balanceOf, type Coin } from './bank'
 import { toChainAmount } from '../money'
+import { describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction, HOOK_RESTRICTION_MESSAGE } from './transfer-errors'
 
 export type ClaimToken = 'INJ' | 'USDC'
 
 export const TOKEN_DECIMALS: Record<ClaimToken, number> = { INJ: TOKENS.INJ.decimals, USDC: TOKENS.USDC.decimals }
 const TOKEN_DENOM: Record<ClaimToken, string> = { INJ: DENOMS.INJ, USDC: DENOMS.USDC }
 
-// Every escrow transaction (claim payout or sweep) is a single MsgSend with a
-// fixed gas limit, so its fee is known up front: 200,000 gas x 160,000,000 inj.
-const ESCROW_TX_GAS = 200_000
+// Every escrow transaction (claim payout or sweep) is a single MsgSend. Its
+// gas is sized by simulation, because USDC transfers also run Circle's
+// compliance hook, and is capped at what the pool's fee reserve pays for.
 const ESCROW_GAS_PRICE = BigInt(DEFAULT_GAS_PRICE)
-export const ESCROW_TX_FEE = BigInt(ESCROW_TX_GAS) * ESCROW_GAS_PRICE
+const ESCROW_FALLBACK_GAS = 200_000 // when simulation is unavailable
+const ESCROW_MAX_GAS = 600_000
+const GAS_BUFFER = 1.3
 
-// INJ set aside in the escrow to pay fees: one tx per share plus one sweep.
-// Reserved at 3x the fixed fee so a gas-price bump does not strand the pool.
-const FEE_RESERVE_PER_TX = ESCROW_TX_FEE * BigInt(3)
+const escrowFee = (gas: number) => BigInt(gas) * ESCROW_GAS_PRICE
+
+// INJ set aside in the escrow to pay fees: one tx per share plus one sweep,
+// each at the gas cap (600,000 gas x 160,000,000 inj = 0.000096 INJ).
+const FEE_RESERVE_PER_TX = escrowFee(ESCROW_MAX_GAS)
 
 const KEY_FRAGMENT_PARAM = 'k'
 
@@ -127,20 +133,68 @@ export function readKeyFromFragment(hash: string): string | null {
   return key && /^(0x)?[0-9a-fA-F]{64}$/.test(key) ? key.replace(/^0x/, '') : null
 }
 
-async function broadcastFromEscrow(privateKeyHex: string, msg: MsgSend): Promise<string> {
+type EscrowTx = {
+  /** Throws a readable error if the escrow can't pay `fee` plus what it sends. */
+  check: (held: Coin[], fee: bigint) => void
+  /** The MsgSend for a given fee (the sweep sends back its INJ minus the fee). */
+  build: (held: Coin[], fee: bigint) => MsgSend
+}
+
+/**
+ * Sign with the escrow key and broadcast. Balances are read fresh, gas is
+ * sized by simulation (capped at ESCROW_MAX_GAS), and if USDC's compliance
+ * hook runs out of gas the transaction is retried once with twice the gas.
+ */
+async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise<string> {
+  const escrowAddress = escrowAddressFromKey(privateKeyHex)
   const broadcaster = new MsgBroadcasterWithPk({
     network: NETWORK,
+    endpoints: { grpc: ENDPOINTS.grpc, rest: ENDPOINTS.rest, indexer: ENDPOINTS.indexer },
     privateKey: privateKeyHex,
     simulateTx: false,
   })
-  const result = await broadcaster.broadcast({
-    msgs: msg,
-    gas: { gas: ESCROW_TX_GAS, gasPrice: ESCROW_GAS_PRICE.toString() },
-  })
-  if (result.code !== 0) {
-    throw new Error(result.rawLog || `Transaction failed with code ${result.code}`)
+
+  let minGas = 0
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let held: Coin[]
+    try {
+      held = await fetchAllBalances(escrowAddress)
+    } catch {
+      throw new Error('Could not read the claim pool balance. Try again.')
+    }
+
+    let gas = ESCROW_FALLBACK_GAS
+    try {
+      const { gasInfo } = await broadcaster.simulate({ msgs: tx.build(held, escrowFee(ESCROW_MAX_GAS)) })
+      gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
+    } catch (error) {
+      if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
+      // Otherwise fall back to the default gas and let the broadcast decide.
+    }
+    gas = Math.min(Math.max(gas, minGas), ESCROW_MAX_GAS)
+
+    const fee = escrowFee(gas)
+    tx.check(held, fee)
+
+    let failure: string
+    try {
+      const result = await broadcaster.broadcast({
+        msgs: tx.build(held, fee),
+        gas: { gas, gasPrice: ESCROW_GAS_PRICE.toString() },
+      })
+      if (result.code === 0) return result.txHash
+      failure = result.rawLog || `Transaction failed with code ${result.code}`
+    } catch (error) {
+      failure = errorMessage(error)
+    }
+
+    if (attempt === 0 && isHookOutOfGas(failure) && gas < ESCROW_MAX_GAS) {
+      minGas = gas * 2
+      continue
+    }
+    throw new Error(describeTransferError(failure))
   }
-  return result.txHash
+  throw new Error('Transaction failed.')
 }
 
 /** Pay one share from the escrow to the claimer. */
@@ -151,31 +205,27 @@ export async function payShareFromEscrow(
   amountBase: string,
 ): Promise<string> {
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
-  let held: { denom: string; amount: string }[]
-  try {
-    held = await fetchAllBalances(escrowAddress)
-  } catch {
-    throw new Error('Could not read the claim pool balance. Try again.')
-  }
-  const inj = BigInt(balanceOf(held, DENOMS.INJ))
-  const tokenCoin = held.find(c => sameDenom(c.denom, TOKEN_DENOM[token]))
-  const available = BigInt(tokenCoin?.amount ?? '0')
   const needed = BigInt(amountBase)
+  const tokenCoin = (held: Coin[]) => held.find(c => sameDenom(c.denom, TOKEN_DENOM[token]))
 
-  if (token === 'INJ' ? inj < needed + ESCROW_TX_FEE : available < needed) {
-    throw new Error('This claim pool does not have enough funds left for your share.')
-  }
-  if (inj < ESCROW_TX_FEE) {
-    throw new Error('This claim pool has run out of INJ to pay network fees.')
-  }
-
-  const msg = MsgSend.fromJSON({
-    srcInjectiveAddress: escrowAddress,
-    dstInjectiveAddress: recipient,
-    // Use the escrow's own spelling of the denom so the chain matches the coins it holds.
-    amount: { denom: tokenCoin?.denom ?? TOKEN_DENOM[token], amount: amountBase },
+  return broadcastFromEscrow(privateKeyHex, {
+    check: (held, fee) => {
+      const inj = BigInt(balanceOf(held, DENOMS.INJ))
+      const available = BigInt(tokenCoin(held)?.amount ?? '0')
+      if (token === 'INJ' ? inj < needed + fee : available < needed) {
+        throw new Error('This claim pool does not have enough funds left for your share.')
+      }
+      if (inj < fee) {
+        throw new Error('This claim pool has run out of INJ to pay network fees.')
+      }
+    },
+    build: held => MsgSend.fromJSON({
+      srcInjectiveAddress: escrowAddress,
+      dstInjectiveAddress: recipient,
+      // Use the escrow's own spelling of the denom so the chain matches the coins it holds.
+      amount: { denom: tokenCoin(held)?.denom ?? TOKEN_DENOM[token], amount: amountBase },
+    }),
   })
-  return broadcastFromEscrow(privateKeyHex, msg)
 }
 
 /**
@@ -185,33 +235,30 @@ export async function payShareFromEscrow(
  */
 export async function sweepEscrow(privateKeyHex: string, refundTo: string): Promise<string> {
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
-  let held: { denom: string; amount: string }[]
-  try {
-    held = await fetchAllBalances(escrowAddress)
-  } catch {
-    throw new Error('Could not read the claim pool balance. Try again.')
+  const refundCoins = (held: Coin[], fee: bigint) => {
+    const inj = BigInt(balanceOf(held, DENOMS.INJ))
+    return held
+      .map(c => ({
+        denom: c.denom,
+        amount: sameDenom(c.denom, DENOMS.INJ) ? (inj > fee ? inj - fee : BigInt(0)).toString() : c.amount,
+      }))
+      .filter(c => BigInt(c.amount) > BigInt(0))
+      .sort((a, b) => (a.denom < b.denom ? -1 : a.denom > b.denom ? 1 : 0))
   }
-  const inj = BigInt(balanceOf(held, DENOMS.INJ))
 
-  if (inj < ESCROW_TX_FEE) {
-    throw new Error('The claim pool has no INJ left to pay the network fee for a refund.')
-  }
-
-  const coins = held
-    .map(c => ({
-      denom: c.denom,
-      amount: sameDenom(c.denom, DENOMS.INJ) ? (inj - ESCROW_TX_FEE).toString() : c.amount,
-    }))
-    .filter(c => BigInt(c.amount) > BigInt(0))
-    .sort((a, b) => (a.denom < b.denom ? -1 : a.denom > b.denom ? 1 : 0))
-  if (coins.length === 0) throw new Error('Nothing left to reclaim.')
-
-  const msg = MsgSend.fromJSON({
-    srcInjectiveAddress: escrowAddress,
-    dstInjectiveAddress: refundTo,
-    amount: coins,
+  return broadcastFromEscrow(privateKeyHex, {
+    check: (held, fee) => {
+      if (BigInt(balanceOf(held, DENOMS.INJ)) < fee) {
+        throw new Error('The claim pool has no INJ left to pay the network fee for a refund.')
+      }
+      if (refundCoins(held, fee).length === 0) throw new Error('Nothing left to reclaim.')
+    },
+    build: (held, fee) => MsgSend.fromJSON({
+      srcInjectiveAddress: escrowAddress,
+      dstInjectiveAddress: refundTo,
+      amount: refundCoins(held, fee),
+    }),
   })
-  return broadcastFromEscrow(privateKeyHex, msg)
 }
 
 // ─── Creator-side key storage ───

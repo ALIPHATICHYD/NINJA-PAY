@@ -6,10 +6,10 @@ import { ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useActivity } from '@/hooks/useActivity'
 import { StatusChip } from '@/components/StatusChip'
-import { NETWORK_LABEL } from '@/lib/injective/network'
+import { NETWORK_LABEL, explorerName, explorerTxUrl } from '@/lib/injective/network'
+import { shortAddress } from '@/lib/injective/address'
 import {
   ACTIVITY_LABELS,
-  EXPLORER_TX_URL,
   formatCoinAmount,
   type ActivityItem,
   type ActivityType,
@@ -32,7 +32,7 @@ function dayLabel(date: Date): string {
 }
 
 function shorten(value: string): string {
-  return value.startsWith('inj1') ? `${value.slice(0, 10)}…${value.slice(-6)}` : value
+  return /^(inj1|0x)/.test(value) ? shortAddress(value) : value
 }
 
 export default function TransactionsPage() {
@@ -132,9 +132,10 @@ export default function TransactionsPage() {
                   </p>
                   <StatusChip state={tx.success ? 'confirmed' : 'failed'} className="w-fit" />
                   <a
-                    href={`${EXPLORER_TX_URL}${tx.hash}`}
+                    href={explorerTxUrl(tx.hash)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    title={`View on ${explorerName(tx.hash)}`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--accent-text)', fontFamily: 'var(--font-geist-mono), monospace' }}
                   >
                     {tx.hash.slice(0, 8)}… <ExternalLink size={10} />

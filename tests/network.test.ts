@@ -34,3 +34,23 @@ describe('network config', () => {
     expect(INJECTIVE_EVM_WALLET_CONFIG.rpcUrls).toEqual(['https://k8s.testnet.json-rpc.injective.network/'])
   })
 })
+
+describe('explorer links', () => {
+  const EVM_HASH = `0x${'ab'.repeat(32)}`
+  const COSMOS_HASH = 'CD'.repeat(32)
+
+  it('sends EVM hashes to Blockscout and Cosmos hashes to InjScan', async () => {
+    const { explorerTxUrl, explorerName } = await import('@/lib/injective/network')
+    expect(explorerTxUrl(EVM_HASH)).toBe(`https://testnet.blockscout.injective.network/tx/${EVM_HASH}`)
+    expect(explorerName(EVM_HASH)).toBe('Blockscout')
+    expect(explorerTxUrl(COSMOS_HASH)).toBe(`https://testnet.explorer.injective.network/transaction/${COSMOS_HASH}`)
+    expect(explorerName(COSMOS_HASH)).toBe('InjScan')
+  })
+
+  it('uses the mainnet explorers on mainnet', async () => {
+    vi.stubEnv('NEXT_PUBLIC_INJECTIVE_NETWORK', 'mainnet')
+    const { explorerTxUrl } = await import('@/lib/injective/network')
+    expect(explorerTxUrl(EVM_HASH)).toBe(`https://blockscout.injective.network/tx/${EVM_HASH}`)
+    expect(explorerTxUrl(COSMOS_HASH)).toBe(`https://injscan.com/transaction/${COSMOS_HASH}`)
+  })
+})

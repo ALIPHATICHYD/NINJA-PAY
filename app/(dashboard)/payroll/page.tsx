@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { useUSDCConversion } from '@/hooks/useUSDCConversion'
-import { formatBaseUnits } from '@/lib/money'
+import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { TOKENS } from '@/lib/injective/tokens'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
+import { useChainHealth } from '@/hooks/useChainHealth'
+import { COSMOS_SEND_GAS, checkFee, feeShortfallMessage, formatFee, networkFee } from '@/lib/injective/fees'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
+import { parseAccountAddress, shortAddress } from '@/lib/injective/address'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
@@ -22,8 +25,18 @@ const STEPS = [
 
 export default function PayrollPage() {
   const { isConnected, address } = useWallet()
-  const { inj, usdc } = useBalance(address)
-  const { sendToken, loading: cosmosLoading, error: cosmosError } = useCosmosTransaction()
+  const {
+    sendToken,
+    userAddress: cosmosAddress,
+    isReady: cosmosReady,
+    loading: cosmosLoading,
+    error: cosmosError,
+    initializeWallet: connectCosmosWallet,
+  } = useCosmosTransaction()
+  // Payroll signs with Keplr/Leap, so balances and the fee check use that account once it's connected.
+  const { inj, usdc, loading: balLoading } = useBalance(cosmosAddress ?? address)
+
+  const chainHealth = useChainHealth('cosmos')
 
   const [step, setStep] = useState<Step>(1)
   const [payrollName, setPayrollName] = useState('')
@@ -34,16 +47,37 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
 
-  const totalAmount = recipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(4)
-  const available = Number(formatBaseUnits(token === 'INJ' ? inj : usdc, TOKENS[token].decimals))
+  const { decimals } = TOKENS[token]
+  // Exact base units per row; null where the amount isn't valid for this token.
+  const amounts = useMemo(() => recipients.map(r => {
+    try { return BigInt(toChainAmount(r.amount, decimals)) } catch { return null }
+  }), [recipients, decimals])
+  const totalBase = amounts.reduce<bigint>((sum, a) => sum + (a ?? BigInt(0)), BigInt(0))
+  const totalAmount = formatBaseUnits(totalBase, decimals)
+  const balance = BigInt((token === 'INJ' ? inj : usdc) || '0')
+  const overBalance = totalBase > balance
+
+  // Fees are paid in INJ. Payroll sends one transaction per recipient today, so each one pays a fee.
+  const fee = networkFee(COSMOS_SEND_GAS) * BigInt(recipients.length)
+  const feeCheck = checkFee(BigInt(inj || '0'), fee, token === 'INJ' ? totalBase : BigInt(0))
+  const fundsError = balLoading ? null
+    : overBalance ? `The total is more than your ${token} balance of ${formatBaseUnits(balance, decimals, 4)} ${token}.`
+    : !feeCheck.ok ? feeShortfallMessage(feeCheck, token === 'INJ')
+    : null
 
   const addRecipient = () => setRecipients(prev => [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
   const removeRecipient = (id: string) => { if (recipients.length > 1) setRecipients(prev => prev.filter(r => r.id !== id)) }
   const updateRecipient = (id: string, field: keyof PayrollRecipient, value: string) =>
     setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
 
+  // Each row may be typed as inj1… or 0x…; both name the same account, stored as inj1.
+  const accounts = useMemo(() => recipients.map(r => parseAccountAddress(r.address)?.injective ?? null), [recipients])
+  const invalidRows = recipients.flatMap((r, i) => (r.address.trim() && !accounts[i] ? [i + 1] : []))
+  const invalidAmountRows = recipients.flatMap((r, i) => (r.amount.trim() && amounts[i] === null ? [i + 1] : []))
+  const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
+
   const canProceedStep1 = payrollName.trim().length > 0
-  const canProceedStep2 = recipients.every(r => r.address.startsWith('inj1') && parseFloat(r.amount) > 0)
+  const canProceedStep2 = recipients.every((r, i) => accounts[i] && (amounts[i] ?? BigInt(0)) > BigInt(0))
 
   const handleDispatch = async () => {
     setLoading(true)
@@ -51,8 +85,8 @@ export default function PayrollPage() {
     try {
       // One transaction per recipient. sendToken takes the human-readable
       // amount and converts to base units once.
-      for (const recipient of recipients) {
-        await sendToken(recipient.address, recipient.amount.trim(), token, MEMO_PAYROLL)
+      for (const [i, recipient] of recipients.entries()) {
+        await sendToken(accounts[i]!, recipient.amount.trim(), token, MEMO_PAYROLL)
       }
 
       setStatus({ 
@@ -125,12 +159,12 @@ export default function PayrollPage() {
               ))}
             </div>
             <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-              Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{available.toFixed(4)} {token}</span>
+              Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}</span>
             </p>
-            {token === 'USDC' && (
+            {!cosmosReady && (
               <div style={{ marginTop: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 10px', background: 'rgba(39, 117, 202, 0.1)', borderRadius: '6px', border: '1px solid rgba(39, 117, 202, 0.2)' }}>
                 <AlertCircle size={14} style={{ color: '#2775ca', marginTop: '2px', flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', color: '#2775ca', lineHeight: '1.4' }}>USDC uses Cosmos wallet (Keplr). Make sure to connect above.</span>
+                <span style={{ fontSize: '11px', color: '#2775ca', lineHeight: '1.4' }}>Payroll is signed with Keplr or Leap for now. You&apos;ll connect it on the review step.</span>
               </div>
             )}
           </div>
@@ -161,7 +195,14 @@ export default function PayrollPage() {
             {recipients.map((rec, idx) => (
               <div key={rec.id} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 120px 38px', gap: '8px', alignItems: 'center' }}>
                 <input className="input" placeholder={`Person ${idx + 1}`} value={rec.label || ''} onChange={e => updateRecipient(rec.id, 'label', e.target.value)} style={{ fontSize: '13px' }} />
-                <input className="input input-mono" placeholder="inj1..." value={rec.address} onChange={e => updateRecipient(rec.id, 'address', e.target.value)} style={{ fontSize: '12px' }} />
+                <input
+                  className="input input-mono"
+                  placeholder="inj1… or 0x…"
+                  value={rec.address}
+                  onChange={e => updateRecipient(rec.id, 'address', e.target.value)}
+                  aria-invalid={invalidRows.includes(idx + 1)}
+                  style={{ fontSize: '12px', ...(invalidRows.includes(idx + 1) && { borderColor: 'var(--error)' }) }}
+                />
                 <input className="input" type="number" placeholder="0.00" value={rec.amount} onChange={e => updateRecipient(rec.id, 'amount', e.target.value)} min="0" step="0.01" />
                 <button onClick={() => removeRecipient(rec.id)} className="btn-ghost" disabled={recipients.length === 1} style={{ color: 'var(--error)', padding: '8px', opacity: recipients.length === 1 ? 0.3 : 1 }}>
                   <Trash2 size={14} />
@@ -169,6 +210,22 @@ export default function PayrollPage() {
               </div>
             ))}
           </div>
+
+          {invalidRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--error)' }}>
+              {invalidRows.length === 1 ? 'Row' : 'Rows'} {invalidRows.join(', ')}: enter a valid inj1… or 0x… address.
+            </p>
+          )}
+          {invalidAmountRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--error)' }}>
+              {invalidAmountRows.length === 1 ? 'Row' : 'Rows'} {invalidAmountRows.join(', ')}: enter an amount with at most {decimals} decimal places.
+            </p>
+          )}
+          {repeatedRows.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--warning)' }}>
+              {repeatedRows.length === 1 ? 'Row' : 'Rows'} {repeatedRows.join(', ')} {repeatedRows.length === 1 ? 'pays an account' : 'pay accounts'} already listed above (inj1… and 0x… are the same account).
+            </p>
+          )}
 
           {/* Running total */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: '9px', border: '1px solid var(--border)' }}>
@@ -212,7 +269,32 @@ export default function PayrollPage() {
                 {totalAmount} {token}
               </span>
             </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Network fee{recipients.length > 1 && ` (${recipients.length} transactions)`}
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>≈ {formatFee(fee)} INJ</span>
+            </div>
           </div>
+
+          {!cosmosReady && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgb(59,130,246)', borderRadius: '8px' }}>
+              <AlertCircle size={14} style={{ color: 'rgb(59,130,246)', flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: '180px', fontSize: '12px', color: 'rgb(59,130,246)' }}>Payroll is signed with Keplr or Leap for now.</span>
+              <button onClick={connectCosmosWallet} disabled={cosmosLoading} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                {cosmosLoading ? 'Connecting…' : 'Connect Keplr or Leap'}
+              </button>
+            </div>
+          )}
+
+          <ChainHealthNotice state={chainHealth} />
+
+          {fundsError && (
+            <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <span>{fundsError}</span>
+            </div>
+          )}
 
           {/* Recipient list preview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -220,7 +302,7 @@ export default function PayrollPage() {
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <div>
                   <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '2px' }}>{r.label || `Recipient ${i + 1}`}</p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.address.slice(0, 14)}...{r.address.slice(-6)}</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{shortAddress(accounts[i] ?? r.address, 14)}</p>
                 </div>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{r.amount} {token}</p>
               </div>
@@ -240,7 +322,7 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady || !chainHealth.canSend} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>

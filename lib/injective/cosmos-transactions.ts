@@ -15,15 +15,17 @@ import {
   getTxRawFromTxRawOrDirectSignResponse,
   type Msgs,
 } from '@injectivelabs/sdk-ts'
-import { getNetworkEndpoints } from '@injectivelabs/networks'
 import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
-import { NETWORK, CHAIN_ID } from './constants'
-import { FAUCETS, NETWORK_LABEL } from './network'
+import { CHAIN_ID } from './constants'
+import { ENDPOINTS, FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
-import { resolveHeldDenom } from './bank'
+import { balanceOf, fetchAllBalances, resolveHeldDenom } from './bank'
+import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
+import { HOOK_RESTRICTION_MESSAGE, describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction } from './transfer-errors'
+import { toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
-const endpoints = getNetworkEndpoints(NETWORK)
+const endpoints = ENDPOINTS
 
 interface TransactionOptions {
   memo?: string
@@ -125,16 +127,51 @@ function toBase64(bytes: Uint8Array): string {
 // Fallback gas limits if simulation is unavailable (e.g. first-ever tx from an account).
 const FALLBACK_GAS = { base: 150_000, perMsg: 50_000 }
 const GAS_BUFFER = 1.3
+// Gas multiplier for the one retry after USDC's compliance hook runs out of gas.
+const HOOK_RETRY_FACTOR = 2
 
 /**
  * Build, sign (SIGN_MODE_DIRECT via Keplr/Leap), simulate, and broadcast a
  * Cosmos transaction on Injective. Resolves with the tx hash once the tx is
  * included in a block; rejects if the wallet refuses or the chain rejects it.
+ *
+ * Before the wallet's signing window opens, it checks that the account holds
+ * enough INJ for the simulated fee plus any INJ the messages send, and
+ * rejects with a plain explanation if not.
+ *
+ * USDC transfers run Circle's compliance hook. If the hook runs out of gas
+ * (not a real restriction, per Injective's docs), the transaction is rebuilt
+ * once with twice the gas and the wallet asks the user to sign again. A real
+ * restriction is reported neutrally, without retrying.
  */
 export async function signAndBroadcast(
   msgs: Msgs | Msgs[],
   chainId: string = CHAIN_ID,
   memo = '',
+): Promise<string> {
+  try {
+    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER)
+  } catch (error) {
+    if (!isHookOutOfGas(errorMessage(error))) throw readable(error)
+  }
+  try {
+    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER * HOOK_RETRY_FACTOR)
+  } catch (error) {
+    throw readable(error)
+  }
+}
+
+function readable(error: unknown): Error {
+  const message = errorMessage(error)
+  const described = describeTransferError(message)
+  return described === message && error instanceof Error ? error : new Error(described)
+}
+
+async function signAndBroadcastOnce(
+  msgs: Msgs | Msgs[],
+  chainId: string,
+  memo: string,
+  gasBuffer: number,
 ): Promise<string> {
   const wallet = getCosmosWallet()
   const { provider } = wallet
@@ -180,14 +217,27 @@ export async function signAndBroadcast(
     })
 
   // Simulate with an empty signature to size the gas limit.
-  let gas = FALLBACK_GAS.base + FALLBACK_GAS.perMsg * msgCount
+  const fallbackGas = FALLBACK_GAS.base + FALLBACK_GAS.perMsg * msgCount
+  let gas = Math.ceil(fallbackGas * (gasBuffer / GAS_BUFFER))
   try {
-    const { txRaw } = build(gas)
+    const { txRaw } = build(fallbackGas)
     txRaw.signatures = [new Uint8Array(0)]
     const { gasInfo } = await txApi.simulate(txRaw)
-    gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
+    gas = Math.ceil(Number(gasInfo.gasUsed) * gasBuffer)
   } catch (error) {
+    // A real restriction shows up in simulation: stop before the wallet opens.
+    if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
     console.warn('Gas simulation failed, using fallback gas limit:', error)
+  }
+
+  // Fees are paid in INJ, even for USDC. Check now rather than let the chain reject it.
+  const injBalance = await fetchAllBalances(address)
+    .then(balances => BigInt(balanceOf(balances, 'inj')))
+    .catch(() => null) // If the balance can't be read, let the chain decide.
+  if (injBalance !== null) {
+    const injSpend = injSpentBy(msgs, address)
+    const check = checkFee(injBalance, networkFee(BigInt(gas)), injSpend)
+    if (!check.ok) throw new Error(feeShortfallMessage(check, injSpend > BigInt(0)))
   }
 
   const { signDoc } = build(gas)
@@ -204,6 +254,7 @@ export async function signAndBroadcast(
 /**
  * Send INJ or USDC via Keplr or Leap.
  *
+ * @param recipientAddress inj1 or 0x form of the recipient; both are the same account.
  * @param amount human-readable amount (e.g. "1.5"). Converted to base units
  *               here, exactly once. Do not pass base units.
  */
@@ -215,8 +266,9 @@ export async function sendToken(
   options?: Partial<TransactionOptions>,
 ): Promise<string> {
   try {
-    if (!recipientAddress.startsWith('inj1') || recipientAddress.length < 40) {
-      throw new Error('Invalid Injective address. Must start with "inj1"')
+    const recipient = toInjectiveAddress(recipientAddress)
+    if (!recipient) {
+      throw new Error('Invalid recipient. Use an inj1… or 0x… address.')
     }
 
     const chainAmount = toChainAmount(amount, TOKENS[token].decimals)
@@ -227,7 +279,7 @@ export async function sendToken(
     const sender = await getUserAddress(chainId)
     const msgSend = MsgSend.fromJSON({
       srcInjectiveAddress: sender,
-      dstInjectiveAddress: recipientAddress,
+      dstInjectiveAddress: recipient,
       amount: {
         denom: await resolveHeldDenom(sender, TOKENS[token]),
         amount: chainAmount,
@@ -244,23 +296,16 @@ export async function sendToken(
 
 
 /**
- * Check if user is using Ledger with wallet (Keplr or Leap)
+ * Check if the connected Keplr or Leap account is a Ledger. Asks only the
+ * wallet that signs (Keplr first, like signAndBroadcast), so a second
+ * installed wallet never opens its own approval window.
  */
 export async function isUserUsingLedger(chainId: string = CHAIN_ID): Promise<boolean> {
   try {
-    if (isKeplrAvailable()) {
-      await (window as any).keplr.enable(chainId)
-      const key = await (window as any).keplr.getKey(chainId)
-      if ((key as any).isLedger) return true
-    }
-
-    if (isLeapAvailable()) {
-      await (window as any).leap.enable(chainId)
-      const key = await (window as any).leap.getKey(chainId)
-      if ((key as any).isLedger) return true
-    }
-
-    return false
+    const { provider } = getCosmosWallet()
+    await provider.enable(chainId)
+    const key = await provider.getKey(chainId)
+    return !!key.isNanoLedger
   } catch (error) {
     console.warn('Error checking Ledger status:', error)
     return false

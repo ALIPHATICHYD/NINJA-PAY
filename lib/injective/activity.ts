@@ -7,9 +7,7 @@
  * same chain and are not parsed here yet.
  */
 
-import { getNetworkEndpoints } from '@injectivelabs/networks'
-import { NETWORK } from './constants'
-import { EXPLORERS } from './network'
+import { ENDPOINTS } from './network'
 import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
@@ -76,7 +74,7 @@ type RestTx = {
 }
 
 async function searchTxs(query: string, limit: number): Promise<RestTx[]> {
-  const { rest } = getNetworkEndpoints(NETWORK)
+  const { rest } = ENDPOINTS
   const params = new URLSearchParams({
     query,
     order_by: 'ORDER_BY_DESC',
@@ -177,6 +175,3 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   'claim-reclaim': 'Claim reclaimed',
   payroll: 'Payroll',
 }
-
-/** InjScan transaction page for a Cosmos tx hash. */
-export const EXPLORER_TX_URL = `${EXPLORERS.cosmos}/transaction/`

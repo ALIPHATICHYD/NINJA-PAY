@@ -15,7 +15,7 @@
  */
 
 import { defineChain } from 'viem'
-import { Network } from '@injectivelabs/networks'
+import { Network, getNetworkEndpoints } from '@injectivelabs/networks'
 import { ChainId } from '@injectivelabs/ts-types'
 
 /** Set NEXT_PUBLIC_INJECTIVE_NETWORK=mainnet to target mainnet. Anything else means testnet. */
@@ -31,18 +31,39 @@ export const NETWORK_LABEL = IS_MAINNET ? 'Injective' : 'Injective testnet'
 const EVM = IS_MAINNET
   ? {
       id: 1776,
-      name: 'Injective',
+      name: 'Injective EVM Mainnet',
       rpc: 'https://sentry.evm-rpc.injective.network/',
       ws: 'wss://sentry.evm-ws.injective.network',
       blockscout: 'https://blockscout.injective.network',
     }
   : {
       id: 1439,
-      name: 'Injective Testnet',
+      name: 'Injective EVM Testnet',
       rpc: 'https://k8s.testnet.json-rpc.injective.network/',
       ws: 'wss://k8s.testnet.ws.injective.network/',
       blockscout: 'https://testnet.blockscout.injective.network',
     }
+
+const configured = (value: string | undefined) => value?.trim() || undefined
+const publicEndpoints = getNetworkEndpoints(NETWORK)
+
+/** Injective's public EVM JSON-RPC for this network. Wallets get this URL when adding the network. */
+export const PUBLIC_EVM_RPC = EVM.rpc
+
+/**
+ * Where the app reads the chain. Injective's shared public endpoints by
+ * default, which its docs do not recommend for production traffic. Set the
+ * NEXT_PUBLIC_INJECTIVE_* variables to use a premium provider; see
+ * app/api/evm-rpc/route.ts to keep an EVM provider's key on the server.
+ *
+ * Source: https://docs.injective.network/infra/public-endpoints
+ */
+export const ENDPOINTS = {
+  grpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_GRPC) ?? publicEndpoints.grpc,
+  rest: configured(process.env.NEXT_PUBLIC_INJECTIVE_REST) ?? publicEndpoints.rest,
+  indexer: configured(process.env.NEXT_PUBLIC_INJECTIVE_INDEXER) ?? publicEndpoints.indexer,
+  evmRpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_RPC) ?? PUBLIC_EVM_RPC,
+}
 
 /** Injective's native EVM, for wagmi, RainbowKit and viem. */
 export const INJECTIVE_EVM = defineChain({
@@ -71,10 +92,31 @@ export const EXPLORERS = {
   cosmos: IS_MAINNET ? 'https://injscan.com' : 'https://testnet.explorer.injective.network',
 }
 
-/** Where to get test funds. Mainnet has no faucet. */
+/** EVM transaction hashes are 0x plus 64 hex digits; Cosmos ones are 64 hex digits without 0x. */
+export function isEvmTxHash(hash: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(hash)
+}
+
+/** The explorer page for a transaction: Blockscout for EVM hashes, InjScan for Cosmos ones. */
+export function explorerTxUrl(hash: string): string {
+  return isEvmTxHash(hash) ? `${EXPLORERS.evm}/tx/${hash}` : `${EXPLORERS.cosmos}/transaction/${hash}`
+}
+
+export function explorerName(hash: string): 'Blockscout' | 'InjScan' {
+  return isEvmTxHash(hash) ? 'Blockscout' : 'InjScan'
+}
+
+/**
+ * Where to get test funds. Mainnet has no faucet.
+ * Source: https://docs.injective.network/developers-evm/network-information
+ */
 export const FAUCETS = IS_MAINNET
   ? null
   : {
       inj: 'https://testnet.faucet.injective.network/',
+      injAlt: 'https://cloud.google.com/application/web3/faucet/injective/testnet',
       usdc: 'https://faucet.circle.com/',
     }
+
+/** Injective's own page on getting mainnet INJ, which the network-information page points to. */
+export const GET_INJ_URL = 'https://injective.com/getinj'

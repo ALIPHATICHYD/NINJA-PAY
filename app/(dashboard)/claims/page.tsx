@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useChainHealth } from '@/hooks/useChainHealth'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import {
   createClaimPool,
   getClaimPoolsByCreator,
@@ -43,6 +45,7 @@ function newLinkCode(): string {
 }
 
 export default function ClaimsPage() {
+  const chainHealth = useChainHealth('cosmos')
   const {
     userAddress: creatorAddress,
     isReady: walletReady,
@@ -269,12 +272,14 @@ export default function ClaimsPage() {
             You can reclaim anything left over.
           </p>
 
+          <ChainHealthNotice state={chainHealth} />
+
           {status.type && (
             <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>{status.message}</div>
           )}
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={handleCreate} disabled={submitting || !!previewError} className="btn-primary" style={{ flex: 1 }}>
+            <button onClick={handleCreate} disabled={submitting || !!previewError || !chainHealth.canSend} className="btn-primary" style={{ flex: 1 }}>
               {submitting ? <><span className="spinner" /> Funding…</> : <><Share2 size={14} /> Fund &amp; Get Link</>}
             </button>
             <button onClick={() => setShowForm(false)} disabled={submitting} className="btn-secondary" style={{ flex: 1 }}>

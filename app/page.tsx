@@ -72,7 +72,9 @@ const FAQS = [
 ]
 
 const APP_LINKS = [
+  { label: 'Wallet setup', href: '/setup' },
   { label: 'Send', href: '/send' },
+  { label: 'Receive', href: '/receive' },
   { label: 'Bills', href: '/bills' },
   { label: 'Claims', href: '/claims' },
   { label: 'Payroll', href: '/payroll' },
@@ -346,7 +348,10 @@ export default function LandingPage() {
               <div>
                 <h2 className="font-display text-4xl font-normal tracking-[-0.015em] md:text-5xl">Ready to get started?</h2>
                 <p className="mt-3 max-w-[48ch] text-lg leading-relaxed text-snow/90">
-                  Connect your wallet to send INJ and USDC on Injective testnet.
+                  Connect your wallet to send INJ and USDC on Injective testnet.{' '}
+                  <Link href="/setup" className="underline underline-offset-4 hover:text-white">
+                    New to Injective? Set up your wallet first.
+                  </Link>
                 </p>
               </div>
               <Link

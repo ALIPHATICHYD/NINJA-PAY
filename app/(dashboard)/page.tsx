@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import {
   Send,
+  QrCode,
   CreditCard,
   Share2,
   Users2,
@@ -11,23 +12,26 @@ import {
   ArrowUpRight,
   ArrowRight,
   Briefcase,
-  TrendingUp,
   DollarSign,
 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
-import { useUSDCConversion } from '@/hooks/useUSDCConversion'
+import { usePrices } from '@/hooks/usePrices'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useActivity } from '@/hooks/useActivity'
-import { ACTIVITY_LABELS, EXPLORER_TX_URL, coinValue, formatCoinAmount } from '@/lib/injective/activity'
+import { ACTIVITY_LABELS, coinValue, formatCoinAmount } from '@/lib/injective/activity'
+import { explorerTxUrl } from '@/lib/injective/network'
 import { useBeneficiaries } from '@/lib/beneficiaries'
 import { format } from 'date-fns'
 import { formatBaseUnits } from '@/lib/money'
 import { INJ, USDC } from '@/lib/injective/tokens'
+import { isSameAccount, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
+import { formatUsd, sumUsd, usdValue } from '@/lib/prices'
 
 const FEATURES = [
   { icon: Send,         title: 'Send',          desc: 'Transfer INJ or USDC to any wallet.',   href: '/send' },
+  { icon: QrCode,       title: 'Receive',       desc: 'Show your address or request an amount.', href: '/receive' },
   { icon: CreditCard,   title: 'Bills',         desc: 'Pay airtime, data, electricity, cable.',href: '/bills' },
   { icon: Share2,       title: 'Claims',        desc: 'Create shareable token-drop links.',     href: '/claims' },
   { icon: Users2,       title: 'Beneficiaries', desc: 'Manage saved recipients.',               href: '/beneficiaries' },
@@ -39,27 +43,24 @@ const FEATURES = [
 export default function DashboardHome() {
   const { isConnected, address } = useWallet()
   const { inj, usdc, loading: balLoading } = useBalance(address)
-  const { injUsdcRate, usdcPrice, loading: priceLoading } = useUSDCConversion(1)
-  const { userAddress: cosmosAddress, isReady: cosmosReady } = useCosmosTransaction()
+  const { prices, loading: priceLoading } = usePrices()
+  const { userAddress: cosmosAddress } = useCosmosTransaction()
+  const injectiveAddress = toInjectiveAddress(address)
+  const keplrIsOtherAccount = !!cosmosAddress && !!address && !isSameAccount(cosmosAddress, address)
   const { items: activity, loading: activityLoading } = useActivity()
   const [beneficiaries] = useBeneficiaries()
 
-  // Outgoing value in USDC terms (INJ converted at the live rate).
-  const injRate = parseFloat(injUsdcRate) || 0
-  const sentUsdc = activity
-    .filter(tx => tx.success && tx.direction === 'out')
-    .reduce((sum, tx) => sum + tx.coins.reduce((s, c) => s + coinValue(c) * (c.token === 'INJ' ? injRate : c.token === 'USDC' || c.token === 'USDT' ? 1 : 0), 0), 0)
+  // Outgoing value at today's Injective oracle prices; null if a token has no fresh price.
+  const sentUsd = sumUsd(
+    activity
+      .filter(tx => tx.success && tx.direction === 'out')
+      .flatMap(tx => tx.coins.map(c => usdValue(coinValue(c), c.token, prices))),
+  )
   const recent = activity.slice(0, 5)
 
   const injDisplay = balLoading ? '—' : formatBaseUnits(inj, INJ.decimals, 4)
   const usdcDisplay = balLoading ? '—' : formatBaseUnits(usdc, USDC.decimals, 2)
 
-  // Conversion calculations
-  const injValue = balLoading ? 0 : Number(formatBaseUnits(inj, INJ.decimals))
-  const usdcValue = balLoading ? 0 : Number(formatBaseUnits(usdc, USDC.decimals))
-  const injInUsdc = injValue * (parseFloat(injUsdcRate) || 0)
-  const totalUsdc = usdcValue + injInUsdc
-  
 
   /* ── Disconnected state ── */
   if (!isConnected) {
@@ -163,63 +164,50 @@ export default function DashboardHome() {
             </div>
           </div>
 
-          {/* Address */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 10px',
-                background: 'var(--success-subtle)',
-                border: '1px solid rgba(16,214,122,0.2)',
-                borderRadius: '20px',
-              }}
-            >
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)' }} />
-              <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: '600' }}>Injective</span>
-            </div>
-            <div
-              className="copy-field"
-              style={{ flex: 1, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
-              onClick={() => navigator.clipboard.writeText(address || '')}
-              title="Click to copy"
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {address?.slice(0, 14)}...{address?.slice(-6)}
-              </span>
-            </div>
+          {/* Address: one account, written two ways */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '22px' }}>
+            {[
+              { format: 'EVM', value: address },
+              { format: 'Cosmos', value: injectiveAddress },
+            ].map(({ format, value }) => value && (
+              <div key={format} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    minWidth: '76px',
+                    padding: '4px 10px',
+                    background: 'var(--success-subtle)',
+                    border: '1px solid rgba(16,214,122,0.2)',
+                    borderRadius: '20px',
+                  }}
+                >
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)' }} />
+                  <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: '600' }}>{format}</span>
+                </div>
+                <div
+                  className="copy-field"
+                  style={{ flex: 1, minWidth: 0, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
+                  onClick={() => navigator.clipboard.writeText(value)}
+                  title="Click to copy"
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {shortAddress(value, 14)}
+                  </span>
+                </div>
+              </div>
+            ))}
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Same account in two formats. Either one receives funds.
+            </p>
+            {keplrIsOtherAccount && (
+              <p style={{ fontSize: '11px', color: 'var(--warning)' }}>
+                Keplr is signed in to a different account ({shortAddress(cosmosAddress!, 12)}). USDC sends come from that account.
+              </p>
+            )}
           </div>
-
-          {/* Cosmos address badge */}
-          {cosmosReady && cosmosAddress && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '4px 10px',
-                  background: 'rgba(39, 117, 202, 0.1)',
-                  border: '1px solid rgba(39, 117, 202, 0.3)',
-                  borderRadius: '20px',
-                }}
-              >
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2775ca' }} />
-                <span style={{ fontSize: '11px', color: '#2775ca', fontWeight: '600' }}>Cosmos</span>
-              </div>
-              <div
-                className="copy-field"
-                style={{ flex: 1, padding: '4px 10px', fontSize: '12px', borderRadius: '7px', cursor: 'pointer' }}
-                onClick={() => navigator.clipboard.writeText(cosmosAddress || '')}
-                title="Click to copy"
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {cosmosAddress?.slice(0, 14)}...{cosmosAddress?.slice(-6)}
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* Quick actions */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -238,15 +226,15 @@ export default function DashboardHome() {
         {/* Off-ramp status (not live) */}
         <OfframpUnavailable />
 
-        {/* USDC Pricing & Conversion Widget */}
+        {/* Prices from Injective's oracle */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
             <div className="icon-box" style={{ background: 'linear-gradient(135deg, #2775ca 0%, #1e5ba8 100%)' }}>
               <DollarSign size={16} />
             </div>
             <div>
-              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>USDC Rates</p>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Live market prices</p>
+              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Prices</p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>From Injective&apos;s Pyth oracle. Indicative only.</p>
             </div>
           </div>
 
@@ -254,27 +242,27 @@ export default function DashboardHome() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 INJ</span>
               <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent-text)' }}>
-                {priceLoading ? '...' : `${(parseFloat(injUsdcRate) || 0).toFixed(4)} USDC`}
+                {priceLoading ? '…' : prices.INJ ? formatUsd(prices.INJ.usd) : 'Unavailable'}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>1 USDC</span>
               <span style={{ fontSize: '14px', fontWeight: '700', color: '#2775ca' }}>
-                ${(parseFloat(usdcPrice) || 1).toFixed(2)}
+                {priceLoading ? '…' : prices.USDC ? formatUsd(prices.USDC.usd, 4) : 'Unavailable'}
               </span>
             </div>
           </div>
 
-          <Link href="/send" className="btn-secondary" style={{ width: '100%', padding: '8px', fontSize: '12px' }}>
-            <TrendingUp size={12} /> View All Rates
-          </Link>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Injective has no naira price, so NinjaPay shows no naira rate. One will come only from a licensed partner&apos;s quote.
+          </p>
         </div>
       </div>
 
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
         {[
-          { label: 'Total Sent', value: activityLoading ? '…' : `$${sentUsdc.toFixed(2)}` },
+          { label: 'Total Sent', value: activityLoading || priceLoading ? '…' : formatUsd(sentUsd) },
           { label: 'Transactions', value: activityLoading ? '…' : String(activity.length) },
           { label: 'Beneficiaries', value: String(beneficiaries.length) },
         ].map(s => (
@@ -388,7 +376,7 @@ export default function DashboardHome() {
             {recent.map((tx, i) => (
               <a
                 key={`${tx.hash}-${i}`}
-                href={`${EXPLORER_TX_URL}${tx.hash}`}
+                href={explorerTxUrl(tx.hash)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '12px 0', borderTop: i === 0 ? 'none' : '1px solid var(--border)', textDecoration: 'none' }}
