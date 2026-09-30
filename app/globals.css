@@ -25,7 +25,6 @@
   --color-lemon: var(--pending);
   --color-snow: #eeefff;
   --color-space-gray: #121212;
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /*
@@ -72,6 +71,7 @@
   --radius-card: 16px;
   --radius-input: 8px;
   --radius-pill: 9999px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Resets live in the base layer so Tailwind utilities (px-*, mx-auto, text-*) can override them. */
@@ -711,6 +711,16 @@ input, select, textarea { font-family: inherit; }
   from { transform: scale(1); opacity: 1; }
   to   { transform: scale(1.08); opacity: 0.78; }
 }
+
+/* Headline lines rise from behind their own mask; lead copy fades up after them. CSS only, so first paint never waits on JS. */
+.rise-line { display: block; overflow: hidden; padding: 0 0.1em 0.06em 0; margin-bottom: -0.06em; }
+.rise-line > span { display: inline-block; animation: rise-in 1s var(--ease-out-expo) both; }
+.hero-fade { animation: fadeUp 1s var(--ease-out-expo) both; }
+@keyframes rise-in { from { transform: translateY(105%); } to { transform: none; } }
+
+/* Horizontal card rows on phones: swipe, no visible scrollbar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
 /* ─── Landing marquee ─── */
 .marquee-track { animation: marquee 42s linear infinite; }

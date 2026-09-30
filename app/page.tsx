@@ -84,7 +84,7 @@ const btnPrimary =
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-ocean px-6 py-3 text-[15px] font-semibold text-snow transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px hover:bg-ocean-hover active:translate-y-0 active:scale-[0.98]'
 const btnSecondary =
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line-strong px-6 py-3 text-[15px] font-medium text-ink transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px hover:bg-surface-hover active:translate-y-0 active:scale-[0.98]'
-const h2 = 'text-3xl font-semibold tracking-tight text-ink md:text-4xl'
+const h2 = 'font-display text-4xl font-normal leading-[1.05] tracking-[-0.015em] text-ink md:text-5xl'
 
 function Logo() {
   return (
@@ -140,7 +140,7 @@ function FeatureCell({
         )}
       </div>
       <div>
-        <h3 className={`font-semibold tracking-tight ${tone === 'ocean' ? 'text-2xl md:text-3xl' : 'text-lg'}`}>{title}</h3>
+        <h3 className={`font-display font-normal tracking-[-0.01em] ${tone === 'ocean' ? 'text-3xl md:text-4xl' : 'text-2xl'}`}>{title}</h3>
         <p className={`mt-2 max-w-[42ch] text-[15px] leading-relaxed ${descTone}`}>{desc}</p>
       </div>
     </Link>
@@ -164,15 +164,18 @@ export default function LandingPage() {
       <main>
         {/* Hero */}
         <section className={`${container} grid items-center gap-12 pb-20 pt-12 md:pt-20 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16`}>
-          <Reveal>
-            <p className="mb-6 text-sm font-medium text-ocean-text">Built for the Injective Africa Community</p>
-            <h1 className="text-5xl font-semibold leading-[1.02] tracking-tighter text-ink md:text-6xl">
-              Crypto payments for <span className="text-ocean-text">the real world.</span>
+          <div>
+            <p className="hero-fade mb-6 text-sm font-medium text-ocean-text">Built for the Injective Africa Community</p>
+            {/* Each line rises from behind its own mask on first paint (CSS only, so it never waits on JS). */}
+            <h1 className="font-display text-[3.25rem] font-normal leading-[0.98] tracking-[-0.025em] text-ink sm:text-6xl lg:text-7xl">
+              <span className="rise-line"><span>Crypto payments</span></span>{' '}
+              <span className="rise-line"><span style={{ animationDelay: '80ms' }}>for the</span></span>{' '}
+              <span className="rise-line"><span style={{ animationDelay: '160ms' }}><em className="text-ocean-text">real world.</em></span></span>
             </h1>
-            <p className="mt-6 max-w-[46ch] text-lg leading-relaxed text-ink-2">
+            <p className="hero-fade mt-6 max-w-[46ch] text-lg leading-relaxed text-ink-2" style={{ animationDelay: '300ms' }}>
               Send INJ and USDC from one non-custodial interface on Injective. Off-ramp and bill payments are not live yet.
             </p>
-            <div className="mt-10 flex flex-wrap gap-3">
+            <div className="hero-fade mt-10 flex flex-wrap gap-3" style={{ animationDelay: '400ms' }}>
               <Link href="/send" className={btnPrimary}>
                 Launch App
                 <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -181,7 +184,7 @@ export default function LandingPage() {
                 How it works
               </a>
             </div>
-          </Reveal>
+          </div>
           <div className="mx-auto w-full max-w-sm sm:max-w-md lg:max-w-none">
             <HeroArt />
           </div>
@@ -193,7 +196,7 @@ export default function LandingPage() {
         <section className="bg-band text-snow">
           <div className={`${container} py-16 md:py-20`}>
             <Reveal>
-              <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Built on Injective</h2>
+              <h2 className="font-display text-3xl font-normal tracking-[-0.015em] md:text-4xl">Built on Injective</h2>
             </Reveal>
             <dl className="mt-10 grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-4">
               {NETWORK_STATS.map((s, i) => (
@@ -220,8 +223,9 @@ export default function LandingPage() {
           <Reveal>
             <h2 className={h2}>Everything you need in one place</h2>
           </Reveal>
-          <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-4 md:auto-rows-[minmax(200px,auto)]">
-            <Reveal className="md:col-span-2 md:row-span-2 [&>a]:h-full">
+          {/* A swipeable row under md (Injective's card rows at 360px), a bento grid from md up. */}
+          <div className="no-scrollbar -mx-4 mt-12 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6 md:mx-0 md:grid md:grid-cols-4 md:auto-rows-[minmax(200px,auto)] md:overflow-visible md:px-0 md:pb-0">
+            <Reveal className="w-[82%] shrink-0 snap-start sm:w-[60%] md:w-auto md:col-span-2 md:row-span-2 [&>a]:h-full">
               <FeatureCell
                 href="/send"
                 icon={Send}
@@ -231,19 +235,19 @@ export default function LandingPage() {
                 className="h-full"
               />
             </Reveal>
-            <Reveal className="md:col-span-2 [&>a]:h-full" delay={0.06}>
+            <Reveal className="w-[82%] shrink-0 snap-start sm:w-[60%] md:w-auto md:col-span-2 [&>a]:h-full" delay={0.06}>
               <FeatureCell href="/payroll" icon={Users2} title="Payroll" desc="Batch-pay your team or DAO in a single transaction." tone="band" />
             </Reveal>
-            <Reveal className="[&>a]:h-full" delay={0.12}>
+            <Reveal className="w-[82%] shrink-0 snap-start sm:w-[60%] md:w-auto [&>a]:h-full" delay={0.12}>
               <FeatureCell href="/claims" icon={Share2} title="Claims" desc="Create shareable links to distribute tokens to any group." />
             </Reveal>
-            <Reveal className="[&>a]:h-full" delay={0.18}>
+            <Reveal className="w-[82%] shrink-0 snap-start sm:w-[60%] md:w-auto [&>a]:h-full" delay={0.18}>
               <FeatureCell href="/bills" icon={CreditCard} title="Pay Bills" desc="Airtime, data, electricity, and cable." tag="Not live yet" />
             </Reveal>
-            <Reveal className="md:col-span-3 [&>a]:h-full" delay={0.06}>
+            <Reveal className="w-[82%] shrink-0 snap-start sm:w-[60%] md:w-auto md:col-span-3 [&>a]:h-full" delay={0.06}>
               <FeatureCell href="/transactions" icon={ListOrdered} title="Transactions" desc="Full on-chain history, filterable by type and status." />
             </Reveal>
-            <Reveal className="[&>a]:h-full" delay={0.12}>
+            <Reveal className="w-[82%] shrink-0 snap-start sm:w-[60%] md:w-auto [&>a]:h-full" delay={0.12}>
               <FeatureCell href="/analytics" icon={BarChart3} title="Analytics" desc="Track volume, transaction counts, and performance over time." />
             </Reveal>
           </div>
@@ -264,7 +268,7 @@ export default function LandingPage() {
                 return (
                   <Reveal key={item.title} delay={i * 0.08} className="border-t border-line pt-6">
                     <Icon size={20} strokeWidth={1.75} aria-hidden="true" className="text-ocean-text" />
-                    <h3 className="mt-4 text-lg font-semibold tracking-tight text-ink">{item.title}</h3>
+                    <h3 className="mt-4 font-display text-2xl font-normal tracking-[-0.01em] text-ink">{item.title}</h3>
                     <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{item.desc}</p>
                   </Reveal>
                 )
@@ -299,7 +303,7 @@ export default function LandingPage() {
                 className="group mt-10 flex flex-col gap-6 rounded-2xl border border-line bg-surface p-6 transition duration-300 hover:border-line-strong hover:bg-surface-hover sm:flex-row sm:items-center sm:justify-between md:p-10"
               >
                 <div>
-                  <h3 className="text-2xl font-semibold tracking-tight text-ink">Injective By Examples</h3>
+                  <h3 className="font-display text-3xl font-normal tracking-[-0.015em] text-ink">Injective By Examples</h3>
                   <p className="mt-2 max-w-[55ch] text-[15px] leading-relaxed text-ink-2">
                     Hands-on examples built to onboard the African community into the Injective ecosystem.
                   </p>
@@ -328,7 +332,7 @@ export default function LandingPage() {
           <Reveal>
             <div className="grid items-center gap-8 rounded-2xl bg-ocean px-6 py-14 text-snow sm:px-10 md:grid-cols-[1fr_auto] md:px-16 md:py-16">
               <div>
-                <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Ready to get started?</h2>
+                <h2 className="font-display text-4xl font-normal tracking-[-0.015em] md:text-5xl">Ready to get started?</h2>
                 <p className="mt-3 max-w-[48ch] text-lg leading-relaxed text-snow/90">
                   Connect your wallet to send INJ and USDC on Injective testnet.
                 </p>
