@@ -8,7 +8,7 @@ import Link from 'next/link'
 
 const TAG_COLORS: Record<string, { bg: string; color: string }> = {
   Team:   { bg: 'var(--accent-subtle)',   color: 'var(--accent-text)' },
-  Vendor: { bg: 'rgba(245,158,11,0.1)',   color: 'var(--warning)' },
+  Vendor: { bg: 'var(--warning-subtle)',  color: 'var(--warning)' },
   Family: { bg: 'var(--success-subtle)',  color: 'var(--success)' },
 }
 
@@ -16,8 +16,9 @@ function getInitials(name: string) {
   return name.split(' ')[0]?.slice(0, 2).toUpperCase() || '??'
 }
 
+// Injective brand colours dark enough for white initials: Ocean, Turquoise, Forest, Cinnamon, Eggplant.
 function getAvatarColor(name: string) {
-  const colors = ['#4d3dff', '#193d6d', '#4669b9', '#7a4515', '#611447']
+  const colors = ['#4d3dff', '#026585', '#144e1a', '#7a4515', '#611447']
   return colors[name.charCodeAt(0) % colors.length]
 }
 

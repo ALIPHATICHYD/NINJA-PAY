@@ -25,13 +25,11 @@ export function Navigation() {
 
   return (
     <nav
+      className="navbar-glass"
       style={{
         position: 'sticky',
         top: 0,
         zIndex: 50,
-        background: 'rgba(11, 24, 43, 0.86)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border)',
       }}
     >
@@ -87,7 +85,6 @@ export function Navigation() {
             position: 'absolute',
             left: '50%',
             transform: 'translateX(-50%)',
-            display: 'flex',
             gap: '2px',
             alignItems: 'center',
           }}
@@ -209,6 +206,24 @@ export function Navigation() {
         </div>
       </div>
 
+      {/* Phones: the same links as a swipeable row under the header */}
+      <div className="no-scrollbar flex gap-1 overflow-x-auto px-4 pb-2.5 md:hidden">
+        {NAV_LINKS.map(link => {
+          const active = isActive(link.href)
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={active ? 'page' : undefined}
+              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] transition-colors ${
+                active ? 'bg-ocean-subtle font-semibold text-ink' : 'text-ink-2 hover:bg-surface-hover hover:text-ink'
+              }`}
+            >
+              {link.label}
+            </Link>
+          )
+        })}
+      </div>
     </nav>
   )
 }
