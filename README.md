@@ -517,6 +517,22 @@ There is no automated test suite yet. `lib/supabase.test.ts` contains manual con
 
 Issues from the [Known issues](#known-issues) table are good first contributions.
 
+### AI tooling
+
+Injective publishes tooling for coding agents. It's for building NinjaPay; none of it ships in the app.
+
+- **Docs MCP server** at `https://docs.injective.network/mcp`: read-only search over Injective's docs, with no key. `.mcp.json` adds it for Claude Code in this repository, which asks you to approve it the first time. For Cursor or Claude Desktop, run it through `npx mcp-remote https://docs.injective.network/mcp`.
+- **Agent skills** from [InjectiveLabs/agent-skills](https://github.com/InjectiveLabs/agent-skills). These three match this codebase:
+
+  ```bash
+  npx skills add InjectiveLabs/agent-skills --skill injective-usdc-integration
+  npx skills add InjectiveLabs/agent-skills --skill injective-frontend-wallet
+  npx skills add InjectiveLabs/agent-skills --skill injective-evm-developer
+  ```
+
+  Check what they say against the docs before it goes into code, as for any Injective detail here. For example, the USDC skill writes the `erc20:` denom in lowercase while the token list checksums it, which is why `tokens.ts` compares denoms with `sameDenom`.
+- **Injective MCP server** ([InjectiveLabs/mcp-server](https://github.com/InjectiveLabs/mcp-server)): useful for poking at testnet from your own machine, with `INJECTIVE_NETWORK=testnet` and a throwaway wallet. It creates and holds private keys and signs real transactions. Never run it for users, never connect it to a NinjaPay deployment, and never import a wallet that holds real funds. Wallet passwords go through its tool calls and can end up in MCP client logs.
+
 This repository does not include a license file yet. Until one is added, all rights are reserved by the authors.
 
 ---
