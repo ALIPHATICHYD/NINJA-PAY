@@ -229,6 +229,7 @@ lib/
     analytics.ts              Totals over whole-day windows: per token, USD, counts, chart
     live.ts                   Live signals: EVM Transfer-log subscription, indexer portfolio stream
     grants.ts                 Authz grants and fee allowances: read, describe, revoke
+    cctp.ts                   Circle CCTP V2 contracts and burn call for a future payout partner (not wired)
     constants.ts              Re-exports network settings, env-backed config
     broadcast.ts, evm-config.ts, types.ts
   money.ts                    Exact amount <-> base-unit conversion
@@ -564,7 +565,7 @@ The build takes a few minutes and the suite about 30 seconds. Injective's instal
 4. **Persistent history.** Record every broadcast in `transactions`, and read status back from the chain by transaction hash.
 5. **One EVM target.** Standardise on a single Injective EVM chain ID and RPC across RainbowKit and the helpers.
 6. **Server-side integrations.** Move Paystack and VTPass behind route handlers with secret keys, then enable bills.
-7. **Licensed NGN off-ramp.** Integrate a licensed payout partner. Until then, the off-ramp stays disabled.
+7. **Licensed NGN off-ramp.** Integrate a licensed payout partner. Until then, the off-ramp stays disabled. If the partner takes USDC on another chain, `lib/injective/cctp.ts` already holds Circle's CCTP V2 contracts for Injective (domain 29) and builds the `depositForBurn` call; no page uses it, and the app would describe it as sending USDC to the partner, never as a NinjaPay payout.
 8. **Tests.** Unit tests and end-to-end tests on a local chain are in place (see [Testing](#testing)). USDC isn't covered end to end yet.
 
 ---
