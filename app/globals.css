@@ -714,11 +714,6 @@ input, select, textarea { font-family: inherit; }
   filter: blur(18px);
   animation: hero-breathe 9s ease-in-out 1.5s infinite alternate;
 }
-/* Dissolves the bottom of the bust into the stage. */
-.hero-art-fade {
-  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 98%);
-  mask-image: linear-gradient(to bottom, #000 72%, transparent 98%);
-}
 @keyframes hero-breathe {
   from { transform: scale(1); opacity: 1; }
   to   { transform: scale(1.08); opacity: 0.78; }

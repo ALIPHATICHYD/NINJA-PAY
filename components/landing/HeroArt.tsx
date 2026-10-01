@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from 'motion/react'
 const EASE = [0.16, 1, 0.3, 1] as const
 
 // A tilted orbit drawn in a 100×100 box. The ring and its Lime dot pass behind the ninja on the
-// far side and in front of it on the near side, so the art sits inside the orbit.
+// far side and in front of it on the near side, so the mark sits inside the orbit.
 const ORBIT = 'M 3 58 a 47 15 0 1 0 94 0 a 47 15 0 1 0 -94 0'
 const TILT = 'rotate(-12 50 58)'
 
@@ -22,8 +22,8 @@ function OrbitDot({ still }: { still: boolean }) {
 }
 
 /**
- * Hero art: the ninja on the black stage with an Ocean bloom and a slow orbit,
- * standing in for the 3D hero video on injective.com. Rests in its final frame
+ * Hero art: the NinjaPay mark, lit like a glossy object, on the black stage with an Ocean bloom
+ * and a slow orbit, standing in for the 3D hero video on injective.com. Rests in its final frame
  * under prefers-reduced-motion.
  */
 export function HeroArt() {
@@ -55,20 +55,12 @@ export function HeroArt() {
       </motion.svg>
 
       <motion.div
-        className="absolute inset-x-[6%] top-[8%]"
+        className="absolute inset-[13%] left-[15%]"
         initial={reduce ? false : { opacity: 0, y: 18, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 1.2, delay: 0.2, ease: EASE }}
       >
-        <Image
-          src="/ninja-hero.webp"
-          alt="The NinjaPay ninja, wearing a headband with the Injective mark"
-          width={1120}
-          height={1174}
-          priority
-          sizes="(min-width: 1024px) 420px, 80vw"
-          className="hero-art-fade h-auto w-full"
-        />
+        <Image src="/brand/ninja-hero.svg" alt="The NinjaPay ninja mark" width={400} height={400} priority className="size-full" />
       </motion.div>
 
       <motion.svg viewBox="0 0 100 100" aria-hidden="true" className="absolute inset-0 size-full overflow-visible" {...fadeIn}>

@@ -23,15 +23,12 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://ninjapay.xyz'),
   title,
   description,
-  icons: {
-    icon: '/favicon.png',
-  },
   openGraph: {
     title,
     description,
     type: 'website',
     siteName: 'NinjaPay',
-    images: [{ url: '/favicon.png', width: 192, height: 192, alt: 'NinjaPay' }],
+    images: [{ url: '/favicon.png', width: 512, height: 512, alt: 'NinjaPay' }],
   },
   twitter: {
     card: 'summary',
