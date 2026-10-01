@@ -248,7 +248,7 @@ lib/
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
   favicon.png                 The app icon at 512px (social cards, README)
-  brand/                      Hero mark (ninja-hero.svg) and the footer's engraved savanna (savanna.webp)
+  brand/                      The in-app logo (ninja-mark.svg), hero mark (ninja-hero.svg) and the footer's engraved savanna (savanna.webp)
 scripts/savanna.js            Draws the footer's savanna as SVG
 tests/                        Unit tests (npm test)
   e2e/                        Money paths on a local Injective chain (npm run test:e2e)
@@ -540,7 +540,7 @@ Conventions:
 - **Type:** Geist, with Geist Mono for numbers.
 - **Themes:** the landing page follows the system light or dark setting; the app is dark.
 - **Motion:** every animation respects `prefers-reduced-motion`.
-- **Logo:** a white-hooded ninja with a dark visor on an Ocean tile, in `app/icon.svg` (the same icon is in `app/favicon.ico`, `app/apple-icon.png` and `public/favicon.png`). The hero shows a lit version, `public/brand/ninja-hero.svg`.
+- **Logo:** a white-hooded ninja with a dark visor on an Ocean tile, in `app/icon.svg` (the same icon is in `app/favicon.ico`, `app/apple-icon.png` and `public/favicon.png`). In-app logos use `public/brand/ninja-mark.svg`. Give a changed image a new file name, because `next/image` caches optimized images for four hours by URL. The hero shows a lit version, `public/brand/ninja-hero.svg`.
 - **Footer art:** an engraved savanna with a Zuma-like rock and a walking ninja, Ocean ink on Snow with a transparent sky so the Ocean footer shows through. `node scripts/savanna.js > savanna.svg` redraws it; export that at 2x as WebP to replace `public/brand/savanna.webp`.
 
 ---

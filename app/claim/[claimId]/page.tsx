@@ -41,7 +41,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-line">
         <div className="mx-auto flex h-16 max-w-3xl items-center px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2">
-            <Image src="/favicon.png" alt="" width={32} height={32} className="rounded-md" />
+            <Image src="/brand/ninja-mark.svg" alt="" width={32} height={32} className="rounded-md" />
             <span className="text-[17px] font-bold tracking-tight">NinjaPay</span>
           </Link>
         </div>

@@ -59,7 +59,7 @@ export function Navigation() {
           }}
         >
           <img
-            src="/favicon.png"
+            src="/brand/ninja-mark.svg"
             alt="NinjaPay"
             style={{
               width: '32px',

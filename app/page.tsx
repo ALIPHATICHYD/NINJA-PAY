@@ -103,7 +103,7 @@ function XIcon({ className }: { className?: string }) {
 function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2">
-      <Image src="/favicon.png" alt="" width={32} height={32} className="rounded-md" />
+      <Image src="/brand/ninja-mark.svg" alt="" width={32} height={32} className="rounded-md" />
       <span className="text-[17px] font-bold tracking-tight text-ink">NinjaPay</span>
     </Link>
   )
