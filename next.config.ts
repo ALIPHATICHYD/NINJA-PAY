@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
     // Only compile the modules actually imported from these large packages.
     optimizePackageImports: [
       "@injectivelabs/sdk-ts",
-      "@injectivelabs/wallet-ts",
       "@injectivelabs/networks",
       "@injectivelabs/utils",
       "viem",

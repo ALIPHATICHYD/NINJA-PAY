@@ -122,7 +122,7 @@ flowchart LR
 | Motion | `motion` (`motion/react`), with `prefers-reduced-motion` respected |
 | Fonts | Geist and Geist Mono via `next/font` |
 | EVM wallets | RainbowKit 2, wagmi 2, viem 2 |
-| Cosmos / Injective | `@injectivelabs/sdk-ts`, `networks`, `ts-types`, `utils`, `wallet-ts` (all pinned to 1.14.41) |
+| Cosmos / Injective | `@injectivelabs/sdk-ts`, `networks`, `ts-types`, `utils` (all pinned to 1.20.52, upgraded together) |
 | Data | Supabase (`@supabase/supabase-js`), TanStack Query |
 | State | React state, Zustand available |
 | Icons | `lucide-react` |
@@ -446,6 +446,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- The Injective SDK packages moved together from 1.14.41 to 1.20.52, the release with Injective's EVM chain ids and the import paths the docs use. Transactions built and signed by both versions are byte-identical. Signing keeps a 120-block window, because 1.20 halved the default. The unused `@injectivelabs/wallet-ts` package is gone, and `npm audit` findings fell from 208 to 49.
 - History names tokens from Injective's verified token list, so an `ibc/` or `peggy` denom shows its name instead of a hash. INJ and USDC are recognised and priced by exact denom only; before, USD totals priced a coin by its label. The hardcoded testnet USDT entry is gone.
 - Payroll goes out as one `MsgMultiSend`, as the page always said, instead of one transaction per recipient. Each row is checked against the token's rules first.
 - Send transfers USDC from the connected EVM wallet as an ERC-20 transfer, like INJ. Before, USDC went through Keplr or Leap even for MetaMask users, sometimes from a different account than the connected wallet.

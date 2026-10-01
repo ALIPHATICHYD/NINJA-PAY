@@ -92,8 +92,8 @@ export function planEscrow(
 /**
  * Generate a fresh escrow account in the browser from 32 CSPRNG bytes.
  *
- * Do not use PrivateKey.generate().privateKey.toHex(): in sdk-ts 1.14 that
- * returns the account's 0x ADDRESS, not the private key.
+ * Do not use PrivateKey.generate().privateKey.toHex(): in sdk-ts (still in
+ * 1.20) that returns the account's 0x ADDRESS, not the private key.
  */
 export function createEscrowKey(): { privateKeyHex: string; address: string } {
   for (let attempt = 0; attempt < 5; attempt++) {

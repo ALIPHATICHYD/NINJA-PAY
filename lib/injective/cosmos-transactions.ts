@@ -15,7 +15,7 @@ import {
   getTxRawFromTxRawOrDirectSignResponse,
   type Msgs,
 } from '@injectivelabs/sdk-ts'
-import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
+import { getStdFee } from '@injectivelabs/utils'
 import { CHAIN_ID } from './constants'
 import { ENDPOINTS, FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
@@ -129,6 +129,10 @@ const FALLBACK_GAS = { base: 150_000, perMsg: 50_000 }
 const GAS_BUFFER = 1.3
 // Gas multiplier for the one retry after USDC's compliance hook runs out of gas.
 const HOOK_RETRY_FACTOR = 2
+// Blocks the transaction stays valid for while the wallet is open. sdk-ts 1.20
+// lowered its default from 120 to 60 blocks, under a minute on Injective,
+// which is short for someone checking a payroll in Keplr. Keep 120.
+const SIGNING_TIMEOUT_BLOCKS = 120
 
 /**
  * Build, sign (SIGN_MODE_DIRECT via Keplr/Leap), simulate, and broadcast a
@@ -200,7 +204,7 @@ async function signAndBroadcastOnce(
     new ChainRestTendermintApi(endpoints.rest).fetchLatestBlock(),
   ])
   const account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
-  const timeoutHeight = Number(latestBlock.header.height) + DEFAULT_BLOCK_TIMEOUT_HEIGHT
+  const timeoutHeight = Number(latestBlock.header.height) + SIGNING_TIMEOUT_BLOCKS
   // A MsgMultiSend pays every output, so the fallback counts those.
   const msgCount = (Array.isArray(msgs) ? msgs : [msgs]).reduce((count, msg) => {
     const data = msg.toData() as { '@type'?: string; outputs?: unknown[] }
