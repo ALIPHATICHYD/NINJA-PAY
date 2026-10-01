@@ -71,8 +71,9 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend` signed with Keplr/Leap: one signature, one fee, all or nothing. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. |
 | Claim links: create | `/claims` | Working on testnet (INJ verified) | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
 | Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
-| Transactions | `/transactions` | Working | One list, newest first, for your Keplr/Leap account and your EVM wallet: bank transfers from Injective's indexer, and INJ and ERC-20 transfers sent from EVM wallets (such as USDC from MetaMask) from Blockscout. **Load more** pages further back. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
+| Transactions | `/transactions` | Working | One list, newest first, for your Keplr/Leap account and your EVM wallet: bank transfers from Injective's indexer, and INJ and ERC-20 transfers sent from EVM wallets (such as USDC from MetaMask) from Blockscout. **Load more** pages further back, and **Download CSV** saves the listed transfers as a statement made on the device. Each row links to its receipt. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…`, `0x…` or a `.inj` name, stores the `inj1…` form, and spots the same account saved twice in different formats. A beneficiary saved by name keeps the name and is paid at the saved address; the list warns when the name now points somewhere else. **Send** prefills `/send` with the address. |
+| Receipts | `/receipt/[hash]` | Working | A shareable receipt for any transaction hash, Cosmos or EVM: amount, sender and recipient, time, block, network fee, memo and status, read from the chain each time it opens. Linked from Transactions and from Send and Payroll once a transfer settles. NinjaPay keeps no copy; the link holds only the hash. |
 | Analytics | `/analytics` | Working | Sent and received volume in USD at today's Injective oracle price, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It covers the most recent page of history from each source (50 transactions), not the full history yet. USD totals are hidden when a token has no current price. |
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No naira rate is quoted and no bank details are collected. |
 | INJ → USDC quote | `/send` (Off-Ramp tab) | Waiting on Injective's swap allowlist | Asks Injective's Swap precompile what the INJ/USDC spot market would give for an amount of INJ, with a 0.5% slippage floor, the market's taker fee rate, the swap's network fee and a check against the Pyth price. Quote only: no swap button and no naira amount. It shows a quote only once Injective adds the market to its swap allowlist, which NinjaPay can't do; until then it says so. |
@@ -178,6 +179,7 @@ app/
   claim/
     layout.tsx                Web3Providers for public claim links
     [claimId]/page.tsx        Public claim redemption page
+  receipt/[hash]/page.tsx     Shareable receipt read from the chain (no wallet needed)
   api/evm-rpc/route.ts        Optional EVM RPC proxy that keeps a provider key on the server
   api/tokens/route.ts         Injective's verified tokens, trimmed for the browser
 components/
@@ -218,11 +220,13 @@ lib/
     claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
     activity.ts               Bank-transfer history from Injective's indexer, merged across sources
     evm-activity.ts           EVM wallet transfers (INJ value, ERC-20) from Blockscout
+    receipt.ts                One transaction's transfers, fee and status, from REST or EVM RPC
     constants.ts              Re-exports network settings, env-backed config
     broadcast.ts, evm-config.ts, types.ts
   money.ts                    Exact amount <-> base-unit conversion
   prices.ts                   INJ and USDC prices from Injective's Pyth oracle
   payment-request.ts          Payment-request links to /send
+  statement.ts                CSV activity statement, made in the browser
   supabase.ts                 Claim pools and transaction history
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/

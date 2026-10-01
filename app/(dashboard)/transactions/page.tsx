@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { format, isToday, isYesterday } from 'date-fns'
-import { ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
+import { Download, ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useActivity } from '@/hooks/useActivity'
 import { StatusChip } from '@/components/StatusChip'
 import { NETWORK_LABEL, explorerName, explorerTxUrl } from '@/lib/injective/network'
 import { shortAddress } from '@/lib/injective/address'
+import { activityCsv, downloadCsv } from '@/lib/statement'
 import {
   ACTIVITY_LABELS,
   formatCoin,
@@ -67,9 +69,20 @@ export default function TransactionsPage() {
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Transactions</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your {NETWORK_LABEL} transfers, read directly from the chain.</p>
         </div>
-        <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
-          <RefreshCcw size={12} /> {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => downloadCsv(activityCsv(filtered), `ninjapay-statement-${format(new Date(), 'yyyy-MM-dd')}.csv`)}
+            disabled={filtered.length === 0}
+            title="Saves the transfers listed below as a CSV file on this device"
+            className="btn-secondary"
+            style={{ fontSize: '12px', padding: '7px 12px' }}
+          >
+            <Download size={12} /> Download CSV
+          </button>
+          <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
+            <RefreshCcw size={12} /> {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       <div className="seg-control" style={{ marginBottom: '24px', width: 'fit-content', maxWidth: '100%', overflowX: 'auto' }}>
@@ -140,6 +153,9 @@ export default function TransactionsPage() {
                     {tx.coins.map(c => formatCoin(c)).join(' + ')}
                   </p>
                   <StatusChip state={tx.success ? 'confirmed' : 'failed'} className="w-fit" />
+                  <Link href={`/receipt/${tx.hash}`} style={{ fontSize: '11px', color: 'var(--accent-text)' }}>
+                    Receipt
+                  </Link>
                   <a
                     href={explorerTxUrl(tx.hash)}
                     target="_blank"
@@ -166,7 +182,8 @@ export default function TransactionsPage() {
 
       <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
         Shows transfers on {NETWORK_LABEL} for your Keplr/Leap account and your EVM wallet: bank transfers from Injective&apos;s
-        indexer, and INJ and ERC-20 transfers sent from EVM wallets, from Blockscout.
+        indexer, and INJ and ERC-20 transfers sent from EVM wallets, from Blockscout. The CSV holds the transfers listed above,
+        so load more first to go further back. It&apos;s made on this device and isn&apos;t sent anywhere.
       </p>
     </div>
   )
