@@ -44,6 +44,8 @@ export type ActivityItem = {
   direction: 'out' | 'in'
   /** The other side of the transfer (for payroll, the number of recipients) */
   counterparty: string
+  /** For a payroll you sent, everyone it paid. */
+  recipients?: string[]
   coins: ActivityCoin[]
   success: boolean
   /** Extra context, e.g. the claim pool name */
@@ -131,7 +133,8 @@ export function parseExplorerTx(tx: ExplorerTx, mine: ReadonlySet<string>): Acti
       const outputs = msg.outputs ?? []
       const input = inputs.find(i => mine.has(i.address))
       if (input) {
-        drafts.push({ ...base, direction: 'out', counterparty: `${outputs.length} recipients`, coins: toCoins(input.coins), isMulti: true })
+        const recipients = outputs.map(o => o.address)
+        drafts.push({ ...base, direction: 'out', counterparty: `${outputs.length} recipients`, recipients, coins: toCoins(input.coins), isMulti: true })
       } else {
         outputs.filter(o => mine.has(o.address)).forEach(o =>
           drafts.push({ ...base, direction: 'in', counterparty: inputs[0]?.address ?? 'unknown', coins: toCoins(o.coins), isMulti: true }),
@@ -170,8 +173,11 @@ const SAME_TRANSFER_MS = 60_000
  * The transfers that can be shown so far, newest first. A source with more
  * pages holds back anything older than the oldest point it has reached, so
  * pages from different sources never show out of order.
+ *
+ * `coveredSince` is the time from which the list is complete: null when
+ * every source has been read to its first transaction.
  */
-export function mergeSources(sources: SourceState[]): { drafts: ActivityDraft[]; hasMore: boolean } {
+export function mergeSources(sources: SourceState[]): { drafts: ActivityDraft[]; hasMore: boolean; coveredSince: Date | null } {
   const pending = sources.filter(s => s.next !== null && s.reached !== null)
   const frontier = pending.length ? Math.max(...pending.map(s => s.reached!.getTime())) : -Infinity
 
@@ -199,6 +205,7 @@ export function mergeSources(sources: SourceState[]): { drafts: ActivityDraft[];
   return {
     drafts: merged.filter(d => d.timestamp.getTime() >= frontier).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()),
     hasMore: sources.some(s => s.next !== null),
+    coveredSince: pending.length ? new Date(frontier) : null,
   }
 }
 

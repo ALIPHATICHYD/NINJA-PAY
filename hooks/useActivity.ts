@@ -18,7 +18,10 @@ import { parseAccountAddress, toInjectiveAddress } from '@/lib/injective/address
 import { resolveClaimEscrows } from '@/lib/supabase'
 
 type Source = { key: string; kind: 'cosmos' | 'evm'; load: (cursor: string | null) => Promise<ActivityPage> }
-type Loaded = SourceState & { failed: boolean }
+type Loaded = SourceState & { failed: boolean; pages: number }
+
+/** How many pages per source `coverSince` reads on its own before it waits to be asked for more. */
+export const AUTO_PAGE_LIMIT = 10
 
 const fetchPages = (targets: Source[], cursors: Record<string, string | null>) =>
   Promise.allSettled(targets.map(s => s.load(cursors[s.key] ?? null)))
@@ -33,8 +36,13 @@ const FAILURE: Record<Source['kind'], string> = {
  * the Keplr/Leap account and the EVM wallet, each read from Injective's
  * indexer (bank transfers) and Blockscout (EVM transfers), one page at a
  * time. Tokens other than INJ and USDC are named from Injective's token list.
+ *
+ * With `coverSince` (a time in ms), older pages are read on their own until
+ * the history is complete back to that time, up to AUTO_PAGE_LIMIT pages per
+ * source at a time; `coveredSince` says how far back it is complete and
+ * `readFurther` allows another AUTO_PAGE_LIMIT pages.
  */
-export function useActivity() {
+export function useActivity({ coverSince }: { coverSince?: number } = {}) {
   const { address: evmAddress } = useWallet()
   const { userAddress: cosmosAddress } = useCosmosTransaction()
 
@@ -65,6 +73,7 @@ export function useActivity() {
   const [escrows, setEscrows] = useState<Map<string, EscrowInfo>>(new Map())
   const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [pageLimit, setPageLimit] = useState(AUTO_PAGE_LIMIT)
   // Pages that arrive after the accounts change or a refresh are dropped.
   const generation = useRef(0)
 
@@ -83,10 +92,11 @@ export function useActivity() {
               next: result.value.next,
               reached: result.value.reached ?? before?.reached ?? null,
               failed: false,
+              pages: (before?.pages ?? 0) + 1,
             }
           } else {
             // Stop paging a source that failed; Refresh tries it again.
-            next[source.key] = { drafts: before?.drafts ?? [], next: null, reached: before?.reached ?? null, failed: true }
+            next[source.key] = { drafts: before?.drafts ?? [], next: null, reached: before?.reached ?? null, failed: true, pages: before?.pages ?? 0 }
           }
         })
         return next
@@ -124,21 +134,50 @@ export function useActivity() {
     setRefreshing(false)
   }, [sources, loadPages])
 
+  /** Each source with another page; with `until`, only those not yet read back that far. */
+  const nextPages = useCallback(
+    (until?: number) => {
+      const targets = sources.filter(s => {
+        const state = loaded[s.key]
+        return state?.next && (until === undefined || !state.reached || state.reached.getTime() > until)
+      })
+      return { targets, cursors: Object.fromEntries(targets.map(s => [s.key, loaded[s.key].next])) }
+    },
+    [sources, loaded],
+  )
+
   const loadMore = useCallback(async () => {
-    const targets = sources.filter(s => loaded[s.key]?.next)
+    const { targets, cursors } = nextPages()
     if (targets.length === 0) return
     setLoadingMore(true)
-    await loadPages(targets, Object.fromEntries(targets.map(s => [s.key, loaded[s.key].next])), false)
+    await loadPages(targets, cursors, false)
     setLoadingMore(false)
-  }, [sources, loaded, loadPages])
+  }, [nextPages, loadPages])
 
   const tokens = useTokenList()
-  const { items, hasMore } = useMemo(() => {
+  const { items, hasMore, coveredSince } = useMemo(() => {
     const merged = mergeSources(sources.map(s => loaded[s.key]).filter(Boolean))
-    return { items: withTokenNames(classifyActivity(merged.drafts, mine, escrows), tokens), hasMore: merged.hasMore }
+    return {
+      items: withTokenNames(classifyActivity(merged.drafts, mine, escrows), tokens),
+      hasMore: merged.hasMore,
+      coveredSince: merged.coveredSince,
+    }
   }, [sources, loaded, mine, escrows, tokens])
 
   const loading = refreshing || sources.some(s => !loaded[s.key])
+
+  // Read further back until the history is complete to `coverSince`.
+  const pagesRead = Math.max(0, ...sources.map(s => loaded[s.key]?.pages ?? 0))
+  const short = coverSince !== undefined && coveredSince !== null && coveredSince.getTime() > coverSince
+  const autoLoad = short && !loading && !loadingMore && pagesRead < pageLimit
+  useEffect(() => {
+    if (!autoLoad) return
+    const { targets, cursors } = nextPages(coverSince)
+    if (targets.length === 0) return
+    const run = ++generation.current
+    fetchPages(targets, cursors).then(results => applyPages(run, targets, results, false))
+  }, [autoLoad, coverSince, nextPages, applyPages])
+
   const failed = sources.filter(s => loaded[s.key]?.failed)
   const allFailed = sources.length > 0 && failed.length === sources.length
   const warnings = allFailed ? [] : [...new Set(failed.map(s => FAILURE[s.kind]))]
@@ -149,7 +188,11 @@ export function useActivity() {
     error: allFailed ? 'Could not load transaction history. Try again.' : null,
     warnings,
     hasMore,
-    loadingMore,
+    coveredSince,
+    /** True when `coverSince` stopped at the page limit before reaching it; `readFurther` continues. */
+    stoppedShort: short && !autoLoad && !loading && !loadingMore,
+    readFurther: () => setPageLimit(pagesRead + AUTO_PAGE_LIMIT),
+    loadingMore: loadingMore || autoLoad,
     loadMore,
     refetch,
     addresses,
