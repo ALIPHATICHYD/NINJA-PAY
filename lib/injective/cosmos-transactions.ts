@@ -19,7 +19,7 @@ import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
 import { CHAIN_ID } from './constants'
 import { ENDPOINTS, FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
-import { balanceOf, fetchAllBalances, resolveHeldDenom } from './bank'
+import { balanceOf, buildPayrollMultiSend, fetchAllBalances, resolveHeldDenom } from './bank'
 import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
 import { HOOK_RESTRICTION_MESSAGE, describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction } from './transfer-errors'
 import { toInjectiveAddress } from './address'
@@ -201,7 +201,11 @@ async function signAndBroadcastOnce(
   ])
   const account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
   const timeoutHeight = Number(latestBlock.header.height) + DEFAULT_BLOCK_TIMEOUT_HEIGHT
-  const msgCount = Array.isArray(msgs) ? msgs.length : 1
+  // A MsgMultiSend pays every output, so the fallback counts those.
+  const msgCount = (Array.isArray(msgs) ? msgs : [msgs]).reduce((count, msg) => {
+    const data = msg.toData() as { '@type'?: string; outputs?: unknown[] }
+    return count + (data['@type'] === '/cosmos.bank.v1beta1.MsgMultiSend' ? Math.max(data.outputs?.length ?? 1, 1) : 1)
+  }, 0)
   const txApi = new TxRestApi(endpoints.rest)
 
   const build = (gas: number) =>
@@ -294,6 +298,29 @@ export async function sendToken(
   }
 }
 
+
+/**
+ * Pay several recipients in one MsgMultiSend signed with Keplr or Leap: one
+ * signature, one fee, and either every recipient is paid or none is.
+ *
+ * @param recipients inj1 or 0x addresses with human-readable amounts, each
+ *                   converted to base units here exactly once
+ */
+export async function sendPayroll(
+  recipients: { address: string; amount: string }[],
+  token: 'INJ' | 'USDC',
+  memo = '',
+  chainId: string = CHAIN_ID,
+): Promise<string> {
+  const outputs = recipients.map(({ address, amount }, i) => {
+    const recipient = toInjectiveAddress(address)
+    if (!recipient) throw new Error(`Recipient ${i + 1} isn't a valid inj1… or 0x… address.`)
+    return { address: recipient, amount: toChainAmount(amount, TOKENS[token].decimals) }
+  })
+  const sender = await getUserAddress(chainId)
+  const msg = buildPayrollMultiSend(sender, await resolveHeldDenom(sender, TOKENS[token]), outputs)
+  return signAndBroadcast(msg, chainId, memo)
+}
 
 /**
  * Check if the connected Keplr or Leap account is a Ledger. Asks only the

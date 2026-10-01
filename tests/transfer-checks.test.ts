@@ -5,6 +5,7 @@ import {
   checkCircuitBreaker,
   checkRecipientHistory,
   checkTokenPermissions,
+  checkTokenPermissionsForMany,
 } from '@/lib/injective/transfer-checks'
 
 const DENOM = 'erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d'
@@ -89,6 +90,26 @@ describe('token permissions', () => {
     const [check] = await checkTokenPermissions(DENOM, 'USDC', ALICE, BOB)
     expect(check.message).toMatch(/Your account isn't allowed to send USDC/)
     expect(check.message).not.toMatch(/instead|try another|use a different|workaround/i)
+  })
+})
+
+describe('token permissions for a payroll run', () => {
+  it('pins a recipient block to that recipient and leaves the others clear', async () => {
+    stubRest({
+      ...namespace({}),
+      [`/injective/permissions/v1beta1/roles_by_actor/${DENOM}/inj1carol`]: { roles: ['blocked'] },
+    })
+    const { sender, recipients } = await checkTokenPermissionsForMany(DENOM, 'USDC', ALICE, [BOB, 'inj1carol', 'inj1dan'])
+    expect(sender).toEqual([])
+    expect(recipients.map(r => r.length)).toEqual([0, 1, 0])
+    expect(recipients[1][0].message).toMatch(/isn't allowed to receive USDC/)
+  })
+
+  it('reports a pause once for the whole run', async () => {
+    stubRest(namespace({ policy_statuses: [{ action: 'RECEIVE', is_disabled: true }] }))
+    const { sender, recipients } = await checkTokenPermissionsForMany(DENOM, 'USDC', ALICE, [BOB, 'inj1carol'])
+    expect(sender).toHaveLength(1)
+    expect(recipients).toEqual([[], []])
   })
 })
 

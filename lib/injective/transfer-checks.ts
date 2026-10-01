@@ -28,6 +28,7 @@ export type TransferCheck = { level: 'block' | 'warn'; message: string }
 
 export const MSG_SEND = '/cosmos.bank.v1beta1.MsgSend'
 export const MSG_ETHEREUM_TX = '/injective.evm.v1.MsgEthereumTx'
+export const MSG_MULTI_SEND = '/cosmos.bank.v1beta1.MsgMultiSend'
 
 // Permission bits from the permissions module's Action enum.
 const ACTION_BITS = { RECEIVE: 2, SEND: 8 } as const
@@ -92,15 +93,30 @@ export async function checkTokenPermissions(
   from: string,
   to: string,
 ): Promise<TransferCheck[]> {
+  const { sender, recipients } = await checkTokenPermissionsForMany(denom, symbol, from, [to])
+  return [...sender, ...recipients[0]]
+}
+
+/**
+ * The same checks for one sender paying several recipients, as in payroll:
+ * rules that stop the whole payment, then each recipient's own result, in order.
+ */
+export async function checkTokenPermissionsForMany(
+  denom: string,
+  symbol: string,
+  from: string,
+  to: string[],
+): Promise<{ sender: TransferCheck[]; recipients: TransferCheck[][] }> {
+  const none = { sender: [], recipients: to.map(() => []) }
   let namespace: RestNamespace | null
   try {
     namespace = (await getJson<{ namespace?: RestNamespace | null }>(
       `/injective/permissions/v1beta1/namespace/${encodeURIComponent(denom)}`,
     )).namespace ?? null
   } catch {
-    return []
+    return none
   }
-  if (!namespace) return []
+  if (!namespace) return none
 
   const rule = (sentence: string): TransferCheck => ({
     level: 'block',
@@ -109,21 +125,21 @@ export async function checkTokenPermissions(
 
   const paused = (action: CheckedAction) =>
     (namespace.policy_statuses ?? []).some(p => actionIs(p.action, action) && p.is_disabled)
-  if (paused('SEND')) return [rule(`Sending ${symbol} is paused for everyone right now.`)]
-  if (paused('RECEIVE')) return [rule(`Receiving ${symbol} is paused for everyone right now.`)]
+  if (paused('SEND')) return { ...none, sender: [rule(`Sending ${symbol} is paused for everyone right now.`)] }
+  if (paused('RECEIVE')) return { ...none, sender: [rule(`Receiving ${symbol} is paused for everyone right now.`)] }
 
   const permissions = new Map((namespace.role_permissions ?? []).map(r => [r.name, Number(r.permissions)]))
   const can = (roles: string[], action: CheckedAction) =>
     roles.some(role => ((permissions.get(role) ?? 0) & ACTION_BITS[action]) !== 0)
 
   try {
-    const [fromRoles, toRoles] = await Promise.all([rolesOf(denom, from), rolesOf(denom, to)])
-    const checks: TransferCheck[] = []
-    if (!can(fromRoles, 'SEND')) checks.push(rule(`Your account isn't allowed to send ${symbol}.`))
-    if (!can(toRoles, 'RECEIVE')) checks.push(rule(`This address isn't allowed to receive ${symbol}.`))
-    return checks
+    const [fromRoles, ...toRoles] = await Promise.all([from, ...to].map(actor => rolesOf(denom, actor)))
+    return {
+      sender: can(fromRoles, 'SEND') ? [] : [rule(`Your account isn't allowed to send ${symbol}.`)],
+      recipients: toRoles.map(roles => (can(roles, 'RECEIVE') ? [] : [rule(`This address isn't allowed to receive ${symbol}.`)])),
+    }
   } catch {
-    return []
+    return none
   }
 }
 

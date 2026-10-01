@@ -9,9 +9,13 @@ import { TOKENS } from '@/lib/injective/tokens'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { useRecipients } from '@/hooks/useRecipients'
-import { COSMOS_SEND_GAS, checkFee, feeShortfallMessage, formatFee, networkFee } from '@/lib/injective/fees'
+import { usePayrollChecks } from '@/hooks/usePayrollChecks'
+import { TxStatus } from '@/components/TxStatus'
+import { checkFee, feeShortfallMessage, formatFee, networkFee, payrollGas } from '@/lib/injective/fees'
 import { MEMO_PAYROLL } from '@/lib/injective/activity'
-import { shortAddress } from '@/lib/injective/address'
+import { MAX_PAYROLL_RECIPIENTS } from '@/lib/injective/bank'
+import { HOOK_RESTRICTION_MESSAGE } from '@/lib/injective/transfer-errors'
+import { shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
@@ -27,7 +31,7 @@ const STEPS = [
 export default function PayrollPage() {
   const { isConnected, address } = useWallet()
   const {
-    sendToken,
+    sendPayroll,
     userAddress: cosmosAddress,
     isReady: cosmosReady,
     loading: cosmosLoading,
@@ -47,6 +51,7 @@ export default function PayrollPage() {
   ])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
+  const [paid, setPaid] = useState<{ message: string; hash: string } | null>(null)
 
   const { decimals } = TOKENS[token]
   // Exact base units per row; null where the amount isn't valid for this token.
@@ -58,15 +63,17 @@ export default function PayrollPage() {
   const balance = BigInt((token === 'INJ' ? inj : usdc) || '0')
   const overBalance = totalBase > balance
 
-  // Fees are paid in INJ. Payroll sends one transaction per recipient today, so each one pays a fee.
-  const fee = networkFee(COSMOS_SEND_GAS) * BigInt(recipients.length)
+  // Fees are paid in INJ. Payroll is one MsgMultiSend, so one fee; this is the
+  // estimate until the batch is simulated just before signing.
+  const fee = networkFee(payrollGas(recipients.length))
   const feeCheck = checkFee(BigInt(inj || '0'), fee, token === 'INJ' ? totalBase : BigInt(0))
   const fundsError = balLoading ? null
     : overBalance ? `The total is more than your ${token} balance of ${formatBaseUnits(balance, decimals, 4)} ${token}.`
     : !feeCheck.ok ? feeShortfallMessage(feeCheck, token === 'INJ')
     : null
 
-  const addRecipient = () => setRecipients(prev => [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
+  const addRecipient = () => setRecipients(prev =>
+    prev.length >= MAX_PAYROLL_RECIPIENTS ? prev : [...prev, { id: Date.now().toString(), address: '', amount: '', label: '' }])
   const removeRecipient = (id: string) => { if (recipients.length > 1) setRecipients(prev => prev.filter(r => r.id !== id)) }
   const updateRecipient = (id: string, field: keyof PayrollRecipient, value: string) =>
     setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
@@ -79,28 +86,37 @@ export default function PayrollPage() {
   const invalidAmountRows = recipients.flatMap((r, i) => (r.amount.trim() && amounts[i] === null ? [i + 1] : []))
   const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
 
+  // The signing account (Keplr/Leap once connected) and every row, checked on the review step.
+  const checks = usePayrollChecks(token, toInjectiveAddress(cosmosAddress ?? address), step === 3 ? accounts : [])
+
   const canProceedStep1 = payrollName.trim().length > 0
   const canProceedStep2 = recipients.every((r, i) => accounts[i] && (amounts[i] ?? BigInt(0)) > BigInt(0))
 
   const handleDispatch = async () => {
     setLoading(true)
     setStatus({ type: null, message: '' })
+    setPaid(null)
     try {
-      // One transaction per recipient. sendToken takes the human-readable
-      // amount and converts to base units once.
-      for (const [i, recipient] of recipients.entries()) {
-        await sendToken(accounts[i]!, recipient.amount.trim(), token, MEMO_PAYROLL)
-      }
-
-      setStatus({ 
-        type: 'success', 
-        message: `Payroll "${payrollName}" dispatched to ${recipients.length} recipient${recipients.length > 1 ? 's' : ''} in ${token}.` 
-      })
+      // One MsgMultiSend for everyone. Amounts are human-readable and
+      // converted to base units once inside sendPayroll.
+      const hash = await sendPayroll(
+        recipients.map((r, i) => ({ address: accounts[i]!, amount: r.amount.trim() })),
+        token,
+        MEMO_PAYROLL,
+      )
+      const n = recipients.length
+      setPaid({ hash, message: `Payroll "${payrollName}" paid ${n} recipient${n > 1 ? 's' : ''} in ${token} in one transaction, confirmed on chain.` })
       setPayrollName('')
       setRecipients([{ id: Date.now().toString(), address: '', amount: '', label: '' }])
       setStep(1)
-    } catch (e: any) {
-      setStatus({ type: 'error', message: e.message || 'Dispatch failed.' })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Dispatch failed.'
+      setStatus({
+        type: 'error',
+        message: message === HOOK_RESTRICTION_MESSAGE && recipients.length > 1
+          ? `${message} One restricted recipient stops the whole payroll, so nobody was paid.`
+          : message,
+      })
     } finally {
       setLoading(false)
     }
@@ -120,6 +136,12 @@ export default function PayrollPage() {
         <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Payroll</h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Batch-pay your team in a single on-chain MsgMultiSend transaction.</p>
       </div>
+
+      {paid && (
+        <div style={{ marginBottom: '20px' }}>
+          <TxStatus state="confirmed" message={paid.message} hash={paid.hash} />
+        </div>
+      )}
 
       {/* Step indicator */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '28px' }}>
@@ -182,7 +204,7 @@ export default function PayrollPage() {
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Step 2 — Add Recipients</h3>
-            <button onClick={addRecipient} className="btn-ghost" style={{ fontSize: '12px', padding: '5px 10px' }}>
+            <button onClick={addRecipient} disabled={recipients.length >= MAX_PAYROLL_RECIPIENTS} title={recipients.length >= MAX_PAYROLL_RECIPIENTS ? `Up to ${MAX_PAYROLL_RECIPIENTS} recipients per run` : undefined} className="btn-ghost" style={{ fontSize: '12px', padding: '5px 10px' }}>
               <Plus size={13} /> Add Row
             </button>
           </div>
@@ -216,6 +238,11 @@ export default function PayrollPage() {
             ))}
           </div>
 
+          {recipients.length >= MAX_PAYROLL_RECIPIENTS && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              A run pays up to {MAX_PAYROLL_RECIPIENTS} recipients. Split bigger payrolls into more runs.
+            </p>
+          )}
           {invalidRows.map(n => (
             <p key={n} style={{ fontSize: '12px', color: 'var(--error)' }}>Row {n}: {targets[n - 1].error}</p>
           ))}
@@ -283,9 +310,7 @@ export default function PayrollPage() {
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                Network fee{recipients.length > 1 && ` (${recipients.length} transactions)`}
-              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Network fee (one transaction)</span>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>≈ {formatFee(fee)} INJ</span>
             </div>
           </div>
@@ -301,6 +326,16 @@ export default function PayrollPage() {
           )}
 
           <ChainHealthNotice state={chainHealth} />
+
+          {checks.blocks.map(b => (
+            <div key={b.message} role="alert" className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <span>{b.message}</span>
+            </div>
+          ))}
+          {checks.warnings.map(w => (
+            <p key={w.message} role="alert" style={{ fontSize: '12px', color: 'var(--warning)' }}>{w.message}</p>
+          ))}
 
           {fundsError && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -329,7 +364,7 @@ export default function PayrollPage() {
             <div className={status.type === 'success' ? 'alert-success' : 'alert-error'}>{status.message}</div>
           )}
 
-          {cosmosError && token === 'USDC' && (
+          {cosmosError && status.type !== 'error' && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
               <span>{cosmosError}</span>
@@ -338,15 +373,13 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady || !chainHealth.canSend} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady || !chainHealth.canSend || checks.blocks.length > 0} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.6' }}>
-            {token === 'USDC' 
-              ? 'Broadcasts via Cosmos transactions. All recipients receive USDC simultaneously.' 
-              : 'Broadcasts one MsgMultiSend transaction. All recipients receive INJ simultaneously.'}
+            Sent as one MsgMultiSend transaction: one signature and one fee, and either every recipient is paid or none is.
           </p>
         </div>
       )}

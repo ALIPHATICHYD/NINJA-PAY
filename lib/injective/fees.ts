@@ -44,6 +44,17 @@ export function withGasHeadroom(gas: bigint): bigint {
  */
 export const COSMOS_SEND_GAS = BigInt(200_000)
 
+/**
+ * Gas assumed per extra payroll recipient before the batch can be simulated.
+ * Matches signAndBroadcast's per-output fallback.
+ */
+export const PAYROLL_OUTPUT_GAS = BigInt(50_000)
+
+/** Gas assumed for one MsgMultiSend paying `recipients` people, until it is simulated. */
+export function payrollGas(recipients: number): bigint {
+  return COSMOS_SEND_GAS + PAYROLL_OUTPUT_GAS * BigInt(Math.max(recipients - 1, 0))
+}
+
 /** "Max" keeps back this many times the estimated fee, so a small change in gas still fits. */
 const FEE_HEADROOM = BigInt(2)
 

@@ -50,12 +50,12 @@ export interface ClaimRecord {
 
 export interface PayrollOutput {
   address: string
-  amount: string // Wei
+  amount: string // base units
 }
 
 export interface BillPayment {
   billType: 'airtime' | 'data' | 'electricity' | 'cable'
   provider: string
   identifier: string // Phone number, meter ID, account number
-  amount: string // Wei
+  amount: string // base units
 }
