@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { USDC } from '@/lib/injective/tokens'
+import { isEvmTxHash } from '@/lib/injective/network'
 
 const explorer = vi.hoisted(() => ({ calls: [] as unknown[], transactions: [] as unknown[] }))
 
@@ -70,6 +71,12 @@ describe('indexer transactions', () => {
     }
     expect(parseExplorerTx(payroll, mine)).toMatchObject([{ direction: 'out', counterparty: '2 recipients', isMulti: true }])
     expect(parseExplorerTx(send('D', '2026-10-01T10:00:00Z', OTHER, OTHER, 'inj', '1'), mine)).toEqual([])
+  })
+
+  it("writes the indexer's 0x hashes as Cosmos hashes, so they don't read as EVM transactions", () => {
+    const [draft] = parseExplorerTx(send('0x' + 'e0'.repeat(32), '2026-10-01T10:00:00Z', ME, OTHER, 'inj', '5'), mine)
+    expect(draft.hash).toBe('E0'.repeat(32))
+    expect(isEvmTxHash(draft.hash)).toBe(false)
   })
 
   it('pages with skip and limit', async () => {

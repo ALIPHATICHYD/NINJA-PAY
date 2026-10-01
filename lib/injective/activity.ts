@@ -113,11 +113,18 @@ export type ExplorerTx = {
   messages: { type: string; message: unknown }[]
 }
 
+/**
+ * A Cosmos transaction hash as the chain's REST API and InjScan write it.
+ * The indexer returns it as 0x plus lowercase hex (checked on testnet,
+ * 2026-10-01), which reads as an EVM hash everywhere else in the app.
+ */
+export const cosmosTxHash = (hash: string) => hash.replace(/^0x/i, '').toUpperCase()
+
 /** The bank transfers in an indexer transaction that touch one of `mine` (inj1 addresses). */
 export function parseExplorerTx(tx: ExplorerTx, mine: ReadonlySet<string>): ActivityDraft[] {
   const timestamp = parseTimestamp(tx.blockTimestamp)
   if (!timestamp) return []
-  const base = { hash: tx.hash, timestamp, success: tx.code === 0, memo: tx.memo ?? '' }
+  const base = { hash: cosmosTxHash(tx.hash), timestamp, success: tx.code === 0, memo: tx.memo ?? '' }
   const drafts: ActivityDraft[] = []
   for (const { type, message } of tx.messages ?? []) {
     const kind = String(type).split('.').pop()

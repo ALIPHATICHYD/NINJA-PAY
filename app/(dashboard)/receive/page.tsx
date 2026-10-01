@@ -9,9 +9,7 @@ import { QrCode } from '@/components/QrCode'
 import { toInjectiveAddress } from '@/lib/injective/address'
 import { IS_MAINNET, NETWORK_LABEL } from '@/lib/injective/network'
 import { TOKENS, type TokenSymbol } from '@/lib/injective/tokens'
-import { paymentRequestUrl, requestAmountBase } from '@/lib/payment-request'
-
-type OpenRequest = { token: TokenSymbol; amount: string; amountBase: bigint; baseline: bigint; url: string }
+import { loadOpenRequest, paymentRequestUrl, requestAmountBase, saveOpenRequest, type OpenRequest } from '@/lib/payment-request'
 
 export default function ReceivePage() {
   const { address, isConnected } = useWallet()
@@ -21,6 +19,19 @@ export default function ReceivePage() {
   const [token, setToken] = useState<TokenSymbol>('USDC')
   const [amount, setAmount] = useState('')
   const [request, setRequest] = useState<OpenRequest | null>(null)
+
+  // A reload or a switch of account picks up that account's open request.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  const account = injectiveAddress ?? null
+  if (account !== loadedFor) {
+    setLoadedFor(account)
+    setRequest(account ? loadOpenRequest(account) : null)
+  }
+
+  const openRequest = (next: OpenRequest | null) => {
+    setRequest(next)
+    if (injectiveAddress) saveOpenRequest(injectiveAddress, next)
+  }
 
   const balanceOf = (t: TokenSymbol) => BigInt((t === 'USDC' ? usdc : inj) || '0')
   const amountBase = amount.trim() ? requestAmountBase(amount, token) : null
@@ -35,7 +46,7 @@ export default function ReceivePage() {
 
   const createRequest = () => {
     if (amountBase === null) return
-    setRequest({
+    openRequest({
       token,
       amount: amount.trim(),
       amountBase,
@@ -154,7 +165,7 @@ export default function ReceivePage() {
                 {!received && (
                   <button onClick={refetch} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>Check now</button>
                 )}
-                <button onClick={() => { setRequest(null); setAmount('') }} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                <button onClick={() => { openRequest(null); setAmount('') }} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
                   New request
                 </button>
               </div>
