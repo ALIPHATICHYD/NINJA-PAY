@@ -160,3 +160,17 @@ describe('classifyActivity', () => {
     expect(items.map(i => [i.type, i.label])).toEqual([['payroll', undefined], ['claim-fund', 'Team lunch'], ['claim-reclaim', 'Team lunch']])
   })
 })
+
+describe('live updates', () => {
+  it('reports each new transfer once, oldest first, and ignores older history', async () => {
+    const { takeNew } = await import('@/lib/injective/live')
+    const at = (s: number) => new Date(Date.UTC(2026, 9, 1, 10, 0, s))
+    const draft = (hash: string, s: number) => ({
+      hash, timestamp: at(s), direction: 'in' as const, counterparty: OTHER, coins: [], success: true, memo: '', isMulti: false,
+    })
+    const seen = new Set<string>()
+    const since = at(10).getTime()
+    expect(takeNew([draft('new2', 30), draft('old', 5), draft('new1', 20)], seen, since).map(d => d.hash)).toEqual(['new1', 'new2'])
+    expect(takeNew([draft('new3', 40), draft('new2', 30)], seen, since).map(d => d.hash)).toEqual(['new3'])
+  })
+})

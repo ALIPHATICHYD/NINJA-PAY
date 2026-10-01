@@ -73,6 +73,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
 | Transactions | `/transactions` | Working | One list, newest first, for your Keplr/Leap account and your EVM wallet: bank transfers from Injective's indexer, and INJ and ERC-20 transfers sent from EVM wallets (such as USDC from MetaMask) from Blockscout. **Load more** pages further back, and **Download CSV** saves the listed transfers as a statement made on the device. Each row links to its receipt. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…`, `0x…` or a `.inj` name, stores the `inj1…` form, and spots the same account saved twice in different formats. A beneficiary saved by name keeps the name and is paid at the saved address; the list warns when the name now points somewhere else. **Send** prefills `/send` with the address. |
+| Live updates | every dashboard page | Working | While the dashboard is open, balances and history update when a payment arrives, and a **Payment received** notice links to its receipt. The signals come from an ERC-20 `Transfer` log subscription on Injective's EVM WebSocket and the indexer's account portfolio stream, both opened from the browser. Amounts always come from re-reading the chain, never from the signal. INJ sent from an EVM wallet emits no `Transfer` log, so its notice depends on the portfolio stream reporting the balance change, which Injective's docs don't confirm; balances still refresh every 30 seconds either way. NinjaPay runs no server-side watcher, since that would link wallets to people (NDPA). |
 | Receipts | `/receipt/[hash]` | Working | A shareable receipt for any transaction hash, Cosmos or EVM: amount, sender and recipient, time, block, network fee, memo and status, read from the chain each time it opens. Linked from Transactions and from Send and Payroll once a transfer settles. NinjaPay keeps no copy; the link holds only the hash. |
 | Analytics | `/analytics` | Working | Totals over whole days (7, 30 or 90, back to local midnight): exact amounts sent and received per token, the same in USD at today's Injective oracle price (indicative), distinct transactions, counterparties, a daily or weekly chart and a breakdown by type. It reads older history until every source reaches the window's first day, up to 10 pages per source at a time, and says how far back the totals go when it stops short. Tokens with no current price are named and left out of USD totals. Failed transfers, moves between your own connected accounts and reclaimed claim funds aren't counted. |
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No naira rate is quoted and no bank details are collected. |
@@ -192,12 +193,14 @@ components/
   ChainHealthNotice.tsx       "Sending is paused" and scheduled-upgrade banners
   QrCode.tsx                  Dark-on-white QR code as one SVG path
   CopyButton.tsx              Copy-to-clipboard button
+  LivePayments.tsx            Live updates and "Payment received" notices on the dashboard
 hooks/
   useWallet.ts                Thin wrapper over wagmi useAccount
   useCosmosTransaction.ts     Keplr/Leap connection and sendToken
   useBalance.ts               INJ/USDC balances from the bank module
   useChainHealth.ts           Chain id and block freshness for the rail a page sends on
   useActivity.ts              On-chain history for the connected accounts, paged and merged
+  useConnectedAccounts.ts     The connected inj1 accounts, once each
   useTokenList.ts             Injective's verified tokens, by denom
   usePrices.ts                Indicative INJ and USDC prices, refreshed each minute
   useRecipients.ts            Recipient fields: address or .inj name, resolved
@@ -222,6 +225,7 @@ lib/
     evm-activity.ts           EVM wallet transfers (INJ value, ERC-20) from Blockscout
     receipt.ts                One transaction's transfers, fee and status, from REST or EVM RPC
     analytics.ts              Totals over whole-day windows: per token, USD, counts, chart
+    live.ts                   Live signals: EVM Transfer-log subscription, indexer portfolio stream
     constants.ts              Re-exports network settings, env-backed config
     broadcast.ts, evm-config.ts, types.ts
   money.ts                    Exact amount <-> base-unit conversion
@@ -277,6 +281,7 @@ Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visib
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes, for claims and analytics | `lib/supabase.ts` | Publishable anon key. Protect tables with RLS. |
 | `NEXT_PUBLIC_INJECTIVE_NETWORK` | No | `lib/injective/network.ts` | `mainnet` to target mainnet. Defaults to testnet. |
 | `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` / `NEXT_PUBLIC_INJECTIVE_EXPLORER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD, indexer and indexer explorer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
+| `NEXT_PUBLIC_INJECTIVE_EVM_WS` | No | `lib/injective/live.ts` | EVM WebSocket (`wss://`) for live payment updates. Used in the browser, so it must be keyless. Defaults to Injective's public WebSocket endpoint from the [EVM network information](https://docs.injective.network/developers-evm/network-information) page. |
 | `NEXT_PUBLIC_INJECTIVE_EVM_RPC` | No | `components/Web3Providers.tsx`, `lib/injective/health.ts` | EVM JSON-RPC for reads. A keyless provider URL, or `/api/evm-rpc` to use the server proxy below. The public RPC stays as a fallback. |
 | `INJECTIVE_EVM_RPC_URL` | No (server-only) | `app/api/evm-rpc/route.ts` | A premium EVM RPC URL with its API key. The proxy forwards only read methods and `eth_sendRawTransaction`, falls back to the public RPC, and logs nothing. Anyone who can reach the route can use it, so add rate limiting before relying on it. |
 | `NEXT_PUBLIC_WALLETCONNECT_ID` | Required for any deployment | `components/Web3Providers.tsx` | NinjaPay's own project id from [WalletConnect Cloud](https://cloud.walletconnect.com), with the site's domains on its allowlist. Mobile and QR-code wallets connect through it. A shared fallback id is hardcoded only so local development works. |

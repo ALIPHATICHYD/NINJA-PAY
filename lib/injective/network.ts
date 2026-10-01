@@ -64,6 +64,8 @@ export const ENDPOINTS = {
   indexer: configured(process.env.NEXT_PUBLIC_INJECTIVE_INDEXER) ?? publicEndpoints.indexer,
   explorer: configured(process.env.NEXT_PUBLIC_INJECTIVE_EXPLORER) ?? publicEndpoints.explorer,
   evmRpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_RPC) ?? PUBLIC_EVM_RPC,
+  /** EVM JSON-RPC over WebSocket, for live updates. */
+  evmWs: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_WS) ?? EVM.ws,
 }
 
 /** Injective's native EVM, for wagmi, RainbowKit and viem. */

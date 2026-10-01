@@ -3,6 +3,7 @@
 import React from 'react'
 import { Navigation } from '@/components/Navigation'
 import { Web3Providers } from '@/components/Web3Providers'
+import { LivePayments } from '@/components/LivePayments'
 
 export default function DashboardLayout({
   children,
@@ -55,6 +56,7 @@ export default function DashboardLayout({
           </div>
         </div>
       </footer>
+      <LivePayments />
     </div>
     </Web3Providers>
   )

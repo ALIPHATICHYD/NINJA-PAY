@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useWallet } from '@/hooks/useWallet'
-import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useConnectedAccounts } from '@/hooks/useConnectedAccounts'
 import { useTokenList } from '@/hooks/useTokenList'
 import {
   classifyActivity,
@@ -14,7 +13,8 @@ import {
   type SourceState,
 } from '@/lib/injective/activity'
 import { fetchEvmTokenPage, fetchEvmTxPage } from '@/lib/injective/evm-activity'
-import { parseAccountAddress, toInjectiveAddress } from '@/lib/injective/address'
+import { parseAccountAddress } from '@/lib/injective/address'
+import { ACTIVITY_EVENT } from '@/lib/injective/live'
 import { resolveClaimEscrows } from '@/lib/supabase'
 
 type Source = { key: string; kind: 'cosmos' | 'evm'; load: (cursor: string | null) => Promise<ActivityPage> }
@@ -43,19 +43,7 @@ const FAILURE: Record<Source['kind'], string> = {
  * `readFurther` allows another AUTO_PAGE_LIMIT pages.
  */
 export function useActivity({ coverSince }: { coverSince?: number } = {}) {
-  const { address: evmAddress } = useWallet()
-  const { userAddress: cosmosAddress } = useCosmosTransaction()
-
-  const addresses = useMemo(() => {
-    const list = new Set<string>()
-    if (cosmosAddress) list.add(cosmosAddress)
-    const walletAccount = toInjectiveAddress(evmAddress)
-    if (walletAccount) list.add(walletAccount)
-    return [...list]
-  }, [cosmosAddress, evmAddress])
-
-  const key = addresses.join(',')
-  const mine = useMemo(() => new Set(key ? key.split(',') : []), [key])
+  const { addresses, mine } = useConnectedAccounts()
   const sources = useMemo<Source[]>(
     () =>
       [...mine].flatMap(inj => {
@@ -77,16 +65,23 @@ export function useActivity({ coverSince }: { coverSince?: number } = {}) {
   // Pages that arrive after the accounts change or a refresh are dropped.
   const generation = useRef(0)
 
-  /** Stores fetched pages, unless the accounts changed or a refresh started meanwhile. */
+  /**
+   * Stores fetched pages, unless the accounts changed or a refresh started
+   * meanwhile. `reset` replaces everything, `more` adds older pages, and
+   * `newest` adds a fresh first page without moving where paging has got to.
+   */
   const applyPages = useCallback(
-    async (run: number, targets: Source[], results: PromiseSettledResult<ActivityPage>[], reset: boolean) => {
+    async (run: number, targets: Source[], results: PromiseSettledResult<ActivityPage>[], mode: 'reset' | 'more' | 'newest') => {
       if (run !== generation.current) return
       setLoaded(previous => {
-        const next = reset ? {} : { ...previous }
+        const next = mode === 'reset' ? {} : { ...previous }
         targets.forEach((source, i) => {
           const result = results[i]
           const before = next[source.key]
-          if (result.status === 'fulfilled') {
+          if (mode === 'newest' && before) {
+            // Duplicates are dropped when sources are merged.
+            if (result.status === 'fulfilled') next[source.key] = { ...before, drafts: [...before.drafts, ...result.value.drafts] }
+          } else if (result.status === 'fulfilled') {
             next[source.key] = {
               drafts: [...(before?.drafts ?? []), ...result.value.drafts],
               next: result.value.next,
@@ -115,9 +110,9 @@ export function useActivity({ coverSince }: { coverSince?: number } = {}) {
   )
 
   const loadPages = useCallback(
-    async (targets: Source[], cursors: Record<string, string | null>, reset: boolean) => {
+    async (targets: Source[], cursors: Record<string, string | null>, mode: 'reset' | 'more') => {
       const run = ++generation.current
-      await applyPages(run, targets, await fetchPages(targets, cursors), reset)
+      await applyPages(run, targets, await fetchPages(targets, cursors), mode)
     },
     [applyPages],
   )
@@ -125,12 +120,22 @@ export function useActivity({ coverSince }: { coverSince?: number } = {}) {
   // First page of every source whenever the connected accounts change.
   useEffect(() => {
     const run = ++generation.current
-    fetchPages(sources, {}).then(results => applyPages(run, sources, results, true))
+    fetchPages(sources, {}).then(results => applyPages(run, sources, results, 'reset'))
+  }, [sources, applyPages])
+
+  // New activity seen by the live watcher (components/LivePayments): read the newest page again.
+  useEffect(() => {
+    const onActivity = () => {
+      const run = generation.current
+      fetchPages(sources, {}).then(results => applyPages(run, sources, results, 'newest'))
+    }
+    window.addEventListener(ACTIVITY_EVENT, onActivity)
+    return () => window.removeEventListener(ACTIVITY_EVENT, onActivity)
   }, [sources, applyPages])
 
   const refetch = useCallback(async () => {
     setRefreshing(true)
-    await loadPages(sources, {}, true)
+    await loadPages(sources, {}, 'reset')
     setRefreshing(false)
   }, [sources, loadPages])
 
@@ -150,7 +155,7 @@ export function useActivity({ coverSince }: { coverSince?: number } = {}) {
     const { targets, cursors } = nextPages()
     if (targets.length === 0) return
     setLoadingMore(true)
-    await loadPages(targets, cursors, false)
+    await loadPages(targets, cursors, 'more')
     setLoadingMore(false)
   }, [nextPages, loadPages])
 
@@ -175,7 +180,7 @@ export function useActivity({ coverSince }: { coverSince?: number } = {}) {
     const { targets, cursors } = nextPages(coverSince)
     if (targets.length === 0) return
     const run = ++generation.current
-    fetchPages(targets, cursors).then(results => applyPages(run, targets, results, false))
+    fetchPages(targets, cursors).then(results => applyPages(run, targets, results, 'more'))
   }, [autoLoad, coverSince, nextPages, applyPages])
 
   const failed = sources.filter(s => loaded[s.key]?.failed)
