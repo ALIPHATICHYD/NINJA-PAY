@@ -120,6 +120,6 @@ describe('CSV statement', () => {
     const lines = csv.trim().split('\r\n')
     expect(lines[0]).toBe('Date (UTC),Type,Direction,Counterparty,Amount,Token,Denom,Status,Claim pool,Transaction,Explorer')
     expect(lines[1]).toBe(`2026-10-01T10:00:00.000Z,Claim received,Received,${OTHER},1.234567,USDC,${USDC.denom},Confirmed,'=cmd,${COSMOS_HASH},https://testnet.explorer.injective.network/transaction/${COSMOS_HASH}`)
-    expect(lines[2]).toContain(',9,factory/in… (unverified),factory/inj1x/spam,')
+    expect(lines[2]).toContain(',9,factory/in… (unverified · base units),factory/inj1x/spam,')
   })
 })

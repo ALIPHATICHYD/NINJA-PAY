@@ -7,7 +7,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { usePrices } from '@/hooks/usePrices'
 import { useActivity } from '@/hooks/useActivity'
 import { NETWORK_LABEL } from '@/lib/injective/network'
-import { ACTIVITY_LABELS, formatCoinAmount, type ActivityType } from '@/lib/injective/activity'
+import { ACTIVITY_LABELS, formatCoinAmount, tokenLabel, type ActivityType } from '@/lib/injective/activity'
 import { periodStart, summarizeWindow, totalCoin, type Period } from '@/lib/injective/analytics'
 import { formatUsd } from '@/lib/prices'
 
@@ -184,7 +184,7 @@ export default function AnalyticsPage() {
                     {summary.tokens.map(t => (
                       <tr key={t.denom} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={{ padding: '10px 12px 10px 0', color: 'var(--text-secondary)', fontFamily: 'inherit' }} title={t.denom}>
-                          {t.token}{t.verified ? '' : ' (unverified)'}
+                          {tokenLabel(t)}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text-primary)' }}>
                           {t.sentBase > BigInt(0) ? formatCoinAmount(totalCoin(t, t.sentBase)) : '—'}

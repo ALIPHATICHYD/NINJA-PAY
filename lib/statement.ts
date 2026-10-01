@@ -3,7 +3,7 @@
  * Nothing is sent to a server: the file is made and saved on the device.
  */
 
-import { ACTIVITY_LABELS, formatCoinAmount, type ActivityItem } from './injective/activity'
+import { ACTIVITY_LABELS, formatCoinAmount, tokenLabel, type ActivityItem } from './injective/activity'
 import { explorerTxUrl } from './injective/network'
 
 const COLUMNS = ['Date (UTC)', 'Type', 'Direction', 'Counterparty', 'Amount', 'Token', 'Denom', 'Status', 'Claim pool', 'Transaction', 'Explorer']
@@ -26,7 +26,7 @@ export function activityCsv(items: ActivityItem[]): string {
       item.direction === 'out' ? 'Sent' : 'Received',
       item.counterparty,
       formatCoinAmount(coin, coin.decimals),
-      coin.verified ? coin.token : `${coin.token} (unverified)`,
+      tokenLabel(coin),
       coin.denom,
       item.success ? 'Confirmed' : 'Failed',
       item.label ?? '',

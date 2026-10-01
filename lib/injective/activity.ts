@@ -237,9 +237,18 @@ export function formatCoinAmount(coin: ActivityCoin, maxFractionDigits = 6): str
   return frac ? `${whole}.${frac}` : whole
 }
 
-/** "1.5 INJ", or a raw amount and short denom marked unverified. */
+/**
+ * The token's name, or for a denom nobody has verified, its short denom marked
+ * so the raw amount beside it isn't read as whole tokens: 10000000 base units
+ * of a 6-decimal token is 10 tokens, not ten million.
+ */
+export function tokenLabel(coin: Pick<ActivityCoin, 'token' | 'verified'>): string {
+  return coin.verified ? coin.token : `${coin.token} (unverified · base units)`
+}
+
+/** "1.5 INJ", or a raw amount and short denom marked unverified, in base units. */
 export function formatCoin(coin: ActivityCoin, maxFractionDigits = 6): string {
-  return `${formatCoinAmount(coin, maxFractionDigits)} ${coin.token}${coin.verified ? '' : ' (unverified)'}`
+  return `${formatCoinAmount(coin, maxFractionDigits)} ${tokenLabel(coin)}`
 }
 
 /** Numeric value of a coin, for charts and USD totals (float is fine for display). */

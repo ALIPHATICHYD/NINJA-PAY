@@ -80,7 +80,7 @@ describe('activity coins', () => {
   it('names coins once the list loads', () => {
     const [named] = withTokenNames([item(USDC_NOBLE.denom, '2500000')], tokenMap(verifiedTokens(LIST)))
     expect(formatCoin(named.coins[0])).toBe('2.5 USDCnb')
-    expect(formatCoin(item(FAKE_USDC.denom, '2500000').coins[0])).toBe('2500000 factory/in… (unverified)')
+    expect(formatCoin(item(FAKE_USDC.denom, '2500000').coins[0])).toBe('2500000 factory/in… (unverified · base units)')
   })
 
   it('prices coins by denom, never by name', () => {
