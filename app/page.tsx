@@ -109,6 +109,18 @@ function Logo() {
   )
 }
 
+const footerLink = 'text-[15px] text-snow/90 underline-offset-4 transition-colors hover:text-white hover:underline'
+
+function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="font-display text-[15px] uppercase tracking-[0.14em]">{title}</p>
+      <span aria-hidden="true" className="mt-3 block h-px w-8 bg-snow/70" />
+      <ul className="mt-5 grid gap-3">{children}</ul>
+    </div>
+  )
+}
+
 function FeatureCell({
   href,
   icon: Icon,
@@ -366,64 +378,53 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-line">
-        <div className={`${container} grid gap-10 py-14 sm:grid-cols-2 md:grid-cols-[2fr_1fr_1fr_1fr]`}>
-          <div>
+      {/* Footer: Ocean, with the engraved savanna rising out of it like the end of a printed page. */}
+      <footer className="overflow-hidden bg-ocean text-snow [&_a:focus-visible]:outline-snow">
+        <div className={`${container} grid grid-cols-2 gap-x-8 gap-y-12 pb-10 pt-16 md:pt-20 lg:grid-cols-[1.6fr_1fr_1fr_1fr]`}>
+          <div className="col-span-2 lg:col-span-1">
             <Logo />
-            <p className="mt-4 max-w-[36ch] text-sm leading-relaxed text-ink-2">
+            <p className="mt-5 max-w-[30ch] font-display text-xl italic leading-snug">
               Non-custodial crypto payments, payroll, and claim links on Injective.
             </p>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-ink">App</p>
-            <ul className="mt-4 grid gap-3">
-              {APP_LINKS.map(link => (
-                <li key={link.href}>
-                  <Link href={link.href} className="text-sm text-ink-2 transition-colors hover:text-ink">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-ink">Ecosystem</p>
-            <ul className="mt-4 grid gap-3">
-              <li>
-                <a href="https://injective.com" target="_blank" rel="noopener noreferrer" className="text-sm text-ink-2 transition-colors hover:text-ink">
-                  Injective
+          <FooterColumn title="App">
+            {APP_LINKS.map(link => (
+              <li key={link.href}>
+                <Link href={link.href} className={footerLink}>
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </FooterColumn>
+          <FooterColumn title="Ecosystem">
+            <li>
+              <a href="https://injective.com" target="_blank" rel="noopener noreferrer" className={footerLink}>
+                Injective
+              </a>
+            </li>
+            <li>
+              <a href="https://injective-by-examples.vercel.app/" target="_blank" rel="noopener noreferrer" className={footerLink}>
+                Injective By Examples
+              </a>
+            </li>
+          </FooterColumn>
+          <FooterColumn title="Socials">
+            {SOCIAL_LINKS.map(({ label, href, icon: Icon }) => (
+              <li key={href}>
+                <a href={href} target="_blank" rel="noopener noreferrer" className={footerLink}>
+                  {/* Inline, not flex, so the label shares a baseline with the other footer columns. */}
+                  <Icon className="mr-2 inline-block h-3.5 w-3.5 align-[-0.15em]" />
+                  {label}
                 </a>
               </li>
-              <li>
-                <a href="https://injective-by-examples.vercel.app/" target="_blank" rel="noopener noreferrer" className="text-sm text-ink-2 transition-colors hover:text-ink">
-                  Injective By Examples
-                </a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-ink">Socials</p>
-            <ul className="mt-4 grid gap-3">
-              {SOCIAL_LINKS.map(({ label, href, icon: Icon }) => (
-                <li key={href}>
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-ink-2 transition-colors hover:text-ink"
-                  >
-                    {/* Inline, not flex, so the label shares a baseline with the other footer columns. */}
-                    <Icon className="mr-2 inline-block h-3.5 w-3.5 align-[-0.15em]" />
-                    {label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
+            ))}
+          </FooterColumn>
         </div>
-        <div className="border-t border-line">
-          <p className={`${container} py-6 text-sm text-ink-3`}>© 2026 NinjaPay. Built on Injective.</p>
+        <p className={`${container} pb-8 font-display text-[15px] italic text-snow/90`}>© 2026 NinjaPay. Built on Injective.</p>
+        {/* The sky is transparent, so the footer's Ocean shows through it. Under ~720px the art keeps
+            its height and crops to the middle, where the ninja walks. */}
+        <div className="relative aspect-[1440/380] min-h-[190px] w-full">
+          <Image src="/brand/savanna.webp" alt="" fill sizes="(min-width: 720px) 100vw, 720px" className="object-cover object-bottom" />
         </div>
       </footer>
     </div>
