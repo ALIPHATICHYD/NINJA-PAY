@@ -11,9 +11,10 @@ import {
   isSupabaseConfigured,
   SUPABASE_SETUP_MESSAGE,
 } from '@/lib/supabase'
+import { format } from 'date-fns'
 import { signAndBroadcast } from '@/lib/injective/cosmos-transactions'
-import { resolveHeldDenom } from '@/lib/injective/bank'
-import { TOKENS } from '@/lib/injective/tokens'
+import { balanceOf, fetchAllBalances, resolveHeldDenom } from '@/lib/injective/bank'
+import { DENOMS, TOKENS } from '@/lib/injective/tokens'
 import { formatBaseUnits } from '@/lib/money'
 import {
   planEscrow,
@@ -24,15 +25,21 @@ import {
   loadEscrowKey,
   sweepEscrow,
   TOKEN_DECIMALS,
+  type ClaimLinkKind,
   type ClaimToken,
 } from '@/lib/injective/claim-escrow'
+import { LINK_LIFETIME_DAYS, buildGrantMsgs, cancelMessages, planGrant, type LinkLifetime } from '@/lib/injective/claim-grant'
+import { fetchApprovals, type Approval } from '@/lib/injective/grants'
 import type { ClaimPool } from '@/lib/injective/types'
-import { Copy, Plus, Share2, Users2, Check, RefreshCcw, Undo2 } from 'lucide-react'
+import { Copy, Plus, Share2, Users2, Check, RefreshCcw, Undo2, Ban } from 'lucide-react'
 
 interface UIClaim {
   pool: ClaimPool
   claimed: number
   link: string | null
+  kind: ClaimLinkKind
+  /** Approvals the creator's wallet still gives this link's key; undefined if they couldn't be read. */
+  approvals: Approval[] | undefined
 }
 
 const MAX_RECIPIENTS = 100
@@ -59,6 +66,8 @@ export default function ClaimsPage() {
   const [token, setToken] = useState<ClaimToken>('USDC')
   const [amount, setAmount] = useState('')
   const [recipientCount, setRecipientCount] = useState('2')
+  const [kind, setKind] = useState<ClaimLinkKind>('grant')
+  const [lifetime, setLifetime] = useState<LinkLifetime>(7)
 
   const [created, setCreated] = useState<UIClaim[]>([])
   const [loading, setLoading] = useState(true)
@@ -72,14 +81,22 @@ export default function ClaimsPage() {
     setLoading(true)
     try {
       const pools = await getClaimPoolsByCreator(address)
-      const claims = await getClaimsForPools(pools.map(p => p.id))
+      const [claims, given] = await Promise.all([
+        getClaimsForPools(pools.map(p => p.id)),
+        // Links paid from this wallet are approvals it gave. Unreadable is not the same as none.
+        fetchApprovals(address).then(a => a.given).catch(() => undefined),
+      ])
       setCreated(
         pools.map(pool => {
           const stored = loadEscrowKey(pool.linkCode)
+          const approvals = given?.filter(a => a.grantee === pool.escrowAddress)
+          const kind: ClaimLinkKind = stored?.kind ?? (approvals?.length ? 'grant' : 'escrow')
           return {
             pool,
             claimed: claims.filter(c => c.poolId === pool.id && c.status === 'paid').length,
-            link: stored ? buildClaimLink(window.location.origin, pool.linkCode, stored.privateKeyHex) : null,
+            link: stored ? buildClaimLink(window.location.origin, pool.linkCode, stored.privateKeyHex, kind) : null,
+            kind,
+            approvals,
           }
         })
       )
@@ -101,7 +118,7 @@ export default function ClaimsPage() {
   const count = Number(recipientCount)
   if (amount && recipientCount) {
     try {
-      const plan = planEscrow(token, amount, count)
+      const plan = kind === 'grant' ? planGrant(token, amount, count, lifetime) : planEscrow(token, amount, count)
       const smallest = plan.shares[plan.shares.length - 1]
       const largest = plan.shares[0]
       preview = {
@@ -128,14 +145,36 @@ export default function ClaimsPage() {
     setStatus({ type: null, message: '' })
 
     try {
-      const plan = planEscrow(token, amount, count, await resolveHeldDenom(creatorAddress, TOKENS[token]))
+      const denom = await resolveHeldDenom(creatorAddress, TOKENS[token])
       const escrow = createEscrowKey()
       const linkCode = newLinkCode()
+      let plan: { totalBase: bigint; shares: bigint[] }
 
-      // Save the key before funding so a failure after this point can always be reclaimed.
-      saveEscrowKey(linkCode, { privateKeyHex: escrow.privateKeyHex, refundTo: creatorAddress })
-
-      await signAndBroadcast(buildFundingMsg(creatorAddress, escrow.address, plan))
+      if (kind === 'grant') {
+        const grant = planGrant(token, amount, count, lifetime, denom)
+        // The link pays from this wallet later, so it should hold the total and the fees now.
+        const held = await fetchAllBalances(creatorAddress)
+        const injNeeded = grant.feeAllowance + (token === 'INJ' ? grant.totalBase : BigInt(0))
+        if (token === 'USDC' && BigInt(balanceOf(held, denom)) < grant.totalBase) {
+          throw new Error(`Your wallet holds less than ${amount} USDC. Lower the total or add USDC first.`)
+        }
+        if (BigInt(balanceOf(held, DENOMS.INJ)) < injNeeded) {
+          throw new Error(
+            `Your wallet needs ${formatBaseUnits(injNeeded, TOKEN_DECIMALS.INJ, 6)} INJ for this link` +
+              (token === 'INJ' ? ' (the total plus claim fees)' : ' to pay its claim fees') +
+              ', plus the network fee to create it.',
+          )
+        }
+        saveEscrowKey(linkCode, { privateKeyHex: escrow.privateKeyHex, refundTo: creatorAddress, kind })
+        await signAndBroadcast(buildGrantMsgs(creatorAddress, escrow.address, grant))
+        plan = grant
+      } else {
+        const funded = planEscrow(token, amount, count, denom)
+        // Save the key before funding so a failure after this point can always be reclaimed.
+        saveEscrowKey(linkCode, { privateKeyHex: escrow.privateKeyHex, refundTo: creatorAddress, kind })
+        await signAndBroadcast(buildFundingMsg(creatorAddress, escrow.address, funded))
+        plan = funded
+      }
 
       const pool = await createClaimPool({
         creatorAddress,
@@ -149,13 +188,17 @@ export default function ClaimsPage() {
       })
 
       setCreated(prev => [
-        { pool, claimed: 0, link: buildClaimLink(window.location.origin, linkCode, escrow.privateKeyHex) },
+        { pool, claimed: 0, link: buildClaimLink(window.location.origin, linkCode, escrow.privateKeyHex, kind), kind, approvals: undefined },
         ...prev,
       ])
       setStatus({
         type: 'success',
-        message: `Claim "${pool.name}" funded. Copy the link and share it privately: anyone with the link can claim.`,
+        message:
+          kind === 'grant'
+            ? `Claim "${pool.name}" is ready. Copy the link and share it privately: anyone with the link can claim, until you cancel it or it expires.`
+            : `Claim "${pool.name}" funded. Copy the link and share it privately: anyone with the link can claim.`,
       })
+      if (kind === 'grant') void loadClaims(creatorAddress)
       setClaimName(''); setAmount(''); setRecipientCount('2'); setShowForm(false)
     } catch (e) {
       setStatus({ type: 'error', message: errorMessage(e, 'Failed to create claim.') })
@@ -174,6 +217,24 @@ export default function ClaimsPage() {
       setStatus({ type: 'success', message: `Unclaimed funds returned to your wallet. Tx: ${txHash.slice(0, 16)}...` })
     } catch (e) {
       setStatus({ type: 'error', message: errorMessage(e, 'Reclaim failed.') })
+    } finally {
+      setReclaimingId(null)
+    }
+  }
+
+  const handleCancel = async (claim: UIClaim) => {
+    if (!creatorAddress || !claim.pool.escrowAddress) return
+    setReclaimingId(claim.pool.id)
+    setStatus({ type: null, message: '' })
+    try {
+      const { given } = await fetchApprovals(creatorAddress)
+      const msgs = cancelMessages(given, claim.pool.escrowAddress)
+      if (msgs.length === 0) throw new Error('This link has already ended, so there is nothing to cancel.')
+      await signAndBroadcast(msgs)
+      setStatus({ type: 'success', message: `Link cancelled. It can no longer pay out from your wallet.` })
+      await loadClaims(creatorAddress)
+    } catch (e) {
+      setStatus({ type: 'error', message: errorMessage(e, 'Cancelling the link failed.') })
     } finally {
       setReclaimingId(null)
     }
@@ -255,6 +316,29 @@ export default function ClaimsPage() {
             <input id="claim-count" className="input" type="number" placeholder="e.g. 5" value={recipientCount} onChange={e => setRecipientCount(e.target.value)} min="1" max={MAX_RECIPIENTS} />
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+            <div>
+              <label className="label">Funds stay</label>
+              <div className="seg-control">
+                {([['grant', 'In my wallet'], ['escrow', 'In the link']] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setKind(k)} className={`seg-btn${kind === k ? ' active' : ''}`}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {kind === 'grant' && (
+              <div>
+                <label className="label">Link works for</label>
+                <div className="seg-control">
+                  {LINK_LIFETIME_DAYS.map(days => (
+                    <button key={days} onClick={() => setLifetime(days)} className={`seg-btn${lifetime === days ? ' active' : ''}`}>
+                      {days === 1 ? '1 day' : `${days} days`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {preview && (
             <div style={{ padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: '9px', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -267,9 +351,19 @@ export default function ClaimsPage() {
           {previewError && <div className="alert-error">{previewError}</div>}
 
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            Your wallet sends the total plus a small INJ reserve for claim fees to a one-time escrow account.
-            The escrow key lives only in the link and in this browser. Anyone with the link can claim, so share it privately.
-            You can reclaim anything left over.
+            {kind === 'grant' ? (
+              <>
+                Nothing leaves your wallet now. You sign an approval that lets the link send at most the total from your wallet,
+                and pay each claim&rsquo;s small INJ network fee, until it expires. Claims fail if your wallet no longer holds
+                enough when someone claims. Anyone with the link can claim, so share it privately. You can cancel it at any time.
+              </>
+            ) : (
+              <>
+                Your wallet sends the total plus a small INJ reserve for claim fees to a one-time escrow account.
+                The escrow key lives only in the link and in this browser. Anyone with the link can claim, so share it privately.
+                You can reclaim anything left over.
+              </>
+            )}
           </p>
 
           <ChainHealthNotice state={chainHealth} />
@@ -280,7 +374,9 @@ export default function ClaimsPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={handleCreate} disabled={submitting || !!previewError || !chainHealth.canSend} className="btn-primary" style={{ flex: 1 }}>
-              {submitting ? <><span className="spinner" /> Funding…</> : <><Share2 size={14} /> Fund &amp; Get Link</>}
+              {submitting
+                ? <><span className="spinner" /> {kind === 'grant' ? 'Approving…' : 'Funding…'}</>
+                : <><Share2 size={14} /> {kind === 'grant' ? 'Approve & Get Link' : 'Fund & Get Link'}</>}
             </button>
             <button onClick={() => setShowForm(false)} disabled={submitting} className="btn-secondary" style={{ flex: 1 }}>
               Cancel
@@ -312,14 +408,22 @@ export default function ClaimsPage() {
             const legacy = !pool.escrowAddress
             const total = pool.shares.length
             const fullyClaimed = !legacy && claim.claimed >= total
+            const grant = claim.kind === 'grant'
+            const unknown = grant && claim.approvals === undefined
+            const approval = claim.approvals?.find(a => a.kind === 'authz')
+            const open = !!approval && (!approval.expiration || approval.expiration > new Date())
+            // A link paid from the wallet ends when it expires, is cancelled or pays out its total.
+            const ended = grant && !unknown && !open
+            // An ended link may still hold an unused fee allowance, which cancelling also revokes.
+            const cancellable = grant && (unknown || !!claim.approvals?.length)
             return (
               <div key={pool.id} style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{pool.name || `Claim ${pool.linkCode.slice(0, 4)}`}</p>
-                      <span className={`badge badge-${legacy ? 'error' : fullyClaimed ? 'neutral' : 'success'}`}>
-                        {legacy ? 'unfunded' : fullyClaimed ? 'fully claimed' : 'active'}
+                      <span className={`badge badge-${legacy ? 'error' : fullyClaimed || ended ? 'neutral' : 'success'}`}>
+                        {legacy ? 'unfunded' : fullyClaimed ? 'fully claimed' : ended ? 'ended' : 'active'}
                       </span>
                     </div>
                     <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -327,12 +431,23 @@ export default function ClaimsPage() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    {claim.link && (
+                    {claim.link && !ended && (
                       <button onClick={() => copyLink(claim.link!, pool.id)} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
                         {copiedId === pool.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy Link</>}
                       </button>
                     )}
-                    {claim.link && (
+                    {cancellable && (
+                      <button
+                        onClick={() => handleCancel(claim)}
+                        disabled={reclaimingId === pool.id}
+                        className="btn-secondary"
+                        style={{ fontSize: '12px', padding: '7px 12px' }}
+                        title="Revoke the link's approvals. Anyone who has not claimed yet will no longer be able to."
+                      >
+                        {reclaimingId === pool.id ? <><span className="spinner" /> Cancelling…</> : <><Ban size={12} /> Cancel Link</>}
+                      </button>
+                    )}
+                    {claim.link && !grant && (
                       <button
                         onClick={() => handleReclaim(claim)}
                         disabled={reclaimingId === pool.id}
@@ -345,18 +460,29 @@ export default function ClaimsPage() {
                     )}
                   </div>
                 </div>
+                {grant && (
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: claim.link && !ended ? '8px' : 0 }}>
+                    {unknown
+                      ? "Paid from your wallet. Couldn't read what it can still send from Injective; refresh to try again."
+                      : open
+                        ? `Paid from your wallet. It can still ${approval!.action}${approval!.expiration ? ` until ${format(approval!.expiration, 'd MMM yyyy, HH:mm')}` : ''}.`
+                        : 'This link has expired, was cancelled or has paid out its total. Nothing more can be claimed through it.'}
+                  </p>
+                )}
                 {legacy ? (
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                     Created before claim links were funded, so it holds no tokens and cannot be claimed.
                   </p>
-                ) : claim.link ? (
+                ) : ended ? null : claim.link ? (
                   <div className="copy-field" onClick={() => copyLink(claim.link!, pool.id)}>
                     <Copy size={12} style={{ flexShrink: 0 }} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{claim.link}</span>
                   </div>
                 ) : (
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    The link and reclaim key are stored only in the browser that created this pool.
+                    {grant
+                      ? 'The link is stored only in the browser that created this pool. You can still cancel it here.'
+                      : 'The link and reclaim key are stored only in the browser that created this pool.'}
                   </p>
                 )}
               </div>

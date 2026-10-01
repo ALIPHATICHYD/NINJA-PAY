@@ -70,8 +70,8 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Wallet setup | `/setup` | Working | Adds or switches the wallet to Injective's EVM network and adds USDC to its token list in one click each, with the values for adding them by hand. Links to the INJ and Circle USDC testnet faucets (on mainnet, Injective's page on getting INJ) and to Keplr and Leap. Linked from the landing page and from Send when the account has no INJ. |
 | Receive | `/receive` | Working | Shows the wallet's account as `inj1…` and `0x…` with a QR code for each and a network warning. **Ask for a set amount** makes a link and QR that open `/send` with the address, token and amount filled in; the page reports the payment as received once the account's balance of that token on Injective has gone up by at least that amount. Person-to-person only. |
 | Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend` signed with Keplr/Leap: one signature, one fee, all or nothing. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. |
-| Claim links: create | `/claims` | Working on testnet (INJ verified) | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
-| Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
+| Claim links: create | `/claims` | Working on testnet (INJ verified) | By default the funds stay in the creator's Keplr/Leap wallet: the creator approves the link to send at most the total, and to pay each claim's fee, until it expires (1, 7 or 30 days), and can cancel it at any time. Or the creator funds a one-time escrow account and can reclaim leftovers. Either way the link's key lives only in its `#fragment` and the creator's browser. |
+| Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address), from the creator's wallet or from the escrow. Claimers need no INJ. |
 | Transactions | `/transactions` | Working | One list, newest first, for your Keplr/Leap account and your EVM wallet: bank transfers from Injective's indexer, and INJ and ERC-20 transfers sent from EVM wallets (such as USDC from MetaMask) from Blockscout. **Load more** pages further back, and **Download CSV** saves the listed transfers as a statement made on the device. Each row links to its receipt. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…`, `0x…` or a `.inj` name, stores the `inj1…` form, and spots the same account saved twice in different formats. A beneficiary saved by name keeps the name and is paid at the saved address; the list warns when the name now points somewhere else. **Send** prefills `/send` with the address. |
 | Live updates | every dashboard page | Working | While the dashboard is open, balances and history update when a payment arrives, and a **Payment received** notice links to its receipt. The signals come from an ERC-20 `Transfer` log subscription on Injective's EVM WebSocket and the indexer's account portfolio stream, both opened from the browser. Amounts always come from re-reading the chain, never from the signal. INJ sent from an EVM wallet emits no `Transfer` log, so its notice depends on the portfolio stream reporting the balance change, which Injective's docs don't confirm; balances still refresh every 30 seconds either way. NinjaPay runs no server-side watcher, since that would link wallets to people (NDPA). |
@@ -223,6 +223,7 @@ lib/
     bank.ts                   Balance queries, MsgMultiSend builder
     cosmos-transactions.ts    Keplr/Leap signing, sendToken
     claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
+    claim-grant.ts            Claim links paid from the creator's wallet: approve, pay out, cancel
     activity.ts               Bank-transfer history from Injective's indexer, merged across sources
     evm-activity.ts           EVM wallet transfers (INJ value, ERC-20) from Blockscout
     receipt.ts                One transaction's transfers, fee and status, from REST or EVM RPC
@@ -384,7 +385,7 @@ create policy "read transactions"  on transactions for select using (true);
 create policy "insert transactions" on transactions for insert with check (true);
 ```
 
-These policies let any client insert or update claim rows. The funds themselves are protected by the escrow key, not by the database: a forged `claims` row cannot move tokens. What a hostile client *can* do is reserve shares it never pays out, or mark rows paid. That is acceptable on testnet. For production, move reservation behind a server route that checks a signature from the claimer, or move claim state on-chain (see [Roadmap](#roadmap)). No `update` policy on `claim_pools` is needed any more.
+These policies let any client insert or update claim rows. The funds themselves are protected by the link's key and the chain's limits on it, not by the database: a forged `claims` row cannot move tokens. What a hostile client *can* do is reserve shares it never pays out, or mark rows paid. That is acceptable on testnet. For production, move reservation behind a server route that checks a signature from the claimer, or move claim state on-chain (see [Roadmap](#roadmap)). No `update` policy on `claim_pools` is needed any more.
 
 ---
 
@@ -414,9 +415,19 @@ The payroll screen has three steps: name the run, add recipients (`inj1…`, `0x
 
 ### Claim links (`/claims` → `/claim/[claimId]`)
 
-Claim links use a **one-time escrow account whose key travels in the link**. The code is in `lib/injective/claim-escrow.ts`.
+A claim link carries a **one-time key in its `#fragment`**. There are two kinds. By default the funds stay in the creator's wallet and the key may only spend what the creator approved for it (`lib/injective/claim-grant.ts`). The other kind moves the funds to a one-time escrow account that the key controls (`lib/injective/claim-escrow.ts`).
 
-**Creating a pool**
+**Funds stay in the creator's wallet**
+
+1. The creator enters a name, token, total, number of recipients and how long the link works (1, 7 or 30 days). The browser makes the link's key and checks that the wallet holds the total and the claim fees.
+2. The creator signs one transaction with two approvals for the key, both ending when the link expires. An authz `SendAuthorization` lets it send at most the total of that token from the creator's account. A fee allowance lets it spend up to 0.000096 INJ per share of the creator's INJ on network fees. The allowance also creates the key's account on chain, which is what lets it sign while holding nothing.
+3. The link is `https://…/claim/<code>#k=<key>&kind=grant`.
+4. A claim is a `MsgExec` carrying a `MsgSend` from the creator to the claimer, signed by the key with the creator as fee granter. Before signing, the page reads what the approval still allows and the creator's balances, and stops with a plain message if the link has ended or the wallet no longer holds enough, so nothing is charged. The chain itself refuses anything over the total or after the expiry.
+5. **Cancel Link** in `/claims` revokes both approvals. It needs only the creator's wallet, not the link, so it works from any browser. The approvals also appear on `/approvals` under the link's name.
+
+Nothing leaves the creator's wallet until someone claims. The trade-off is that a claim fails if the creator has spent the funds in the meantime; the escrow kind avoids that.
+
+**Escrow: creating a pool**
 
 1. The creator enters a name, token, total, and number of recipients. The total is split equally in base units with `BigInt`. Any indivisible remainder goes to the first shares, one base unit each, so the shares always sum to exactly the total.
 2. The browser generates a fresh escrow key from 32 bytes of `crypto.getRandomValues`, and saves it to `localStorage` **before** any funds move, so the creator can always reclaim.
@@ -424,16 +435,16 @@ Claim links use a **one-time escrow account whose key travels in the link**. The
 4. The pool is saved to Supabase with the escrow's **address**, token, and share amounts. The key is never sent to the server.
 5. The link is `https://…/claim/<code>#k=<escrow key>`. Browsers never send the `#fragment` to a server.
 
-**Claiming**
+**Escrow: claiming**
 
 1. The page reads the key from the fragment and checks that it derives the pool's `escrow_address`.
 2. The claimer connects Keplr or Leap, or an EVM wallet (its `0x` address is converted to the matching `inj1` address).
 3. The page reserves the next free share by inserting a `claims` row. The unique constraints on `(pool_id, share_index)` and `(pool_id, claimer_address)` make that insert the lock.
 4. The escrow key signs a `MsgSend` of that share to the claimer. Gas is sized by simulation (1.3x, capped at 600,000, which the fee reserve covers). If USDC's compliance hook runs out of gas, the payout is retried once with twice the gas. The row is then marked `paid` with the transaction hash. If the payout fails, the reservation is deleted so someone else can claim that share.
 
-**Reclaiming.** In `/claims`, the creator's browser can sweep everything left in the escrow (unclaimed shares plus unused fee reserve) back to the funding address. After a sweep, remaining claimers will see that the pool is out of funds.
+**Escrow: reclaiming.** In `/claims`, the creator's browser can sweep everything left in the escrow (unclaimed shares plus unused fee reserve) back to the funding address. After a sweep, remaining claimers will see that the pool is out of funds.
 
-**Trust model.** NinjaPay never holds the key or the funds. The link is a **bearer secret**: anyone who has it can claim, and a malicious holder could drain the escrow directly with the key. Share links privately. "One claim per address" is enforced by the database, not the chain, and it stops honest double-claims, not a determined attacker with many addresses. A CosmWasm contract would make these rules trustless (see [Roadmap](#roadmap)).
+**Trust model.** NinjaPay never holds the key or the funds. The link is a **bearer secret**: anyone who has it can claim, and a malicious holder could take everything the key can reach directly: the escrow's balance, or, for a link paid from the creator's wallet, up to the approved total before it expires or is cancelled. Share links privately. "One claim per address" is enforced by the database, not the chain, and it stops honest double-claims, not a determined attacker with many addresses. An escrow contract could enforce one claim per address on chain, but a contract NinjaPay deploys that holds users' funds raises a custody question for counsel first (see [Roadmap](#roadmap)).
 
 Pools created before this design have no escrow and are shown as *unfunded*. They cannot be claimed.
 
@@ -458,7 +469,7 @@ These are verified against the current code. They are the priority list before a
 | 1 | Medium | A claim reservation left `pending` (for example, the tab closed after reserving but before the payout confirmed) keeps that share locked. Nothing expires stale reservations yet. If the payout did land on-chain, the row simply never flips to `paid`. | `lib/supabase.ts` |
 | 2 | Medium | Claim links are bearer secrets and one-claim-per-address is database-enforced, not on-chain. See the trust model under [Claim links](#claim-links-claims--claimclaimid). | `lib/injective/claim-escrow.ts` |
 | 3 | Medium | VTPass credentials are read from `NEXT_PUBLIC_*` variables and would be exposed in the browser if enabled. | `lib/vtpass.ts` |
-| 4 | Low | The escrow key for re-copying a link and reclaiming is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. | `lib/injective/claim-escrow.ts` |
+| 4 | Low | The link's key, for re-copying the link and reclaiming an escrow, is kept in the creator's `localStorage`. Clearing site data, or switching browsers, loses it there; the full link is the backup. A link paid from the creator's wallet can still be cancelled without it. | `lib/injective/claim-escrow.ts` |
 | 5 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
 | 6 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx` |
 | 7 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error. Injective needs EIP-712 (amino) signing for Ledger, which is not implemented. | `lib/injective/cosmos-transactions.ts` |
@@ -538,7 +549,8 @@ Conventions:
 What it covers:
 
 - **Payroll:** one `MsgMultiSend` pays every recipient exactly, with one signature and one fee, and the receipt reads it back. A run the account can't pay the fee for stops before the wallet opens. A run larger than the balance stops before signing, and nobody is paid.
-- **Claim links:** fund a pool, pay two claimers their full shares, and sweep the rest back to the creator. The fees stay within the pool's reserve. A claim larger than what's left is refused without spending the reserve.
+- **Claim links (escrow):** fund a pool, pay two claimers their full shares, and sweep the rest back to the creator. The fees stay within the pool's reserve. A claim larger than what's left is refused without spending the reserve.
+- **Claim links paid from the creator's wallet:** opening a link moves nothing; claimers holding no INJ receive their exact shares from the creator's wallet, which pays the fees through its allowance. A claim over what's left, a claim after **Cancel Link**, and a claim the creator's wallet can no longer cover are each refused without charging anything.
 - **Sending INJ from an EVM wallet:** it arrives in the same account's `inj1` balance, and the fee charged is exactly the fee Send quotes. A wallet's higher fee cap is charged in full, and the receipt shows it.
 - **Approvals:** grant, list (given and received) and revoke.
 - **Checks before sending:** the unused-address warning, and the circuit breaker.
@@ -561,7 +573,7 @@ The build takes a few minutes and the suite about 30 seconds. Injective's instal
 
 1. **Harden the Cosmos rail.** Verify sends end to end on testnet, show the simulated fee before signing, and add Ledger support through EIP-712 signing.
 2. **Atomic payroll.** One `MsgMultiSend` per run, with CSV import and a per-recipient preview.
-3. **Trustless claim links.** Move the escrow into a CosmWasm contract that enforces one claim per address and creator refunds on-chain, and expire stale reservations.
+3. **Trustless claim links.** Links paid from the creator's wallet now leave the funds there, capped and expiring on chain. Still to do: expire stale reservations. An escrow contract that enforces one claim per address on chain would hold users' funds, so it waits on counsel's view of custody.
 4. **Persistent history.** Record every broadcast in `transactions`, and read status back from the chain by transaction hash.
 5. **One EVM target.** Standardise on a single Injective EVM chain ID and RPC across RainbowKit and the helpers.
 6. **Server-side integrations.** Move Paystack and VTPass behind route handlers with secret keys, then enable bills.

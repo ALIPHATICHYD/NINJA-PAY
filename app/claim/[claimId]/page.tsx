@@ -19,7 +19,14 @@ import {
   isSupabaseConfigured,
 } from '@/lib/supabase'
 import { toInjectiveAddress } from '@/lib/injective/address'
-import { escrowAddressFromKey, readKeyFromFragment, payShareFromEscrow } from '@/lib/injective/claim-escrow'
+import {
+  escrowAddressFromKey,
+  readKeyFromFragment,
+  readKindFromFragment,
+  payShareFromEscrow,
+  type ClaimLinkKind,
+} from '@/lib/injective/claim-escrow'
+import { LINK_CANCELLED_MESSAGE, fetchGrantLinkState, payShareFromGrant } from '@/lib/injective/claim-grant'
 import type { ClaimPool } from '@/lib/injective/types'
 import { explorerName, explorerTxUrl } from '@/lib/injective/network'
 
@@ -74,6 +81,9 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
   const [pool, setPool] = useState<ClaimPool | null>(null)
   const [loading, setLoading] = useState(true)
   const [escrowKey, setEscrowKey] = useState<string | null>(null)
+  const [kind, setKind] = useState<ClaimLinkKind>('escrow')
+  // For a link paid from the sender's wallet: when it stops paying out, or null once it has ended.
+  const [grantEnds, setGrantEnds] = useState<Date | null | 'unknown'>('unknown')
   const [keyMismatch, setKeyMismatch] = useState(false)
   const [claimedCount, setClaimedCount] = useState(0)
   const [alreadyClaimed, setAlreadyClaimed] = useState(false)
@@ -93,8 +103,15 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
         if (!active) return
         setPool(p)
         const key = readKeyFromFragment(window.location.hash)
+        const linkKind = readKindFromFragment(window.location.hash)
         setEscrowKey(key)
+        setKind(linkKind)
         if (p?.escrowAddress && key) setKeyMismatch(escrowAddressFromKey(key) !== p.escrowAddress)
+        if (p?.escrowAddress && p.token && linkKind === 'grant') {
+          fetchGrantLinkState(p.creatorAddress, p.escrowAddress, p.token)
+            .then(state => { if (active) setGrantEnds(state.remaining ? state.expiresAt : null) })
+            .catch(() => {}) // Leave it unknown; the claim itself reads the chain again.
+        }
         if (p) {
           const claims = await getClaimsForPools([p.id])
           if (active) setClaimedCount(claims.filter(c => c.status === 'paid').length)
@@ -139,7 +156,9 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
       }
 
       try {
-        const txHash = await payShareFromEscrow(escrowKey, claimerAddress, pool.token, share.amountBase)
+        const txHash = kind === 'grant'
+          ? await payShareFromGrant(escrowKey, pool.creatorAddress, claimerAddress, pool.token, share.amountBase)
+          : await payShareFromEscrow(escrowKey, claimerAddress, pool.token, share.amountBase)
         await markClaimPaid(record.id, txHash)
         setAlreadyClaimed(true)
         setClaimedCount(n => n + 1)
@@ -181,6 +200,10 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
   if (keyMismatch) {
     return <Notice title="This link does not match its pool" body="The key in this link belongs to a different claim pool. Ask the sender for the correct link." />
   }
+  // Once every share is claimed, or this address has its share, the usual messages below say so.
+  if (kind === 'grant' && grantEnds === null && status.type !== 'success' && !alreadyClaimed && claimedCount < pool.shares.length) {
+    return <Notice title="This link has ended" body={LINK_CANCELLED_MESSAGE} />
+  }
 
   const total = pool.shares.length
   const remaining = Math.max(total - claimedCount, 0)
@@ -194,6 +217,9 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">{pool.name || 'You have tokens to claim'}</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-ink-2">
         {total === 1 ? 'One share' : `${total} equal shares`} of {pool.totalAmount} {pool.token} on Injective.
+        {kind === 'grant' && (
+          <> Paid straight from the sender&rsquo;s wallet{grantEnds instanceof Date ? `, until ${grantEnds.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : ''}. You don&rsquo;t need INJ to claim.</>
+        )}
       </p>
 
       <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl border border-line bg-page-2 p-4">

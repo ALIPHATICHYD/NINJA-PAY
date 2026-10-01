@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { RefreshCcw, ShieldAlert } from 'lucide-react'
-import { useQueries, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWallet } from '@/hooks/useWallet'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { TxStatus } from '@/components/TxStatus'
@@ -12,6 +12,7 @@ import { NETWORK_LABEL } from '@/lib/injective/network'
 import { shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { signAndBroadcast } from '@/lib/injective/cosmos-transactions'
 import { fetchApprovals, revokeMessage, type Approval } from '@/lib/injective/grants'
+import { resolveClaimEscrows } from '@/lib/supabase'
 
 type Revoking = { key: string; state: ChainState; message: string; hash?: string }
 
@@ -40,6 +41,15 @@ export default function ApprovalsPage() {
       staleTime: 30_000,
       retry: 1,
     })),
+  })
+
+  // Approvals given to a claim link's key read better under the link's name.
+  const grantees = [...new Set(results.flatMap(r => r.data?.given.map(a => a.grantee) ?? []))].sort()
+  const { data: claimLinks } = useQuery({
+    queryKey: ['claim-links', grantees],
+    queryFn: () => resolveClaimEscrows(grantees),
+    enabled: grantees.length > 0,
+    staleTime: 60_000,
   })
 
   const refresh = () => accounts.forEach(account => void queryClient.invalidateQueries({ queryKey: ['approvals', account.address] }))
@@ -126,6 +136,7 @@ export default function ApprovalsPage() {
                           approval={approval}
                           side="given"
                           canSign={canSign}
+                          claimLink={claimLinks?.get(approval.grantee)?.poolName ?? null}
                           revoking={revoking?.key === keyOf(approval) ? revoking : null}
                           busy={revoking?.state === 'awaiting-signature'}
                           onRevoke={() => void revoke(approval)}
@@ -140,7 +151,7 @@ export default function ApprovalsPage() {
                       <h3 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', margin: '18px 0 10px' }}>Given to this account</h3>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {result.data.received.map(approval => (
-                          <ApprovalCard key={keyOf(approval)} approval={approval} side="received" canSign={false} revoking={null} busy={false} onRevoke={() => {}} />
+                          <ApprovalCard key={keyOf(approval)} approval={approval} side="received" claimLink={null} canSign={false} revoking={null} busy={false} onRevoke={() => {}} />
                         ))}
                       </div>
                     </>
@@ -163,19 +174,21 @@ export default function ApprovalsPage() {
 type CardProps = {
   approval: Approval
   side: 'given' | 'received'
+  /** The name of the claim link whose key holds this approval, if it is one. */
+  claimLink: string | null
   canSign: boolean
   revoking: Revoking | null
   busy: boolean
   onRevoke: () => void
 }
 
-function ApprovalCard({ approval, side, canSign, revoking, busy, onRevoke }: CardProps) {
+function ApprovalCard({ approval, side, claimLink, canSign, revoking, busy, onRevoke }: CardProps) {
   const now = new Date()
   const expired = approval.expiration !== null && approval.expiration < now
   const other = side === 'given' ? approval.grantee : approval.granter
   const sentence =
     side === 'given'
-      ? `${shortAddress(other)} can ${approval.action} from this account.`
+      ? `${claimLink ? `Your claim link \u201c${claimLink}\u201d` : shortAddress(other)} can ${approval.action} from this account.`
       : `This account can ${approval.action} from ${shortAddress(other)}.`
   const revocable = approval.kind === 'feegrant' || approval.revokeType !== null
   const done = revoking?.state === 'confirmed'

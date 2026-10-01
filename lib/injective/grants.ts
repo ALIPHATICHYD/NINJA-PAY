@@ -149,7 +149,7 @@ export function describeAllowance(allowance: Json): Pick<Approval, 'type' | 'act
 }
 
 /** Every page of a Cosmos list query, up to `maxPages`. */
-async function fetchAll(path: string, field: string, maxPages = 10): Promise<Json[]> {
+export async function fetchAll(path: string, field: string, maxPages = 10): Promise<Json[]> {
   const items: Json[] = []
   let key: string | null = null
   for (let page = 0; page < maxPages; page++) {

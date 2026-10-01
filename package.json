@@ -11,6 +11,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
+    "@injectivelabs/core-proto-ts-v2": "1.20.5",
     "@injectivelabs/networks": "1.20.52",
     "@injectivelabs/sdk-ts": "1.20.52",
     "@injectivelabs/ts-types": "1.20.52",
