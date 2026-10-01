@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { label: 'Payroll',       href: '/payroll' },
   { label: 'Transactions',  href: '/transactions' },
   { label: 'Analytics',     href: '/analytics' },
+  { label: 'Approvals',     href: '/approvals' },
 ]
 
 export function Navigation() {
