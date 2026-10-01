@@ -16,7 +16,7 @@
 
 import { defineChain } from 'viem'
 import { Network, getNetworkEndpoints } from '@injectivelabs/networks'
-import { ChainId } from '@injectivelabs/ts-types'
+import { ChainId, EvmChainId } from '@injectivelabs/ts-types'
 
 /** Set NEXT_PUBLIC_INJECTIVE_NETWORK=mainnet to target mainnet. Anything else means testnet. */
 export const IS_MAINNET = process.env.NEXT_PUBLIC_INJECTIVE_NETWORK === 'mainnet'
@@ -30,14 +30,14 @@ export const NETWORK_LABEL = IS_MAINNET ? 'Injective' : 'Injective testnet'
 
 const EVM = IS_MAINNET
   ? {
-      id: 1776,
+      id: EvmChainId.MainnetEvm, // 1776
       name: 'Injective EVM Mainnet',
       rpc: 'https://sentry.evm-rpc.injective.network/',
       ws: 'wss://sentry.evm-ws.injective.network',
       blockscout: 'https://blockscout.injective.network',
     }
   : {
-      id: 1439,
+      id: EvmChainId.TestnetEvm, // 1439
       name: 'Injective EVM Testnet',
       rpc: 'https://k8s.testnet.json-rpc.injective.network/',
       ws: 'wss://k8s.testnet.ws.injective.network/',
@@ -62,7 +62,10 @@ export const ENDPOINTS = {
   grpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_GRPC) ?? publicEndpoints.grpc,
   rest: configured(process.env.NEXT_PUBLIC_INJECTIVE_REST) ?? publicEndpoints.rest,
   indexer: configured(process.env.NEXT_PUBLIC_INJECTIVE_INDEXER) ?? publicEndpoints.indexer,
+  explorer: configured(process.env.NEXT_PUBLIC_INJECTIVE_EXPLORER) ?? publicEndpoints.explorer,
   evmRpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_RPC) ?? PUBLIC_EVM_RPC,
+  /** EVM JSON-RPC over WebSocket, for live updates. */
+  evmWs: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_WS) ?? EVM.ws,
 }
 
 /** Injective's native EVM, for wagmi, RainbowKit and viem. */
@@ -91,6 +94,9 @@ export const EXPLORERS = {
   evm: EVM.blockscout,
   cosmos: IS_MAINNET ? 'https://injscan.com' : 'https://testnet.explorer.injective.network',
 }
+
+/** Blockscout's REST API (v2), for transfers sent from EVM wallets. */
+export const BLOCKSCOUT_API = `${EVM.blockscout}/api/v2`
 
 /** EVM transaction hashes are 0x plus 64 hex digits; Cosmos ones are 64 hex digits without 0x. */
 export function isEvmTxHash(hash: string): boolean {

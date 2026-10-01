@@ -45,6 +45,44 @@ export function describeTransferError(message: string): string {
   return message
 }
 
+const EXECUTION_FAILURE = /failed to execute message; message index: \d+: /i
+
+/**
+ * Simulation ran the messages and the chain refused them, for example a
+ * payment larger than the balance. Signed and broadcast, the transaction
+ * would fail the same way and still be charged its fee. Hook out-of-gas is
+ * left out: a higher gas limit fixes it.
+ *
+ * The text comes from cosmos-sdk's baseapp ("failed to execute message;
+ * message index: N: <reason>"), as returned by /cosmos/tx/v1beta1/simulate.
+ */
+export function isExecutionFailure(message: string): boolean {
+  return EXECUTION_FAILURE.test(message) && !isHookOutOfGas(message)
+}
+
+/** A readable version of an execution failure found in simulation, for when the wallet never opened. */
+export function describeExecutionFailure(message: string): string {
+  const unsigned = 'Nothing was signed or sent, so no fee was charged.'
+  // An authz send over its approval's cap is reported as insufficient funds
+  // too, so check for it first (cosmos-sdk x/bank/types/send_authorization.go).
+  if (/more than spend limit/i.test(message)) return `The total is more than the approval it's sent under allows. ${unsigned}`
+  const notAllowed = message.match(/cannot send to (\S+) address/i)
+  if (notAllowed) return `The approval it's sent under doesn't allow paying ${notAllowed[1]}. ${unsigned}`
+  if (/authorization not found/i.test(message)) {
+    return `The approval it's sent under no longer exists: it was revoked, used up or has expired. ${unsigned}`
+  }
+  if (/insufficient funds/i.test(message)) {
+    return "This account doesn't hold enough of that token for the whole amount. Nothing was signed or sent, so no fee was charged."
+  }
+  const reason = message
+    .slice(message.search(EXECUTION_FAILURE))
+    .replace(EXECUTION_FAILURE, '')
+    .replace(/ \[[^\]]*\]/g, '')
+    .replace(/\s*With gas wanted:[\s\S]*$/, '')
+    .trim()
+  return `Injective would refuse this transaction (${reason}), so it wasn't signed or sent and no fee was charged.`
+}
+
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error ?? '')
 }

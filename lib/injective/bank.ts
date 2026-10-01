@@ -59,33 +59,26 @@ export async function resolveHeldDenom(address: string, token: TokenInfo): Promi
   }
 }
 
+/** NinjaPay's own cap on recipients per payroll run, to keep one transaction's gas and review list manageable. */
+export const MAX_PAYROLL_RECIPIENTS = 50
+
 /**
- * Create a MsgMultiSend transaction for batch payroll
+ * One MsgMultiSend paying every recipient from `sender`: one input carrying
+ * the total and one output per recipient, all in `denom`. The bank module
+ * applies it all or not at all.
+ *
+ * @param outputs inj1 addresses and amounts in base units
  */
-export function createMsgMultiSendPayroll(
-  totalAmount: string,
-  outputs: PayrollOutput[]
-): MsgMultiSend {
+export function buildPayrollMultiSend(sender: string, denom: string, outputs: PayrollOutput[]): MsgMultiSend {
+  if (outputs.length === 0) throw new Error('Add at least one recipient.')
+  if (outputs.length > MAX_PAYROLL_RECIPIENTS) {
+    throw new Error(`A payroll run can pay up to ${MAX_PAYROLL_RECIPIENTS} recipients. Split it into smaller runs.`)
+  }
+  const amounts = outputs.map(o => BigInt(o.amount))
+  if (amounts.some(a => a <= BigInt(0))) throw new Error('Every amount must be greater than zero.')
+  const total = amounts.reduce((sum, a) => sum + a, BigInt(0))
   return MsgMultiSend.fromJSON({
-    inputs: [
-      {
-        address: '', // will be set by broadcaster
-        coins: [
-          {
-            denom: DENOMS.INJ,
-            amount: totalAmount,
-          },
-        ],
-      },
-    ],
-    outputs: outputs.map((output) => ({
-      address: output.address,
-      coins: [
-        {
-          denom: DENOMS.INJ,
-          amount: output.amount,
-        },
-      ],
-    })),
+    inputs: [{ address: sender, coins: [{ denom, amount: total.toString() }] }],
+    outputs: outputs.map((o, i) => ({ address: o.address, coins: [{ denom, amount: amounts[i].toString() }] })),
   })
 }

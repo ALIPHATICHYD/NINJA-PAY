@@ -147,8 +147,11 @@ export default function SetupPage() {
         )}
       </Step>
 
-      <Step n={4} title="For USDC sends, payroll and claim links">
-        <Note>These are signed with Keplr or Leap for now, so you&apos;ll need one of them too.</Note>
+      <Step n={4} title="Optional: a Cosmos wallet">
+        <Note>
+          Your EVM wallet signs these too, so Keplr and Leap are optional. Use one of them if your funds are in its
+          account.
+        </Note>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <Outlink href="https://www.keplr.app/">Keplr</Outlink>
           <Outlink href="https://www.leapwallet.io/">Leap</Outlink>

@@ -19,7 +19,7 @@ import { useBalance } from '@/hooks/useBalance'
 import { usePrices } from '@/hooks/usePrices'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useActivity } from '@/hooks/useActivity'
-import { ACTIVITY_LABELS, coinValue, formatCoinAmount } from '@/lib/injective/activity'
+import { ACTIVITY_LABELS, coinValue, formatCoin, pricedAs } from '@/lib/injective/activity'
 import { explorerTxUrl } from '@/lib/injective/network'
 import { useBeneficiaries } from '@/lib/beneficiaries'
 import { format } from 'date-fns'
@@ -54,7 +54,7 @@ export default function DashboardHome() {
   const sentUsd = sumUsd(
     activity
       .filter(tx => tx.success && tx.direction === 'out')
-      .flatMap(tx => tx.coins.map(c => usdValue(coinValue(c), c.token, prices))),
+      .flatMap(tx => tx.coins.map(c => usdValue(coinValue(c), pricedAs(c), prices))),
   )
   const recent = activity.slice(0, 5)
 
@@ -388,7 +388,7 @@ export default function DashboardHome() {
                   <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{format(tx.timestamp, 'd MMM, HH:mm')}</p>
                 </div>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-geist-mono), monospace', whiteSpace: 'nowrap' }}>
-                  {tx.direction === 'out' ? '−' : '+'}{tx.coins.map(c => `${formatCoinAmount(c, 4)} ${c.token}`).join(' + ')}
+                  {tx.direction === 'out' ? '−' : '+'}{tx.coins.map(c => formatCoin(c, 4)).join(' + ')}
                 </p>
               </a>
             ))}

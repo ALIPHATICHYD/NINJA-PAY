@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import {
   sendToken,
+  sendPayroll,
   isKeplrAvailable,
   isLeapAvailable,
   isUserUsingLedger,
@@ -21,6 +22,8 @@ interface UseCosmosTxReturn {
   // Methods
   initializeWallet: () => Promise<void>
   sendToken: (recipientAddress: string, amount: string, token: 'INJ' | 'USDC', memo?: string) => Promise<string>
+  /** Pays every recipient in one MsgMultiSend. Amounts are human-readable. */
+  sendPayroll: (recipients: { address: string; amount: string }[], token: 'INJ' | 'USDC', memo?: string) => Promise<string>
   reset: () => void
 }
 
@@ -128,6 +131,23 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
     [userAddress]
   )
 
+  const sendPayrollFn = useCallback(
+    async (recipients: { address: string; amount: string }[], token: 'INJ' | 'USDC', memo?: string): Promise<string> => {
+      if (!userAddress) throw new Error('Wallet not initialized. Please connect your wallet first.')
+      setLoading(true)
+      setError(null)
+      try {
+        return await sendPayroll(recipients, token, memo, CHAIN_ID)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Transaction failed')
+        throw err
+      } finally {
+        setLoading(false)
+      }
+    },
+    [userAddress]
+  )
+
   const reset = useCallback(() => {
     setUserAddress(null)
     setIsReady(false)
@@ -144,6 +164,7 @@ export function useCosmosTransaction(): UseCosmosTxReturn {
     error,
     initializeWallet,
     sendToken: sendTokenFn,
+    sendPayroll: sendPayrollFn,
     reset,
   }
 }

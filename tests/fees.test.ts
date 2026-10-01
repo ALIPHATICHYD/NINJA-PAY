@@ -10,6 +10,7 @@ import {
   injSpentBy,
   maxInjAfterFee,
   networkFee,
+  withGasHeadroom,
 } from '@/lib/injective/fees'
 import { DENOMS } from '@/lib/injective/tokens'
 
@@ -29,6 +30,11 @@ describe('network fee', () => {
   it('prices a plain EVM transfer and a Cosmos send', () => {
     expect(formatFee(networkFee(EVM_TRANSFER_GAS))).toBe('0.00000336')
     expect(formatFee(networkFee(COSMOS_SEND_GAS))).toBe('0.000032')
+  })
+
+  it('adds 30% to a USDC transfer estimate, rounding down', () => {
+    expect(withGasHeadroom(BigInt(100_000))).toBe(BigInt(130_000))
+    expect(withGasHeadroom(BigInt(21_001))).toBe(BigInt(27_301))
   })
 })
 

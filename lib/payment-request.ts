@@ -48,3 +48,33 @@ export function parsePaymentRequest(search: string): { to: string | null; token:
     amount: validToken && requestAmountBase(amount, validToken) !== null ? amount : null,
   }
 }
+
+/**
+ * The request the Receive page is waiting on, with the balance it started
+ * from, so a reload keeps waiting instead of losing it. Kept in this browser
+ * only (localStorage), one per account, like payroll runs.
+ */
+export type OpenRequest = { token: TokenSymbol; amount: string; amountBase: bigint; baseline: bigint; url: string }
+
+const openRequestKey = (account: string) => `ninjapay:open-request:${account}`
+
+export function loadOpenRequest(account: string): OpenRequest | null {
+  try {
+    const raw = window.localStorage.getItem(openRequestKey(account))
+    if (!raw) return null
+    const saved = JSON.parse(raw) as Record<string, string>
+    if (!(saved.token in TOKENS) || typeof saved.amount !== 'string' || typeof saved.url !== 'string') return null
+    return { token: saved.token as TokenSymbol, amount: saved.amount, amountBase: BigInt(saved.amountBase), baseline: BigInt(saved.baseline), url: saved.url }
+  } catch {
+    return null
+  }
+}
+
+export function saveOpenRequest(account: string, request: OpenRequest | null): void {
+  try {
+    if (!request) window.localStorage.removeItem(openRequestKey(account))
+    else window.localStorage.setItem(openRequestKey(account), JSON.stringify({ ...request, amountBase: String(request.amountBase), baseline: String(request.baseline) }))
+  } catch {
+    // Storage blocked: the request still works until the page reloads.
+  }
+}

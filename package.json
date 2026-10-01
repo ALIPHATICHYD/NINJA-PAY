@@ -7,14 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@injectivelabs/networks": "1.14.41",
-    "@injectivelabs/sdk-ts": "1.14.41",
-    "@injectivelabs/ts-types": "1.14.41",
-    "@injectivelabs/utils": "1.14.41",
-    "@injectivelabs/wallet-ts": "1.14.41",
+    "@injectivelabs/core-proto-ts-v2": "1.20.5",
+    "@injectivelabs/networks": "1.20.52",
+    "@injectivelabs/sdk-ts": "1.20.52",
+    "@injectivelabs/ts-types": "1.20.52",
+    "@injectivelabs/utils": "1.20.52",
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",

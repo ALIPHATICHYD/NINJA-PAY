@@ -12,6 +12,8 @@ export interface Beneficiary {
   id: string
   name: string
   address: string
+  /** The .inj name it was saved by, if any. The address is what gets paid. */
+  insName?: string
   tag?: string
   addedAt: string
 }

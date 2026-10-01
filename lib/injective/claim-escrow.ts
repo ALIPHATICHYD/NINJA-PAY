@@ -18,7 +18,15 @@ import { ENDPOINTS } from './network'
 import { DENOMS, TOKENS, sameDenom } from './tokens'
 import { fetchAllBalances, balanceOf, type Coin } from './bank'
 import { toChainAmount } from '../money'
-import { describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction, HOOK_RESTRICTION_MESSAGE } from './transfer-errors'
+import {
+  describeExecutionFailure,
+  describeTransferError,
+  errorMessage,
+  isExecutionFailure,
+  isHookOutOfGas,
+  isHookRestriction,
+  HOOK_RESTRICTION_MESSAGE,
+} from './transfer-errors'
 
 export type ClaimToken = 'INJ' | 'USDC'
 
@@ -28,18 +36,25 @@ const TOKEN_DENOM: Record<ClaimToken, string> = { INJ: DENOMS.INJ, USDC: DENOMS.
 // Every escrow transaction (claim payout or sweep) is a single MsgSend. Its
 // gas is sized by simulation, because USDC transfers also run Circle's
 // compliance hook, and is capped at what the pool's fee reserve pays for.
-const ESCROW_GAS_PRICE = BigInt(DEFAULT_GAS_PRICE)
-const ESCROW_FALLBACK_GAS = 200_000 // when simulation is unavailable
-const ESCROW_MAX_GAS = 600_000
-const GAS_BUFFER = 1.3
+// Claim links that keep funds in the creator's wallet (claim-grant.ts) size
+// their gas the same way.
+export const ESCROW_GAS_PRICE = BigInt(DEFAULT_GAS_PRICE)
+export const ESCROW_FALLBACK_GAS = 200_000 // when simulation is unavailable
+export const ESCROW_MAX_GAS = 600_000
+export const GAS_BUFFER = 1.3
 
-const escrowFee = (gas: number) => BigInt(gas) * ESCROW_GAS_PRICE
+export const escrowFee = (gas: number) => BigInt(gas) * ESCROW_GAS_PRICE
 
 // INJ set aside in the escrow to pay fees: one tx per share plus one sweep,
 // each at the gas cap (600,000 gas x 160,000,000 inj = 0.000096 INJ).
-const FEE_RESERVE_PER_TX = escrowFee(ESCROW_MAX_GAS)
+export const FEE_RESERVE_PER_TX = escrowFee(ESCROW_MAX_GAS)
 
 const KEY_FRAGMENT_PARAM = 'k'
+// Marks a link whose funds stay in the creator's wallet (claim-grant.ts).
+const KIND_FRAGMENT_PARAM = 'kind'
+
+/** Where a claim link's funds are: in a one-time escrow account, or still in the creator's wallet. */
+export type ClaimLinkKind = 'escrow' | 'grant'
 
 /**
  * Split a total (in base units) into `count` equal shares. Any indivisible
@@ -92,8 +107,8 @@ export function planEscrow(
 /**
  * Generate a fresh escrow account in the browser from 32 CSPRNG bytes.
  *
- * Do not use PrivateKey.generate().privateKey.toHex(): in sdk-ts 1.14 that
- * returns the account's 0x ADDRESS, not the private key.
+ * Do not use PrivateKey.generate().privateKey.toHex(): in sdk-ts (still in
+ * 1.20) that returns the account's 0x ADDRESS, not the private key.
  */
 export function createEscrowKey(): { privateKeyHex: string; address: string } {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -122,8 +137,9 @@ export function buildFundingMsg(creatorAddress: string, escrowAddress: string, p
   })
 }
 
-export function buildClaimLink(origin: string, linkCode: string, privateKeyHex: string): string {
-  return `${origin}/claim/${linkCode}#${KEY_FRAGMENT_PARAM}=${privateKeyHex}`
+export function buildClaimLink(origin: string, linkCode: string, privateKeyHex: string, kind: ClaimLinkKind = 'escrow'): string {
+  const grant = kind === 'grant' ? `&${KIND_FRAGMENT_PARAM}=grant` : ''
+  return `${origin}/claim/${linkCode}#${KEY_FRAGMENT_PARAM}=${privateKeyHex}${grant}`
 }
 
 /** Read the escrow key from a URL fragment such as `#k=abc...`. */
@@ -131,6 +147,11 @@ export function readKeyFromFragment(hash: string): string | null {
   const params = new URLSearchParams(hash.replace(/^#/, ''))
   const key = params.get(KEY_FRAGMENT_PARAM)
   return key && /^(0x)?[0-9a-fA-F]{64}$/.test(key) ? key.replace(/^0x/, '') : null
+}
+
+/** Which kind of link a URL fragment belongs to. Links made before grants have no kind and are escrows. */
+export function readKindFromFragment(hash: string): ClaimLinkKind {
+  return new URLSearchParams(hash.replace(/^#/, '')).get(KIND_FRAGMENT_PARAM) === 'grant' ? 'grant' : 'escrow'
 }
 
 type EscrowTx = {
@@ -169,6 +190,12 @@ async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise
       gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
     } catch (error) {
       if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
+      // The chain refused the messages: broadcasting would only spend the pool's fee reserve.
+      // The pool's own checks explain the usual reason in the claimer's terms.
+      if (isExecutionFailure(errorMessage(error))) {
+        tx.check(held, escrowFee(ESCROW_FALLBACK_GAS))
+        throw new Error(describeExecutionFailure(errorMessage(error)))
+      }
       // Otherwise fall back to the default gas and let the broadcast decide.
     }
     gas = Math.min(Math.max(gas, minGas), ESCROW_MAX_GAS)
@@ -268,7 +295,7 @@ export async function sweepEscrow(privateKeyHex: string, refundTo: string): Prom
 
 const STORAGE_KEY = 'ninjapay:claim-escrow-keys'
 
-type StoredEscrow = { privateKeyHex: string; refundTo: string }
+type StoredEscrow = { privateKeyHex: string; refundTo: string; kind?: ClaimLinkKind }
 
 function readStore(): Record<string, StoredEscrow> {
   try {

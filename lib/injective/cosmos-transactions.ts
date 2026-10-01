@@ -1,8 +1,17 @@
 /**
  * Cosmos Transactions Manager
  *
- * Handles transaction preparation, signing, and broadcasting on Injective
- * Supports Keplr and Leap wallets with proper message encoding
+ * Handles transaction preparation, signing, and broadcasting on Injective.
+ * Keplr and Leap sign natively (SIGN_MODE_DIRECT). An EVM wallet such as
+ * MetaMask signs the same messages as EIP-712 typed data
+ * (SIGN_MODE_EIP712_V2), which injective-core verifies against its own
+ * rendering of the transaction.
+ *
+ * Sources for the EIP-712 path (checked 2026-10-01):
+ * - https://docs.injective.network/developers-native/transactions/ethereum
+ *   (eth_signTypedData_v4, recovering the public key from the signature)
+ * - injective-core v1.20.3: injective-chain/app/ante/eip712.go and
+ *   eip712_cosmos.go (WrapTxToEIP712V2), ante.go (the Web3 extension route)
  */
 
 import {
@@ -11,21 +20,59 @@ import {
   ChainRestAuthApi,
   ChainRestTendermintApi,
   TxRestApi,
+  PublicKey,
+  SIGN_EIP712_V2,
   createTransaction,
+  createTxRawEIP712,
+  createWeb3Extension,
+  getEip712TypedDataV2,
   getTxRawFromTxRawOrDirectSignResponse,
+  hexToBase64,
+  hexToUint8Array,
+  recoverTypedSignaturePubKey,
   type Msgs,
 } from '@injectivelabs/sdk-ts'
-import { getStdFee, DEFAULT_BLOCK_TIMEOUT_HEIGHT } from '@injectivelabs/utils'
+import type { EvmChainId } from '@injectivelabs/ts-types'
+import { getStdFee } from '@injectivelabs/utils'
 import { CHAIN_ID } from './constants'
-import { ENDPOINTS, FAUCETS, NETWORK_LABEL } from './network'
+import { ENDPOINTS, FAUCETS, INJECTIVE_EVM, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
-import { balanceOf, fetchAllBalances, resolveHeldDenom } from './bank'
+import { balanceOf, buildPayrollMultiSend, fetchAllBalances, resolveHeldDenom } from './bank'
 import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
-import { HOOK_RESTRICTION_MESSAGE, describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction } from './transfer-errors'
-import { toInjectiveAddress } from './address'
+import {
+  HOOK_RESTRICTION_MESSAGE,
+  describeExecutionFailure,
+  describeTransferError,
+  errorMessage,
+  isExecutionFailure,
+  isHookOutOfGas,
+  isHookRestriction,
+} from './transfer-errors'
+import { shortAddress, toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
 const endpoints = ENDPOINTS
+
+/**
+ * Who signs a Cosmos transaction.
+ * - keplr: Keplr or Leap, whichever is installed (Keplr first).
+ * - evm: an EVM wallet such as MetaMask. `signTypedData` gets the typed data
+ *   as JSON, the way eth_signTypedData_v4 takes it, and returns the 65-byte
+ *   signature as hex. The wallet must be on Injective's EVM network, since
+ *   wallets refuse typed data for another chain id.
+ */
+export type EvmCosmosSigner = { kind: 'evm'; address: string; signTypedData: (typedDataJson: string) => Promise<string> }
+export type CosmosSigner = { kind: 'keplr' } | EvmCosmosSigner
+
+export const KEPLR: CosmosSigner = { kind: 'keplr' }
+
+/** The inj1 account a signer signs for. Asks Keplr or Leap to connect if needed. */
+export async function signerAddress(signer: CosmosSigner, chainId: string = CHAIN_ID): Promise<string> {
+  if (signer.kind === 'keplr') return getUserAddress(chainId)
+  const address = toInjectiveAddress(signer.address)
+  if (!address) throw new Error("Your EVM wallet gave an address NinjaPay can't read.")
+  return address
+}
 
 interface TransactionOptions {
   memo?: string
@@ -129,11 +176,23 @@ const FALLBACK_GAS = { base: 150_000, perMsg: 50_000 }
 const GAS_BUFFER = 1.3
 // Gas multiplier for the one retry after USDC's compliance hook runs out of gas.
 const HOOK_RETRY_FACTOR = 2
+// Blocks the transaction stays valid for while the wallet is open. sdk-ts 1.20
+// lowered its default from 120 to 60 blocks, under a minute on Injective,
+// which is short for someone checking a payroll in Keplr. Keep 120.
+const SIGNING_TIMEOUT_BLOCKS = 120
+
+// Stands in for the account's public key while simulating, when neither the
+// chain nor the wallet has revealed it yet (an EVM wallet that has never signed
+// a Cosmos transaction). Simulation doesn't check it against the account, and
+// the simulated transaction is never signed or broadcast. It is secp256k1's
+// generator point, a valid key chosen only because it's well known.
+const SIMULATION_PUBKEY = 'Anm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeY'
 
 /**
- * Build, sign (SIGN_MODE_DIRECT via Keplr/Leap), simulate, and broadcast a
- * Cosmos transaction on Injective. Resolves with the tx hash once the tx is
- * included in a block; rejects if the wallet refuses or the chain rejects it.
+ * Build, simulate, sign and broadcast a Cosmos transaction on Injective.
+ * Keplr or Leap sign SIGN_MODE_DIRECT; an EVM wallet signs EIP-712 typed
+ * data. Resolves with the tx hash once the tx is included in a block; rejects
+ * if the wallet refuses or the chain rejects it.
  *
  * Before the wallet's signing window opens, it checks that the account holds
  * enough INJ for the simulated fee plus any INJ the messages send, and
@@ -148,14 +207,15 @@ export async function signAndBroadcast(
   msgs: Msgs | Msgs[],
   chainId: string = CHAIN_ID,
   memo = '',
+  signer: CosmosSigner = KEPLR,
 ): Promise<string> {
   try {
-    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER)
+    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER, signer)
   } catch (error) {
     if (!isHookOutOfGas(errorMessage(error))) throw readable(error)
   }
   try {
-    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER * HOOK_RETRY_FACTOR)
+    return await signAndBroadcastOnce(msgs, chainId, memo, GAS_BUFFER * HOOK_RETRY_FACTOR, signer)
   } catch (error) {
     throw readable(error)
   }
@@ -167,24 +227,44 @@ function readable(error: unknown): Error {
   return described === message && error instanceof Error ? error : new Error(described)
 }
 
+type Signing = {
+  /** How errors name the wallet's account. */
+  name: string
+  address: string
+  /** The account's public key as base64, or null until a signature reveals it. */
+  pubKey: string | null
+}
+
+async function connectSigner(
+  signer: CosmosSigner,
+  chainId: string,
+): Promise<Signing & { provider?: ReturnType<typeof getCosmosWallet>['provider'] }> {
+  if (signer.kind === 'evm') return { name: 'EVM wallet', address: await signerAddress(signer, chainId), pubKey: null }
+
+  const wallet = getCosmosWallet()
+  const { provider } = wallet
+  await provider.enable(chainId)
+  const key = await provider.getKey(chainId)
+  if (key.isNanoLedger) {
+    // Injective + Ledger in Keplr needs Keplr's own EIP-712 flow (experimentalSignEIP712CosmosTx_v0,
+    // per Injective's "Ledger through Keplr" guide), which this path doesn't implement.
+    throw new Error(
+      `Ledger accounts in ${wallet.name} are not supported yet. Use a software account, or connect the Ledger through an EVM wallet such as MetaMask.`,
+    )
+  }
+  return { name: wallet.name, address: key.bech32Address, pubKey: toBase64(key.pubKey), provider }
+}
+
 async function signAndBroadcastOnce(
   msgs: Msgs | Msgs[],
   chainId: string,
   memo: string,
   gasBuffer: number,
+  signer: CosmosSigner,
 ): Promise<string> {
-  const wallet = getCosmosWallet()
-  const { provider } = wallet
-  await provider.enable(chainId)
-  const key = await provider.getKey(chainId)
-
-  if (key.isNanoLedger) {
-    // Injective + Ledger needs EIP-712 (amino) signing, which this path does not implement yet.
-    throw new Error(`Ledger accounts in ${wallet.name} are not supported yet. Use a software account.`)
-  }
-
-  const address = key.bech32Address
-  const pubKey = toBase64(key.pubKey)
+  const wallet = await connectSigner(signer, chainId)
+  const { address } = wallet
+  const eip712 = signer.kind === 'evm'
 
   const [accountResponse, latestBlock] = await Promise.all([
     new ChainRestAuthApi(endpoints.rest).fetchAccount(address).catch((error: unknown) => {
@@ -200,12 +280,20 @@ async function signAndBroadcastOnce(
     new ChainRestTendermintApi(endpoints.rest).fetchLatestBlock(),
   ])
   const account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
-  const timeoutHeight = Number(latestBlock.header.height) + DEFAULT_BLOCK_TIMEOUT_HEIGHT
-  const msgCount = Array.isArray(msgs) ? msgs.length : 1
+  // Keplr reports the key itself. An EVM wallet doesn't, so use the one the
+  // chain stored at the account's first Cosmos transaction, if any.
+  const knownPubKey = wallet.pubKey ?? (account.pubKey.key || null)
+  const timeoutHeight = Number(latestBlock.header.height) + SIGNING_TIMEOUT_BLOCKS
+  // A MsgMultiSend pays every output, so the fallback counts those.
+  const msgCount = (Array.isArray(msgs) ? msgs : [msgs]).reduce((count, msg) => {
+    const data = msg.toData() as { '@type'?: string; outputs?: unknown[] }
+    return count + (data['@type'] === '/cosmos.bank.v1beta1.MsgMultiSend' ? Math.max(data.outputs?.length ?? 1, 1) : 1)
+  }, 0)
   const txApi = new TxRestApi(endpoints.rest)
+  const evmChainId = INJECTIVE_EVM.id as EvmChainId
 
-  const build = (gas: number) =>
-    createTransaction({
+  const build = (gas: number, pubKey: string) => {
+    const tx = createTransaction({
       message: msgs,
       memo,
       fee: getStdFee({ gas: gas.toString() }),
@@ -214,19 +302,26 @@ async function signAndBroadcastOnce(
       accountNumber: account.accountNumber,
       chainId,
       timeoutHeight,
+      ...(eip712 && { signMode: SIGN_EIP712_V2 }),
     })
+    // The Web3 extension routes the transaction to the chain's EIP-712 check.
+    if (eip712) createTxRawEIP712(tx.txRaw, createWeb3Extension({ evmChainId }))
+    return tx
+  }
 
   // Simulate with an empty signature to size the gas limit.
   const fallbackGas = FALLBACK_GAS.base + FALLBACK_GAS.perMsg * msgCount
   let gas = Math.ceil(fallbackGas * (gasBuffer / GAS_BUFFER))
   try {
-    const { txRaw } = build(fallbackGas)
+    const { txRaw } = build(fallbackGas, knownPubKey ?? SIMULATION_PUBKEY)
     txRaw.signatures = [new Uint8Array(0)]
     const { gasInfo } = await txApi.simulate(txRaw)
     gas = Math.ceil(Number(gasInfo.gasUsed) * gasBuffer)
   } catch (error) {
     // A real restriction shows up in simulation: stop before the wallet opens.
     if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
+    // So does any other refusal of the messages. Signing it anyway would only cost the fee.
+    if (isExecutionFailure(errorMessage(error))) throw new Error(describeExecutionFailure(errorMessage(error)))
     console.warn('Gas simulation failed, using fallback gas limit:', error)
   }
 
@@ -240,9 +335,41 @@ async function signAndBroadcastOnce(
     if (!check.ok) throw new Error(feeShortfallMessage(check, injSpend > BigInt(0)))
   }
 
-  const { signDoc } = build(gas)
-  const signResponse = await provider.getOfflineSigner(chainId).signDirect(address, signDoc)
-  const txRaw = getTxRawFromTxRawOrDirectSignResponse(signResponse)
+  let txRaw
+  if (signer.kind === 'evm') {
+    // What the wallet shows and signs. injective-core renders the same
+    // transaction the same way and checks the signature against it.
+    const typedData = getEip712TypedDataV2({
+      msgs,
+      tx: {
+        accountNumber: account.accountNumber.toString(),
+        sequence: account.sequence.toString(),
+        timeoutHeight: timeoutHeight.toString(),
+        chainId,
+        memo,
+      },
+      fee: getStdFee({ gas: gas.toString() }),
+      evmChainId,
+    })
+    const signature = await signer.signTypedData(JSON.stringify(typedData))
+    // Recover the key that signed: it proves which account signed, and an
+    // account's first Cosmos transaction must carry its key.
+    // (sdk-ts builds the domain's chain id as hex, where its own type wants a number.)
+    const signedBy = hexToBase64(
+      await recoverTypedSignaturePubKey(typedData as unknown as Parameters<typeof recoverTypedSignaturePubKey>[0], signature),
+    )
+    if (PublicKey.fromBase64(signedBy).toAddress().toBech32() !== address) {
+      throw new Error(
+        `Your wallet signed with a different account than ${shortAddress(signer.address)}. Switch back to that account and try again.`,
+      )
+    }
+    txRaw = build(gas, signedBy).txRaw
+    txRaw.signatures = [hexToUint8Array(signature)]
+  } else {
+    const { signDoc } = build(gas, knownPubKey!)
+    const signResponse = await wallet.provider.getOfflineSigner(chainId).signDirect(address, signDoc)
+    txRaw = getTxRawFromTxRawOrDirectSignResponse(signResponse)
+  }
 
   const result = await txApi.broadcast(txRaw)
   if (result.code !== 0) {
@@ -294,6 +421,31 @@ export async function sendToken(
   }
 }
 
+
+/**
+ * Pay several recipients in one MsgMultiSend: one signature, one fee, and
+ * either every recipient is paid or none is. Signed with Keplr or Leap, or
+ * with an EVM wallet when `signer` is one.
+ *
+ * @param recipients inj1 or 0x addresses with human-readable amounts, each
+ *                   converted to base units here exactly once
+ */
+export async function sendPayroll(
+  recipients: { address: string; amount: string }[],
+  token: 'INJ' | 'USDC',
+  memo = '',
+  chainId: string = CHAIN_ID,
+  signer: CosmosSigner = KEPLR,
+): Promise<string> {
+  const outputs = recipients.map(({ address, amount }, i) => {
+    const recipient = toInjectiveAddress(address)
+    if (!recipient) throw new Error(`Recipient ${i + 1} isn't a valid inj1… or 0x… address.`)
+    return { address: recipient, amount: toChainAmount(amount, TOKENS[token].decimals) }
+  })
+  const sender = await signerAddress(signer, chainId)
+  const msg = buildPayrollMultiSend(sender, await resolveHeldDenom(sender, TOKENS[token]), outputs)
+  return signAndBroadcast(msg, chainId, memo, signer)
+}
 
 /**
  * Check if the connected Keplr or Leap account is a Ledger. Asks only the

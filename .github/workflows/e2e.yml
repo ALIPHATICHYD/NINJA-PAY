@@ -1,0 +1,46 @@
+# End-to-end tests on a local Injective chain. Runs only when started by hand:
+# Actions → End-to-end tests → Run workflow. See "Testing" in the README.
+name: End-to-end tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      injective_core_ref:
+        description: Tag of InjectiveFoundation/injective-core to build the chain from
+        default: v1.20.3
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: InjectiveFoundation/injective-core
+          ref: ${{ inputs.injective_core_ref }}
+          path: .injective-core
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: .injective-core/go.mod
+          cache-dependency-path: .injective-core/go.sum
+
+      - name: Build injectived
+        working-directory: .injective-core
+        run: go build -tags netgo -o "$RUNNER_TEMP/injectived" ./cmd/injectived
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run test:e2e
+        env:
+          INJECTIVED: ${{ runner.temp }}/injectived

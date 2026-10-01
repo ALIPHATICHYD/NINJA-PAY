@@ -52,10 +52,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    // suppressHydrationWarning: browser extensions (e.g. QuillBot's data-qb-installed) add
-    // attributes to <html> before React hydrates. This only silences attribute diffs on this element.
+    // suppressHydrationWarning: browser extensions add attributes before React hydrates, to <html>
+    // (QuillBot's data-qb-installed) and to <body> (Grammarly's data-gr-ext-installed). This only
+    // silences attribute diffs on these two elements, not on their children.
     <html lang="en" className={`${display.variable} ${ui.variable} ${mono.variable}`} suppressHydrationWarning>
-      <body>
+      <body suppressHydrationWarning>
         {children}
       </body>
     </html>

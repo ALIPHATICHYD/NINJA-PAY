@@ -1,10 +1,12 @@
+import Link from 'next/link'
 import { ExternalLink } from 'lucide-react'
 import { StatusChip, type ChainState } from '@/components/StatusChip'
 import { explorerName, explorerTxUrl } from '@/lib/injective/network'
 
 /**
- * One line for a transfer in flight or done: its chain state, a sentence, and
- * a link to the explorer that shows that kind of hash.
+ * One line for a transfer in flight or done: its chain state, a sentence, a
+ * link to the explorer that shows that kind of hash and, once it's settled,
+ * to a shareable receipt.
  */
 export function TxStatus({ state, message, hash }: { state: ChainState; message: string; hash?: string }) {
   return (
@@ -20,14 +22,21 @@ export function TxStatus({ state, message, hash }: { state: ChainState; message:
         <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{message}</span>
       </div>
       {hash && (
-        <a
-          href={explorerTxUrl(hash)}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent-text)' }}
-        >
-          View on {explorerName(hash)} <ExternalLink size={11} aria-hidden="true" />
-        </a>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {(state === 'confirmed' || state === 'failed') && (
+            <Link href={`/receipt/${hash}`} style={{ fontSize: '12px', color: 'var(--accent-text)' }}>
+              Receipt
+            </Link>
+          )}
+          <a
+            href={explorerTxUrl(hash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--accent-text)' }}
+          >
+            View on {explorerName(hash)} <ExternalLink size={11} aria-hidden="true" />
+          </a>
+        </span>
       )}
     </div>
   )

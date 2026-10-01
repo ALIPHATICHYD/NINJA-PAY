@@ -78,8 +78,8 @@ export async function fetchPrices(now: Date = new Date()): Promise<Prices> {
 }
 
 /** USD value of an amount of a token, or null when there is no fresh price for it. */
-export function usdValue(amount: number, token: string, prices: Prices): number | null {
-  const price = token in PYTH_FEED_IDS ? prices[token as PricedToken] : null
+export function usdValue(amount: number, token: string | null, prices: Prices): number | null {
+  const price = token && token in PYTH_FEED_IDS ? prices[token as PricedToken] : null
   return price ? amount * price.usd : null
 }
 

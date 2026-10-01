@@ -1,16 +1,18 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { format, isToday, isYesterday } from 'date-fns'
-import { ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
+import { Download, ExternalLink, ListOrdered, RefreshCcw } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { useActivity } from '@/hooks/useActivity'
 import { StatusChip } from '@/components/StatusChip'
 import { NETWORK_LABEL, explorerName, explorerTxUrl } from '@/lib/injective/network'
 import { shortAddress } from '@/lib/injective/address'
+import { activityCsv, downloadCsv } from '@/lib/statement'
 import {
   ACTIVITY_LABELS,
-  formatCoinAmount,
+  formatCoin,
   type ActivityItem,
   type ActivityType,
 } from '@/lib/injective/activity'
@@ -37,7 +39,7 @@ function shorten(value: string): string {
 
 export default function TransactionsPage() {
   const { isConnected } = useWallet()
-  const { items, loading, error, refetch } = useActivity()
+  const { items, loading, error, warnings, hasMore, loadingMore, loadMore, refetch } = useActivity()
   const [filter, setFilter] = useState<Filter>('all')
 
   if (!isConnected) {
@@ -67,9 +69,20 @@ export default function TransactionsPage() {
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Transactions</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your {NETWORK_LABEL} transfers, read directly from the chain.</p>
         </div>
-        <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
-          <RefreshCcw size={12} /> {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => downloadCsv(activityCsv(filtered), `ninjapay-statement-${format(new Date(), 'yyyy-MM-dd')}.csv`)}
+            disabled={filtered.length === 0}
+            title="Saves the transfers listed below as a CSV file on this device"
+            className="btn-secondary"
+            style={{ fontSize: '12px', padding: '7px 12px' }}
+          >
+            <Download size={12} /> Download CSV
+          </button>
+          <button onClick={refetch} disabled={loading} className="btn-secondary" style={{ fontSize: '12px', padding: '7px 12px' }}>
+            <RefreshCcw size={12} /> {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       <div className="seg-control" style={{ marginBottom: '24px', width: 'fit-content', maxWidth: '100%', overflowX: 'auto' }}>
@@ -81,6 +94,9 @@ export default function TransactionsPage() {
       </div>
 
       {error && <div className="alert-error" style={{ marginBottom: '16px' }}>{error}</div>}
+      {warnings.map(w => (
+        <div key={w} className="alert-warning" style={{ marginBottom: '16px' }}>{w} The list below may be missing some transfers.</div>
+      ))}
 
       {loading && items.length === 0 ? (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -96,7 +112,13 @@ export default function TransactionsPage() {
           <div className="empty-state">
             <ListOrdered size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', display: 'block' }} />
             <p style={{ fontWeight: '500' }}>{items.length === 0 ? 'No transactions yet' : 'Nothing matches this filter'}</p>
-            <p>{items.length === 0 ? 'Transfers from your connected Injective accounts will appear here.' : 'Try another filter.'}</p>
+            <p>
+              {items.length === 0
+                ? 'Transfers from your connected Injective accounts will appear here.'
+                : hasMore
+                  ? 'Nothing in what has loaded so far. Load more to look further back.'
+                  : 'Try another filter.'}
+            </p>
           </div>
         </div>
       ) : (
@@ -128,9 +150,12 @@ export default function TransactionsPage() {
                   </div>
                   <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-geist-mono), monospace', textAlign: 'right' }}>
                     {tx.direction === 'out' ? '−' : '+'}
-                    {tx.coins.map(c => `${formatCoinAmount(c)} ${c.token}`).join(' + ')}
+                    {tx.coins.map(c => formatCoin(c)).join(' + ')}
                   </p>
                   <StatusChip state={tx.success ? 'confirmed' : 'failed'} className="w-fit" />
+                  <Link href={`/receipt/${tx.hash}`} style={{ fontSize: '11px', color: 'var(--accent-text)' }}>
+                    Receipt
+                  </Link>
                   <a
                     href={explorerTxUrl(tx.hash)}
                     target="_blank"
@@ -147,9 +172,18 @@ export default function TransactionsPage() {
         ))
       )}
 
+      {hasMore && !loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <button onClick={loadMore} disabled={loadingMore} className="btn-secondary" style={{ fontSize: '13px', padding: '8px 16px' }}>
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      )}
+
       <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-        Shows bank transfers on {NETWORK_LABEL} for your Keplr/Leap account and your EVM wallet&apos;s inj1 address.
-        Transfers sent from an EVM wallet (MetaMask) are not listed yet.
+        Shows transfers on {NETWORK_LABEL} for your Keplr/Leap account and your EVM wallet: bank transfers from Injective&apos;s
+        indexer, and INJ and ERC-20 transfers sent from EVM wallets, from Blockscout. The CSV holds the transfers listed above,
+        so load more first to go further back. It&apos;s made on this device and isn&apos;t sent anywhere.
       </p>
     </div>
   )

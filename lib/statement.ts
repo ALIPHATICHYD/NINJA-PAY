@@ -1,0 +1,72 @@
+/**
+ * An activity statement as CSV, built in the browser from on-chain history.
+ * Nothing is sent to a server: the file is made and saved on the device.
+ */
+
+import { ACTIVITY_LABELS, formatCoinAmount, tokenLabel, type ActivityItem } from './injective/activity'
+import { explorerTxUrl } from './injective/network'
+
+const COLUMNS = ['Date (UTC)', 'Type', 'Direction', 'Counterparty', 'Amount', 'Token', 'Denom', 'Status', 'Claim pool', 'Transaction', 'Explorer']
+
+/**
+ * One CSV field. Quotes and doubles quotes where needed, and puts an apostrophe
+ * before text a spreadsheet would run as a formula (=, +, -, @).
+ */
+export function csvField(value: string): string {
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
+}
+
+/** One row per coin moved, newest first, as the history lists them. */
+export function activityCsv(items: ActivityItem[]): string {
+  const rows = items.flatMap(item =>
+    item.coins.map(coin => [
+      item.timestamp.toISOString(),
+      ACTIVITY_LABELS[item.type],
+      item.direction === 'out' ? 'Sent' : 'Received',
+      item.counterparty,
+      formatCoinAmount(coin, coin.decimals),
+      tokenLabel(coin),
+      coin.denom,
+      item.success ? 'Confirmed' : 'Failed',
+      item.label ?? '',
+      item.hash,
+      explorerTxUrl(item.hash),
+    ]),
+  )
+  return [COLUMNS, ...rows].map(row => row.map(csvField).join(',')).join('\r\n') + '\r\n'
+}
+
+/** Saves the statement as a file on this device. */
+export function downloadCsv(csv: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const link = Object.assign(document.createElement('a'), { href: url, download: filename })
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const RUN_COLUMNS = ['Payroll', 'Paid (UTC)', 'Label', 'Account', 'Amount', 'Token', 'Denom', 'Paid from', 'Checked against the chain', 'Transaction', 'Explorer']
+
+/** A saved payroll run as CSV, one row per recipient, with what the chain says about it. */
+export function payrollRunCsv(
+  run: { name: string; paidAt: string; token: string; denom: string; from: string; hash: string; rows: { label?: string; address: string; amountBase: string }[] },
+  decimals: number,
+  checked: string,
+): string {
+  const rows = run.rows.map(row => [
+    run.name,
+    run.paidAt,
+    row.label ?? '',
+    row.address,
+    formatCoinAmount({ denom: run.denom, amountBase: row.amountBase, decimals, token: run.token, verified: true }, decimals),
+    run.token,
+    run.denom,
+    run.from,
+    checked,
+    run.hash,
+    explorerTxUrl(run.hash),
+  ])
+  return [RUN_COLUMNS, ...rows].map(row => row.map(csvField).join(',')).join('\r\n') + '\r\n'
+}
