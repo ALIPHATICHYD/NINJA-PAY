@@ -147,7 +147,7 @@ export default function SetupPage() {
         )}
       </Step>
 
-      <Step n={4} title="For USDC sends, payroll and claim links">
+      <Step n={4} title="For payroll and claim links">
         <Note>These are signed with Keplr or Leap for now, so you&apos;ll need one of them too.</Note>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <Outlink href="https://www.keplr.app/">Keplr</Outlink>

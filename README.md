@@ -65,7 +65,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Feature | Route | Status | What actually happens today |
 |---|---|---|---|
 | Send INJ | `/send` | Working on testnet | Native value transfer from the connected EVM wallet through wagmi `useSendTransaction`. The recipient can be typed as `inj1…`, `0x…` or a `.inj` name; an `inj1…` address is converted to its `0x…` form. |
-| Send USDC | `/send` | Signing verified on testnet; Send page not yet exercised | Builds a Cosmos `MsgSend` to the recipient's `inj1…` form (either format is accepted), simulates gas, signs with Keplr/Leap (`SIGN_MODE_DIRECT`), and waits for block inclusion. Ledger accounts are not supported yet. |
+| Send USDC | `/send` | Built; not yet sent on testnet | An ERC-20 `transfer` on Circle's USDC contract from the connected EVM wallet, like any token in MetaMask. The gas limit is the wallet's estimate plus 30% for Circle's compliance hook. USDC is a MultiVM token, so the bank balance moves with it; Keplr and Leap aren't needed to send. |
 | Wallet setup | `/setup` | Working | Adds or switches the wallet to Injective's EVM network and adds USDC to its token list in one click each, with the values for adding them by hand. Links to the INJ and Circle USDC testnet faucets (on mainnet, Injective's page on getting INJ) and to Keplr and Leap. Linked from the landing page and from Send when the account has no INJ. |
 | Receive | `/receive` | Working | Shows the wallet's account as `inj1…` and `0x…` with a QR code for each and a network warning. **Ask for a set amount** makes a link and QR that open `/send` with the address, token and amount filled in; the page reports the payment as received once the account's balance of that token on Injective has gone up by at least that amount. Person-to-person only. |
 | Payroll | `/payroll` | Partial | Rows take an address or a `.inj` name, shown with the address it points to on review. Sends one signed transaction per recipient through the Cosmos path. The UI describes a single `MsgMultiSend`, but that builder (`createMsgMultiSendPayroll`) is not wired up. |
@@ -77,7 +77,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No naira rate is quoted and no bank details are collected. |
 | INJ → USDC quote | `/send` (Off-Ramp tab) | Waiting on Injective's swap allowlist | Asks Injective's Swap precompile what the INJ/USDC spot market would give for an amount of INJ, with a 0.5% slippage floor, the market's taker fee rate, the swap's network fee and a check against the Pyth price. Quote only: no swap button and no naira amount. It shows a quote only once Injective adds the market to its swap allowlist, which NinjaPay can't do; until then it says so. |
 | Bill payments (airtime, data, electricity, cable) | `/bills` | Not live | Form is disabled; no payment is taken and nothing is sent to a provider. |
-| Wallet connection | all app routes | Working | RainbowKit (EVM wallets) plus Keplr/Leap for the Cosmos path. Keplr/Leap is only asked to connect when the user clicks **Connect Keplr or Leap**; later visits reconnect quietly. |
+| Wallet connection | all app routes | Working | RainbowKit (EVM wallets) for Send, plus Keplr/Leap for Payroll and claim links. Keplr/Leap is only asked to connect when the user clicks **Connect Keplr or Leap**; later visits reconnect quietly. |
 
 `lib/paystack.ts` and `lib/vtpass.ts` contain integration code for Paystack and VTPass, but no page imports them today.
 
@@ -108,8 +108,8 @@ flowchart LR
   UI -- "INJ / USDC price (Pyth, REST)" --> COSMOS
 ```
 
-- **EVM rail.** RainbowKit and wagmi handle connection and signing for MetaMask and other EVM wallets. This is how INJ is sent.
-- **Cosmos rail.** Keplr or Leap sign Cosmos SDK messages (`MsgSend`, and eventually `MsgMultiSend`) built with `@injectivelabs/sdk-ts`. Balances come from the bank module over gRPC (`lib/injective/bank.ts`).
+- **EVM rail.** RainbowKit and wagmi handle connection and signing for MetaMask and other EVM wallets. Send uses it for both INJ and USDC (an ERC-20 transfer).
+- **Cosmos rail.** Keplr or Leap sign Cosmos SDK messages (`MsgSend`, and eventually `MsgMultiSend`) built with `@injectivelabs/sdk-ts`, for Payroll and claim links. Balances come from the bank module over gRPC (`lib/injective/bank.ts`).
 - **Data.** Supabase stores claim-pool metadata and is meant to store transaction history. INJ and USDC prices come from the Pyth prices Injective keeps on chain (`lib/prices.ts`), are shown as indicative, and are hidden once they are more than 10 minutes old. Injective has no naira price, so the app shows no naira rate; that will come only from a licensed partner's quote.
 - **Rendering.** The landing page (`/`) is a Server Component and does not load the wallet stack. `Web3Providers` is mounted only in `app/(dashboard)/layout.tsx` and `app/claim/layout.tsx`.
 
@@ -374,8 +374,10 @@ These policies let any client insert or update claim rows. The funds themselves 
    It can also be a `.inj` name. `lib/injective/names.ts` asks the Injective Name Service's registry contract for the name's resolver and the resolver for its address, and the page shows the full address under the field; that address is what gets paid. Names must be at least 3 lowercase letters, digits or hyphens, which keeps out lookalike Unicode names. A typed address shows its primary `.inj` name only if that name resolves back to the same address, as the INS docs advise.
    Before **Send** is enabled, `lib/injective/transfer-checks.ts` asks the chain three things. Has Injective's circuit breaker switched off this kind of transaction? Do the token's permission rules pause sending or receiving, or leave either account without the role for it? Has the recipient ever been used? The first two block the send and explain why in plain words, as the chain's or the issuer's rule; NinjaPay doesn't screen transfers and never suggests a way around a restriction. An unused recipient is a warning only.
    The amount is converted to exact base units as it is typed. The page shows the network fee in INJ (fees are always paid in INJ, even for USDC; `lib/injective/fees.ts`) and disables **Send** when the sending account can't cover the amount plus the fee. **Max** leaves room for the fee when sending INJ.
-2. **INJ:** the page calls wagmi `sendTransaction({ to, value: parseEther(amount) })` with the recipient's `0x…` form. The connected EVM wallet signs, and `useWaitForTransactionReceipt` tracks confirmation.
-3. **USDC:** the page passes the recipient's `inj1…` form and the **human-readable** amount to `useCosmosTransaction().sendToken`. `sendToken` in `lib/injective/cosmos-transactions.ts` converts it to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It then builds a `MsgSend` and hands it to `signAndBroadcast`, which:
+2. **INJ:** the page calls wagmi `sendTransaction({ to, value })` with the recipient's `0x…` form and the exact base units. The connected EVM wallet signs, and `useWaitForTransactionReceipt` tracks confirmation.
+3. **USDC:** the page calls wagmi `writeContract` for an ERC-20 `transfer(to, amount)` on Circle's USDC contract, from the same wallet and with the same receipt tracking. USDC is a MultiVM token, so the transfer moves the bank balance Keplr and Leap show too. Every USDC transfer runs Circle's compliance hook, so the gas limit is the wallet's estimate plus 30%. Estimating already runs the hook, so a restricted transfer is reported as the issuer's rule before the wallet opens.
+
+Payroll and claim links still sign Cosmos transactions with Keplr or Leap. `sendToken` in `lib/injective/cosmos-transactions.ts` converts the **human-readable** amount to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It builds a `MsgSend` and hands it to `signAndBroadcast`, which:
    1. fetches the account number, sequence, and latest block height from the chain's REST API;
    2. builds the transaction with `createTransaction` and a timeout height;
    3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation fails);
@@ -441,6 +443,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- Send transfers USDC from the connected EVM wallet as an ERC-20 transfer, like INJ. Before, USDC went through Keplr or Leap even for MetaMask users, sometimes from a different account than the connected wallet.
 - Send, Payroll and Beneficiaries take `.inj` names from the Injective Name Service, show the address a name points to, and show a typed address's primary name when it resolves back to that address. A beneficiary saved by name warns when the name has since been pointed at a different address.
 - Send checks the circuit breaker and the token's permission rules before the wallet opens, instead of failing with a raw chain error afterwards, and warns when the recipient address has never been used on Injective.
 - Prices come from Injective instead of CoinGecko: the Pyth INJ/USD and USDC/USD prices the chain keeps in its oracle module, read by feed id. A price more than 10 minutes old is shown as unavailable, and USD totals are hidden rather than counting an unpriced token as $0 or USDC as exactly $1. The hardcoded ₦1,600 "parallel market" rate and every naira conversion helper are gone; no naira rate is shown until a licensed partner quotes one.
