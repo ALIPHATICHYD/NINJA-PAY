@@ -6,11 +6,12 @@ import { RefreshCcw, ShieldAlert } from 'lucide-react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWallet } from '@/hooks/useWallet'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useEvmSigner } from '@/hooks/useEvmSigner'
 import { TxStatus } from '@/components/TxStatus'
 import type { ChainState } from '@/components/StatusChip'
-import { NETWORK_LABEL } from '@/lib/injective/network'
+import { CHAIN_ID, NETWORK_LABEL } from '@/lib/injective/network'
 import { shortAddress, toInjectiveAddress } from '@/lib/injective/address'
-import { signAndBroadcast } from '@/lib/injective/cosmos-transactions'
+import { KEPLR, signAndBroadcast, type CosmosSigner } from '@/lib/injective/cosmos-transactions'
 import { fetchApprovals, revokeMessage, type Approval } from '@/lib/injective/grants'
 import { resolveClaimEscrows } from '@/lib/supabase'
 
@@ -22,8 +23,14 @@ const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message :
 export default function ApprovalsPage() {
   const { address: evmAddress } = useWallet()
   const { userAddress: cosmosAddress, isReady: cosmosReady, loading: cosmosLoading, error: cosmosError, initializeWallet } = useCosmosTransaction()
+  const evmSigner = useEvmSigner()
   const queryClient = useQueryClient()
   const [revoking, setRevoking] = useState<Revoking | null>(null)
+
+  // Keplr or Leap signs for its account; the EVM wallet signs for its own
+  // account as EIP-712 typed data. Only the account that gave an approval can revoke it.
+  const signerFor = (account: string): CosmosSigner | null =>
+    account === cosmosAddress ? KEPLR : evmSigner && account === toInjectiveAddress(evmSigner.address) ? evmSigner : null
 
   const accounts = useMemo(() => {
     const list: { address: string; label: string }[] = []
@@ -56,11 +63,12 @@ export default function ApprovalsPage() {
 
   const revoke = async (approval: Approval) => {
     const msg = revokeMessage(approval)
-    if (!msg) return
+    const signer = signerFor(approval.granter)
+    if (!msg || !signer) return
     const key = keyOf(approval)
     setRevoking({ key, state: 'awaiting-signature', message: 'Approve the revoke in your wallet.' })
     try {
-      const hash = await signAndBroadcast(msg)
+      const hash = await signAndBroadcast(msg, CHAIN_ID, '', signer)
       const who = shortAddress(approval.grantee)
       const message = approval.kind === 'feegrant' ? `Revoked: ${who} can no longer pay network fees from your account.` : `Revoked: ${who} can no longer ${approval.action}.`
       setRevoking({ key, state: 'confirmed', message, hash })
@@ -95,7 +103,7 @@ export default function ApprovalsPage() {
 
       {!cosmosReady && (
         <div className="alert-pending" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-          <span>Revoking is signed with Keplr or Leap. Connect one to revoke approvals its account gave.</span>
+          <span>Have a Keplr or Leap account too? Connect it to see and revoke the approvals it gave.</span>
           <button onClick={initializeWallet} disabled={cosmosLoading} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
             {cosmosLoading ? 'Connecting…' : 'Connect Keplr or Leap'}
           </button>
@@ -111,7 +119,7 @@ export default function ApprovalsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
         {accounts.map((account, i) => {
           const result = results[i]
-          const canSign = account.address === cosmosAddress
+          const canSign = signerFor(account.address) !== null
           return (
             <section key={account.address}>
               <h2 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{account.label}</h2>
@@ -230,7 +238,7 @@ function ApprovalCard({ approval, side, claimLink, canSign, revoking, busy, onRe
         ) : (
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             {revocable
-              ? 'To revoke this, connect Keplr or Leap holding this account. NinjaPay can’t sign a revoke from an EVM wallet yet.'
+              ? 'To revoke this, connect the wallet that holds this account.'
               : 'NinjaPay can’t revoke this kind of permission yet. Revoke it from the app that set it up.'}
           </p>
         )

@@ -43,6 +43,23 @@ describe('buildGrantMsgs', () => {
     expect(basic.spendLimit).toEqual([{ denom: 'inj', amount: plan.feeAllowance.toString() }])
     expect(basic.expiration?.seconds).toBe(BigInt(plan.expiresAt.getTime() / 1000))
   })
+
+  it("gives an EVM wallet the send approval exactly as injective-core renders it for EIP-712", () => {
+    const plan = planGrant('USDC', '10', 4, 1, USDC.denom.toLowerCase(), NOW)
+    const [grant, allowance] = buildGrantMsgs(CREATOR, LINK, plan)
+    // The chain's proto JSON (cosmos-sdk ProtoMarshalJSON: field order, empty lists kept), compacted.
+    expect(JSON.stringify(grant.toEip712V2())).toBe(
+      `{"@type":"/cosmos.authz.v1beta1.MsgGrant","granter":"${CREATOR}","grantee":"${LINK}",` +
+        `"grant":{"authorization":{"@type":"/cosmos.bank.v1beta1.SendAuthorization",` +
+        `"spend_limit":[{"denom":"${USDC.denom.toLowerCase()}","amount":"10000000"}],"allow_list":[]},` +
+        `"expiration":"2026-10-02T12:00:00Z"}}`,
+    )
+    expect(JSON.stringify(allowance.toEip712V2())).toBe(
+      `{"@type":"/cosmos.feegrant.v1beta1.MsgGrantAllowance","granter":"${CREATOR}","grantee":"${LINK}",` +
+        `"allowance":{"@type":"/cosmos.feegrant.v1beta1.BasicAllowance",` +
+        `"spend_limit":[{"denom":"inj","amount":"${plan.feeAllowance}"}],"expiration":"2026-10-02T12:00:00Z"}}`,
+    )
+  })
 })
 
 describe('cancelMessages', () => {

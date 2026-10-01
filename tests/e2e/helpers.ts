@@ -9,6 +9,8 @@ import { randomBytes } from 'node:crypto'
 import { afterEach, inject } from 'vitest'
 import { MsgBroadcasterWithPk, MsgMultiSend, PrivateKey } from '@injectivelabs/sdk-ts'
 import { InjectiveDirectEthSecp256k1Wallet } from '@injectivelabs/sdk-ts/cosmjs'
+import { privateKeyToAccount } from 'viem/accounts'
+import type { CosmosSigner } from '@/lib/injective/cosmos-transactions'
 import { NETWORK } from '@/lib/injective/network'
 import { LOCAL_CHAIN } from './local-chain-config'
 
@@ -89,6 +91,33 @@ export async function useKeplr(account: TestAccount): Promise<{ signatures: () =
   ;(globalThis as { window?: unknown }).window = { keplr }
   return { signatures: () => signatures }
 }
+
+/**
+ * An EVM wallet such as MetaMask, holding `account`: it signs typed data with
+ * the account's key the way a wallet answers eth_signTypedData_v4.
+ * `signWith` signs with another key instead, like a wallet switched to a
+ * different account after connecting.
+ */
+export function useEvmWallet(account: TestAccount, signWith: TestAccount = account) {
+  const key = privateKeyToAccount(`0x${signWith.key}`)
+  const signed: { domain: { chainId: string }; message: { context: string; msgs: string } }[] = []
+  const signer: CosmosSigner = {
+    kind: 'evm',
+    address: account.evm,
+    signTypedData: async json => {
+      const typedData = JSON.parse(json)
+      signed.push(typedData)
+      return key.signTypedData(typedData)
+    },
+  }
+  return { signer, signed }
+}
+
+/** An account as the chain stores it, with its public key once it has signed. */
+export const getAccount = (address: string) =>
+  rest<{ account: { base_account?: { pub_key: { '@type': string; key: string } | null } } }>(
+    `/cosmos/auth/v1beta1/accounts/${address}`,
+  ).then(({ account }) => account.base_account ?? (account as { pub_key: { '@type': string; key: string } | null }))
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window

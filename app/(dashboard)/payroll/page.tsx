@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useEvmSigner } from '@/hooks/useEvmSigner'
+import { KEPLR, sendPayroll } from '@/lib/injective/cosmos-transactions'
+import { CHAIN_ID } from '@/lib/injective/network'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { TOKENS } from '@/lib/injective/tokens'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
@@ -31,14 +34,16 @@ const STEPS = [
 export default function PayrollPage() {
   const { isConnected, address } = useWallet()
   const {
-    sendPayroll,
     userAddress: cosmosAddress,
     isReady: cosmosReady,
     loading: cosmosLoading,
     error: cosmosError,
     initializeWallet: connectCosmosWallet,
   } = useCosmosTransaction()
-  // Payroll signs with Keplr/Leap, so balances and the fee check use that account once it's connected.
+  // Keplr or Leap signs once connected; otherwise the EVM wallet signs the
+  // same MultiSend as EIP-712 typed data. Balances and checks follow the signer.
+  const evmSigner = useEvmSigner()
+  const signer = cosmosReady ? KEPLR : evmSigner
   const { inj, usdc, loading: balLoading } = useBalance(cosmosAddress ?? address)
 
   const chainHealth = useChainHealth('cosmos')
@@ -86,7 +91,7 @@ export default function PayrollPage() {
   const invalidAmountRows = recipients.flatMap((r, i) => (r.amount.trim() && amounts[i] === null ? [i + 1] : []))
   const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
 
-  // The signing account (Keplr/Leap once connected) and every row, checked on the review step.
+  // The signing account (Keplr/Leap once connected, else the EVM wallet) and every row, checked on the review step.
   const checks = usePayrollChecks(token, toInjectiveAddress(cosmosAddress ?? address), step === 3 ? accounts : [])
 
   const canProceedStep1 = payrollName.trim().length > 0
@@ -99,10 +104,13 @@ export default function PayrollPage() {
     try {
       // One MsgMultiSend for everyone. Amounts are human-readable and
       // converted to base units once inside sendPayroll.
+      if (!signer) throw new Error('Connect a wallet to sign the payroll.')
       const hash = await sendPayroll(
         recipients.map((r, i) => ({ address: accounts[i]!, amount: r.amount.trim() })),
         token,
         MEMO_PAYROLL,
+        CHAIN_ID,
+        signer,
       )
       const n = recipients.length
       setPaid({ hash, message: `Payroll "${payrollName}" paid ${n} recipient${n > 1 ? 's' : ''} in ${token} in one transaction, confirmed on chain.` })
@@ -186,12 +194,6 @@ export default function PayrollPage() {
             <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
               Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}</span>
             </p>
-            {!cosmosReady && (
-              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 10px', background: 'rgba(39, 117, 202, 0.1)', borderRadius: '6px', border: '1px solid rgba(39, 117, 202, 0.2)' }}>
-                <AlertCircle size={14} style={{ color: '#2775ca', marginTop: '2px', flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', color: '#2775ca', lineHeight: '1.4' }}>Payroll is signed with Keplr or Leap for now. You&apos;ll connect it on the review step.</span>
-              </div>
-            )}
           </div>
           <button onClick={() => { if (canProceedStep1) setStep(2) }} disabled={!canProceedStep1} className="btn-primary" style={{ width: '100%', padding: '12px' }}>
             Continue to Recipients
@@ -316,11 +318,12 @@ export default function PayrollPage() {
           </div>
 
           {!cosmosReady && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgb(59,130,246)', borderRadius: '8px' }}>
-              <AlertCircle size={14} style={{ color: 'rgb(59,130,246)', flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: '180px', fontSize: '12px', color: 'rgb(59,130,246)' }}>Payroll is signed with Keplr or Leap for now.</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+              <span style={{ flex: 1, minWidth: '180px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Your EVM wallet signs this payroll. It shows the payments as a block of text to approve, not as a usual transaction.
+              </span>
               <button onClick={connectCosmosWallet} disabled={cosmosLoading} className="btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
-                {cosmosLoading ? 'Connecting…' : 'Connect Keplr or Leap'}
+                {cosmosLoading ? 'Connecting…' : 'Use Keplr or Leap instead'}
               </button>
             </div>
           )}
@@ -373,7 +376,7 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !cosmosReady || !chainHealth.canSend || checks.blocks.length > 0} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !signer || !chainHealth.canSend || checks.blocks.length > 0} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>

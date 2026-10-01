@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
+import { useEvmSigner } from '@/hooks/useEvmSigner'
+import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import {
@@ -12,7 +14,9 @@ import {
   SUPABASE_SETUP_MESSAGE,
 } from '@/lib/supabase'
 import { format } from 'date-fns'
-import { signAndBroadcast } from '@/lib/injective/cosmos-transactions'
+import { KEPLR, signAndBroadcast } from '@/lib/injective/cosmos-transactions'
+import { toInjectiveAddress } from '@/lib/injective/address'
+import { CHAIN_ID } from '@/lib/injective/network'
 import { balanceOf, fetchAllBalances, resolveHeldDenom } from '@/lib/injective/bank'
 import { DENOMS, TOKENS } from '@/lib/injective/tokens'
 import { formatBaseUnits } from '@/lib/money'
@@ -54,12 +58,18 @@ function newLinkCode(): string {
 export default function ClaimsPage() {
   const chainHealth = useChainHealth('cosmos')
   const {
-    userAddress: creatorAddress,
-    isReady: walletReady,
+    userAddress: cosmosAddress,
+    isReady: cosmosReady,
     loading: walletLoading,
     error: walletError,
     initializeWallet,
   } = useCosmosTransaction()
+  // Keplr or Leap signs once connected; otherwise the EVM wallet signs the
+  // same messages as EIP-712 typed data, for its own account.
+  const evmSigner = useEvmSigner()
+  const { openConnectModal } = useConnectModal()
+  const signer = cosmosReady ? KEPLR : evmSigner
+  const creatorAddress = cosmosReady ? cosmosAddress : evmSigner ? toInjectiveAddress(evmSigner.address) : null
 
   const [showForm, setShowForm] = useState(false)
   const [claimName, setClaimName] = useState('')
@@ -131,7 +141,7 @@ export default function ClaimsPage() {
   }
 
   const handleCreate = async () => {
-    if (!creatorAddress) return
+    if (!creatorAddress || !signer) return
     if (!claimName.trim() || !amount || !recipientCount) {
       setStatus({ type: 'error', message: 'Please fill in all fields.' })
       return
@@ -166,13 +176,13 @@ export default function ClaimsPage() {
           )
         }
         saveEscrowKey(linkCode, { privateKeyHex: escrow.privateKeyHex, refundTo: creatorAddress, kind })
-        await signAndBroadcast(buildGrantMsgs(creatorAddress, escrow.address, grant))
+        await signAndBroadcast(buildGrantMsgs(creatorAddress, escrow.address, grant), CHAIN_ID, '', signer)
         plan = grant
       } else {
         const funded = planEscrow(token, amount, count, denom)
         // Save the key before funding so a failure after this point can always be reclaimed.
         saveEscrowKey(linkCode, { privateKeyHex: escrow.privateKeyHex, refundTo: creatorAddress, kind })
-        await signAndBroadcast(buildFundingMsg(creatorAddress, escrow.address, funded))
+        await signAndBroadcast(buildFundingMsg(creatorAddress, escrow.address, funded), CHAIN_ID, '', signer)
         plan = funded
       }
 
@@ -223,14 +233,14 @@ export default function ClaimsPage() {
   }
 
   const handleCancel = async (claim: UIClaim) => {
-    if (!creatorAddress || !claim.pool.escrowAddress) return
+    if (!creatorAddress || !signer || !claim.pool.escrowAddress) return
     setReclaimingId(claim.pool.id)
     setStatus({ type: null, message: '' })
     try {
       const { given } = await fetchApprovals(creatorAddress)
       const msgs = cancelMessages(given, claim.pool.escrowAddress)
       if (msgs.length === 0) throw new Error('This link has already ended, so there is nothing to cancel.')
-      await signAndBroadcast(msgs)
+      await signAndBroadcast(msgs, CHAIN_ID, '', signer)
       setStatus({ type: 'success', message: `Link cancelled. It can no longer pay out from your wallet.` })
       await loadClaims(creatorAddress)
     } catch (e) {
@@ -255,16 +265,21 @@ export default function ClaimsPage() {
     )
   }
 
-  if (!walletReady) {
+  if (!creatorAddress) {
     return (
       <div style={{ maxWidth: '520px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div className="alert-warning">
-          Claim links are funded from a Keplr or Leap wallet. Connect one to create and manage claims.
+          Connect a wallet to create and manage claim links: an EVM wallet such as MetaMask, or Keplr or Leap.
         </div>
         {walletError && <div className="alert-error">{walletError}</div>}
-        <button onClick={initializeWallet} disabled={walletLoading} className="btn-primary">
-          {walletLoading ? <><span className="spinner" /> Connecting…</> : 'Connect Keplr or Leap'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={openConnectModal} disabled={!openConnectModal} className="btn-primary" style={{ flex: 1 }}>
+            Connect an EVM wallet
+          </button>
+          <button onClick={initializeWallet} disabled={walletLoading} className="btn-secondary" style={{ flex: 1 }}>
+            {walletLoading ? <><span className="spinner" /> Connecting…</> : 'Connect Keplr or Leap'}
+          </button>
+        </div>
       </div>
     )
   }

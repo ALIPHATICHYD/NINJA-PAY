@@ -108,8 +108,39 @@ export function planGrant(
   return { token, denom, totalBase, shares, feeAllowance: FEE_RESERVE_PER_TX * BigInt(recipientCount), expiresAt }
 }
 
+/**
+ * A MsgGrant an EVM wallet can sign. sdk-ts writes a grant's EIP-712 form
+ * only for GenericAuthorization and throws for a SendAuthorization, so this
+ * writes it the way injective-core renders the message when it checks the
+ * signature: the chain's proto JSON, in field order, empty lists included.
+ */
+export class MsgGrantSend extends MsgGrant {
+  static fromJSON(params: MsgGrant.Params): MsgGrantSend {
+    return new MsgGrantSend(params)
+  }
+
+  toEip712V2() {
+    const { granter, grantee, grant } = this.toProto()
+    const authorization = SendAuthorization.fromBinary(grant!.authorization!.value)
+    return {
+      '@type': '/cosmos.authz.v1beta1.MsgGrant',
+      granter,
+      grantee,
+      grant: {
+        authorization: {
+          '@type': SEND_AUTHORIZATION,
+          spend_limit: authorization.spendLimit.map(({ denom, amount }) => ({ denom, amount })),
+          allow_list: authorization.allowList,
+        },
+        // Whole seconds, as the chain prints a timestamp without nanoseconds.
+        expiration: new Date(Number(grant!.expiration!.seconds) * 1000).toISOString().replace('.000Z', 'Z'),
+      },
+    } as unknown as ReturnType<MsgGrant['toEip712V2']>
+  }
+}
+
 /** The two approvals the creator signs, in one transaction, to open a link. */
-export function buildGrantMsgs(creator: string, linkAddress: string, plan: GrantPlan): [MsgGrant, MsgGrantAllowance] {
+export function buildGrantMsgs(creator: string, linkAddress: string, plan: GrantPlan): [MsgGrantSend, MsgGrantAllowance] {
   const expiration = Math.floor(plan.expiresAt.getTime() / 1000)
   const authorization = Any.create({
     typeUrl: SEND_AUTHORIZATION,
@@ -118,7 +149,7 @@ export function buildGrantMsgs(creator: string, linkAddress: string, plan: Grant
     ),
   })
   return [
-    MsgGrant.fromJSON({ granter: creator, grantee: linkAddress, authorization, expiration }),
+    MsgGrantSend.fromJSON({ granter: creator, grantee: linkAddress, authorization, expiration }),
     MsgGrantAllowance.fromJSON({
       granter: creator,
       grantee: linkAddress,
