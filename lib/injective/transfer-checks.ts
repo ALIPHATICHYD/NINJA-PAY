@@ -29,6 +29,7 @@ export type TransferCheck = { level: 'block' | 'warn'; message: string }
 export const MSG_SEND = '/cosmos.bank.v1beta1.MsgSend'
 export const MSG_ETHEREUM_TX = '/injective.evm.v1.MsgEthereumTx'
 export const MSG_MULTI_SEND = '/cosmos.bank.v1beta1.MsgMultiSend'
+export const MSG_EXEC = '/cosmos.authz.v1beta1.MsgExec'
 
 // Permission bits from the permissions module's Action enum.
 const ACTION_BITS = { RECEIVE: 2, SEND: 8 } as const

@@ -69,7 +69,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Send USDC | `/send` | Built; not yet sent on testnet | An ERC-20 `transfer` on Circle's USDC contract from the connected EVM wallet, like any token in MetaMask. The gas limit is the wallet's estimate plus 30% for Circle's compliance hook. USDC is a MultiVM token, so the bank balance moves with it; Keplr and Leap aren't needed to send. |
 | Wallet setup | `/setup` | Working | Adds or switches the wallet to Injective's EVM network and adds USDC to its token list in one click each, with the values for adding them by hand. Links to the INJ and Circle USDC testnet faucets (on mainnet, Injective's page on getting INJ) and to Keplr and Leap. Linked from the landing page and from Send when the account has no INJ. |
 | Receive | `/receive` | Working | Shows the wallet's account as `inj1…` and `0x…` with a QR code for each and a network warning. **Ask for a set amount** makes a link and QR that open `/send` with the address, token and amount filled in; the page reports the payment as received once the account's balance of that token on Injective has gone up by at least that amount. Person-to-person only. |
-| Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend`: one signature, one fee, all or nothing. The connected EVM wallet signs it as EIP-712 typed data, or Keplr/Leap signs it natively once connected. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. |
+| Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend`: one signature, one fee, all or nothing. The connected EVM wallet signs it as EIP-712 typed data, or Keplr/Leap signs it natively once connected. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. Paid runs are saved on the device and each is checked against its transaction before it shows as paid; a run can be used again or saved as CSV. An account can give another a payroll budget (an authz send approval with a cap, an end date and an optional list of accounts), and the other account can then pay runs from it. |
 | Claim links: create | `/claims` | Working on testnet (INJ verified) | By default the funds stay in the creator's wallet (an EVM wallet such as MetaMask, or Keplr/Leap): the creator approves the link to send at most the total, and to pay each claim's fee, until it expires (1, 7 or 30 days), and can cancel it at any time. Or the creator funds a one-time escrow account and can reclaim leftovers. Either way the link's key lives only in its `#fragment` and the creator's browser. |
 | Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address), from the creator's wallet or from the escrow. Claimers need no INJ. |
 | Transactions | `/transactions` | Working | One list, newest first, for your Keplr/Leap account and your EVM wallet: bank transfers from Injective's indexer, and INJ and ERC-20 transfers sent from EVM wallets (such as USDC from MetaMask) from Blockscout. **Load more** pages further back, and **Download CSV** saves the listed transfers as a statement made on the device. Each row links to its receipt. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
@@ -192,6 +192,8 @@ components/
   OfframpUnavailable.tsx      Honest "not live" off-ramp placeholder
   SwapQuote.tsx               INJ → USDC quote from the Swap precompile
   StatusChip.tsx, TxStatus.tsx   Transfer state chip and status line with explorer link
+  PayrollRuns.tsx             Past payroll runs, each checked against its transaction
+  PayrollBudgetForm.tsx       Give another account a payroll budget
   ChainHealthNotice.tsx       "Sending is paused" and scheduled-upgrade banners
   QrCode.tsx                  Dark-on-white QR code as one SVG path
   CopyButton.tsx              Copy-to-clipboard button
@@ -209,6 +211,7 @@ hooks/
   useRecipients.ts            Recipient fields: address or .inj name, resolved
   useSwapQuote.ts             INJ → USDC quote, slippage floor, fee and oracle check
   useTransferChecks.ts        Pre-send checks for one transfer
+  usePayrollChecks.ts         Pre-send checks for every row of a payroll run
 lib/
   injective/
     network.ts                Network, chain ids, endpoints, explorers, faucets
@@ -225,6 +228,8 @@ lib/
     cosmos-transactions.ts    Cosmos signing: Keplr/Leap direct, EVM wallets over EIP-712; sendToken
     claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
     claim-grant.ts            Claim links paid from the creator's wallet: approve, pay out, cancel
+    payroll-budget.ts         Payroll budgets: give, read, check and pay a run from one
+    payroll-reconcile.ts      Whether a saved payroll run matches its transaction
     activity.ts               Bank-transfer history from Injective's indexer, merged across sources
     evm-activity.ts           EVM wallet transfers (INJ value, ERC-20) from Blockscout
     receipt.ts                One transaction's transfers, fee and status, from REST or EVM RPC
@@ -237,7 +242,8 @@ lib/
   money.ts                    Exact amount <-> base-unit conversion
   prices.ts                   INJ and USDC prices from Injective's Pyth oracle
   payment-request.ts          Payment-request links to /send
-  statement.ts                CSV activity statement, made in the browser
+  statement.ts                CSV activity statement and payroll runs, made in the browser
+  payroll-runs.ts             Paid payroll runs, saved in this browser
   supabase.ts                 Claim pools and transaction history
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
@@ -414,6 +420,12 @@ Payroll, claim links and revokes are Cosmos transactions. The connected EVM wall
 
 The payroll screen has three steps: name the run, add recipients (`inj1…`, `0x…` or a `.inj` name; a row that repeats an account already listed is flagged), then review and dispatch. Dispatch sends one `MsgMultiSend`, built by `buildPayrollMultiSend` in `lib/injective/bank.ts`: one input carrying the total and one output per recipient. That is one signature and one fee, and the bank module applies it atomically: either every recipient is paid or none is. A run pays up to 50 recipients, NinjaPay's own cap. Because one blocked recipient fails the whole batch, the review step first checks the circuit breaker for `MsgMultiSend`, the token's permission rules for the sender and every row, and flags rows that have never been used (`hooks/usePayrollChecks.ts`). The batch is simulated for gas before the wallet opens. The employer's own wallet signs; NinjaPay never holds payroll funds.
 
+**Past runs.** A run that confirms is saved in this browser only (`lib/payroll-runs.ts`), like beneficiaries: the database has no auth yet, and who was paid how much is personal data under Nigeria's NDPA. A saved run is a claim about the chain, not a record of payment. Each one is shown as **Paid on chain** only when its transaction pays every row, exactly, from the account the run says, and nothing else (`lib/injective/payroll-reconcile.ts`). Otherwise it shows as failed, not found, pending, or not matching, with the rows that differ. **Use again** fills a new run from it, and **CSV** saves it with the result of that check.
+
+**Payroll budgets.** The account that holds the payroll funds (the owner) can let another account (an operator, such as a payroll officer) pay payroll from it: **Let someone else run payroll** signs one authz `SendAuthorization` with a total, an end date of 7, 30 or 90 days, and optionally only the accounts of a saved run (`lib/injective/payroll-budget.ts`). The operator then sees **Pay from** with the budget, and a run goes out as one `MsgExec` carrying one `MsgSend` per row from the owner's account. The operator signs and pays the fee; the owner's account pays the total. The chain takes each payment off the budget and refuses the whole transaction if any one goes over what's left, pays an account not on the list, or comes after the end date, so either everyone is paid or nobody is. The page checks all three before the wallet opens. The owner sees the budget on Approvals and can revoke it there at any time. NinjaPay holds nothing and can't use a budget. Giving one again to the same account replaces the old one.
+
+A treasury that needs several people to approve each run (M-of-N) isn't built: it needs Cosmos's group module, and Injective's chain at v1.20.3 doesn't enable it (its queries answer `Not Implemented`).
+
 ### Claim links (`/claims` → `/claim/[claimId]`)
 
 A claim link carries a **one-time key in its `#fragment`**. There are two kinds. By default the funds stay in the creator's wallet and the key may only spend what the creator approved for it (`lib/injective/claim-grant.ts`). The other kind moves the funds to a one-time escrow account that the key controls (`lib/injective/claim-escrow.ts`).
@@ -475,6 +487,8 @@ These are verified against the current code. They are the priority list before a
 | 6 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx` |
 | 7 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error that suggests connecting the Ledger through an EVM wallet instead. A Ledger in MetaMask is asked for the same EIP-712 signature as any MetaMask account, but this hasn't been tried with a real Ledger, and Injective's Ledger guide signs the older EIP-712 layout (`SIGN_MODE_LEGACY_AMINO_JSON`), so a Ledger may need that instead. | `lib/injective/cosmos-transactions.ts` |
 | 8 | Low | The circuit-breaker check never finds anything. Injective's docs describe the circuit module, but the chain at v1.20.3 doesn't include it and answers the query with `501 Not Implemented`, which the check treats as no finding. The end-to-end tests fail if a later chain version starts serving it. | `lib/injective/transfer-checks.ts` |
+| 9 | Low | A payroll paid from a budget shows on its receipt and under Past runs, but Transactions and Analytics may not list it. History comes from Injective's indexer, and how the indexer reports payments inside an authz `MsgExec` hasn't been checked, since a local chain has no indexer. | `lib/injective/activity.ts` |
+| 10 | Low | Past runs are kept in this browser's `localStorage`. Another browser, or cleared site data, shows none; the payments themselves are on chain. | `lib/payroll-runs.ts` |
 
 **Fixed:**
 
@@ -555,6 +569,7 @@ What it covers:
 - **Claim links paid from the creator's wallet:** opening a link moves nothing; claimers holding no INJ receive their exact shares from the creator's wallet, which pays the fees through its allowance. A claim over what's left, a claim after **Cancel Link**, and a claim the creator's wallet can no longer cover are each refused without charging anything.
 - **Sending INJ from an EVM wallet:** it arrives in the same account's `inj1` balance, and the fee charged is exactly the fee Send quotes. A wallet's higher fee cap is charged in full, and the receipt shows it.
 - **Approvals:** grant, list (given and received) and revoke.
+- **Payroll budgets:** an owner gives an operator a 3 INJ budget limited to two accounts; the operator pays a run from it over EIP-712, the owner's account pays exactly the run and the operator only the fee, and what's left of the budget is right. The run checks out against its transaction, and a saved run that says something else doesn't. A run over the budget, to an account off the list, or after the owner revokes is refused before the wallet opens, with no fee.
 - **EVM wallets signing Cosmos messages (EIP-712):** a payroll from an account that has never signed a Cosmos transaction, then a second transaction with the key the chain now holds; opening, paying out from and cancelling a claim link. A run the chain would refuse stops before the wallet opens, and a signature from a different account is refused before broadcasting.
 - **Checks before sending:** the unused-address warning, and the circuit breaker.
 
@@ -575,7 +590,7 @@ The build takes a few minutes and the suite about 30 seconds. Injective's instal
 ## Roadmap
 
 1. **Harden the Cosmos rail.** Verify sends end to end on testnet, show the simulated fee before signing, and try a Ledger through MetaMask's EIP-712 signing.
-2. **Atomic payroll.** One `MsgMultiSend` per run, with CSV import and a per-recipient preview.
+2. **Payroll for teams.** One `MsgMultiSend` per run, saved runs checked against the chain, and payroll budgets for an operator are in place. Still to do: CSV import. A treasury that needs several approvers per run waits on Injective enabling the group module; NinjaPay would never be one of its members, since that would give it a say over the funds. Whether payroll needs tax (PAYE) or CBN reporting is a question for an accountant and counsel, so NinjaPay doesn't present runs as tax records.
 3. **Trustless claim links.** Links paid from the creator's wallet now leave the funds there, capped and expiring on chain. Still to do: expire stale reservations. An escrow contract that enforces one claim per address on chain would hold users' funds, so it waits on counsel's view of custody.
 4. **Persistent history.** Record every broadcast in `transactions`, and read status back from the chain by transaction hash.
 5. **One EVM target.** Standardise on a single Injective EVM chain ID and RPC across RainbowKit and the helpers.

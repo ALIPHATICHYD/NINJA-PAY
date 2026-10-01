@@ -44,6 +44,17 @@ describe('transactions the chain refuses in simulation', () => {
     expect(describeExecutionFailure(OVERSPEND)).toBe(
       "This account doesn't hold enough of that token for the whole amount. Nothing was signed or sent, so no fee was charged.",
     )
+    // Authz sends through an approval: claim links and payroll budgets (cosmos-sdk x/bank/types/send_authorization.go, x/authz).
+    const exec = 'failed to execute message; message index: 0: '
+    expect(describeExecutionFailure(`${exec}requested amount is more than spend limit: insufficient funds`)).toBe(
+      "The total is more than the approval it's sent under allows. Nothing was signed or sent, so no fee was charged.",
+    )
+    expect(describeExecutionFailure(`${exec}cannot send to inj1abc address: unauthorized`)).toBe(
+      "The approval it's sent under doesn't allow paying inj1abc. Nothing was signed or sent, so no fee was charged.",
+    )
+    expect(describeExecutionFailure(`${exec}failed to get grant with given granter: inj1a, grantee: inj1b & msgType: /cosmos.bank.v1beta1.MsgSend : authorization not found`)).toBe(
+      "The approval it's sent under no longer exists: it was revoked, used up or has expired. Nothing was signed or sent, so no fee was charged.",
+    )
     expect(describeExecutionFailure('rpc error: failed to execute message; message index: 1: invalid coins [x/bank/types/msgs.go:12] With gas wanted: 1')).toBe(
       "Injective would refuse this transaction (invalid coins), so it wasn't signed or sent and no fee was charged.",
     )

@@ -62,6 +62,15 @@ export function isExecutionFailure(message: string): boolean {
 
 /** A readable version of an execution failure found in simulation, for when the wallet never opened. */
 export function describeExecutionFailure(message: string): string {
+  const unsigned = 'Nothing was signed or sent, so no fee was charged.'
+  // An authz send over its approval's cap is reported as insufficient funds
+  // too, so check for it first (cosmos-sdk x/bank/types/send_authorization.go).
+  if (/more than spend limit/i.test(message)) return `The total is more than the approval it's sent under allows. ${unsigned}`
+  const notAllowed = message.match(/cannot send to (\S+) address/i)
+  if (notAllowed) return `The approval it's sent under doesn't allow paying ${notAllowed[1]}. ${unsigned}`
+  if (/authorization not found/i.test(message)) {
+    return `The approval it's sent under no longer exists: it was revoked, used up or has expired. ${unsigned}`
+  }
   if (/insufficient funds/i.test(message)) {
     return "This account doesn't hold enough of that token for the whole amount. Nothing was signed or sent, so no fee was charged."
   }

@@ -1,14 +1,22 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { format } from 'date-fns'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useEvmSigner } from '@/hooks/useEvmSigner'
-import { KEPLR, sendPayroll } from '@/lib/injective/cosmos-transactions'
+import { KEPLR, signAndBroadcast, signerAddress } from '@/lib/injective/cosmos-transactions'
 import { CHAIN_ID } from '@/lib/injective/network'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
-import { TOKENS } from '@/lib/injective/tokens'
+import { TOKENS, sameDenom, type TokenSymbol } from '@/lib/injective/tokens'
+import { buildPayrollMultiSend, resolveHeldDenom } from '@/lib/injective/bank'
+import { budgetLeft, budgetProblem, buildBudgetPayroll, fetchBudgets, type PayrollBudget } from '@/lib/injective/payroll-budget'
+import { MSG_EXEC, MSG_SEND } from '@/lib/injective/transfer-checks'
+import { usePayrollRuns, type PayrollRun } from '@/lib/payroll-runs'
+import { PayrollRuns } from '@/components/PayrollRuns'
+import { PayrollBudgetForm } from '@/components/PayrollBudgetForm'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { useRecipients } from '@/hooks/useRecipients'
@@ -24,6 +32,13 @@ import { Plus, Trash2, Users2, ChevronRight, CheckCircle2, AlertCircle } from 'l
 interface PayrollRecipient { id: string; address: string; amount: string; label?: string }
 
 type Step = 1 | 2 | 3
+
+const OWN = 'own'
+const BUDGET_MSGS = [MSG_EXEC, MSG_SEND]
+
+/** The tokens a budget still has something left of. */
+const budgetTokens = (budget: PayrollBudget) =>
+  (Object.keys(TOKENS) as TokenSymbol[]).filter(t => budgetLeft(budget, TOKENS[t].denom) > BigInt(0))
 
 const STEPS = [
   { n: 1 as Step, label: 'Configure' },
@@ -44,9 +59,28 @@ export default function PayrollPage() {
   // same MultiSend as EIP-712 typed data. Balances and checks follow the signer.
   const evmSigner = useEvmSigner()
   const signer = cosmosReady ? KEPLR : evmSigner
-  const { inj, usdc, loading: balLoading } = useBalance(cosmosAddress ?? address)
+  const signerAccount = toInjectiveAddress(cosmosAddress ?? address)
+  const own = useBalance(cosmosAddress ?? address)
+  const queryClient = useQueryClient()
+  const { save: saveRun } = usePayrollRuns()
 
   const chainHealth = useChainHealth('cosmos')
+
+  // Pay from this account, or from another account's payroll budget given to this one.
+  const [payFrom, setPayFrom] = useState(OWN)
+  const budgetsQuery = useQuery({
+    queryKey: ['payroll-budgets', signerAccount],
+    queryFn: () => fetchBudgets(signerAccount!),
+    enabled: !!signerAccount,
+    staleTime: 15_000,
+  })
+  const budgets = budgetsQuery.data ?? []
+  const budget = payFrom === OWN ? null : budgets.find(b => b.owner === payFrom) ?? null
+  const budgetGone = payFrom !== OWN && !budget && !budgetsQuery.isLoading
+  const fromAccount = budget ? budget.owner : signerAccount
+  const ownerBalance = useBalance(budget?.owner ?? null)
+  const { inj, usdc } = budget ? ownerBalance : own
+  const balLoading = own.loading || (!!budget && ownerBalance.loading)
 
   const [step, setStep] = useState<Step>(1)
   const [payrollName, setPayrollName] = useState('')
@@ -67,14 +101,18 @@ export default function PayrollPage() {
   const totalAmount = formatBaseUnits(totalBase, decimals)
   const balance = BigInt((token === 'INJ' ? inj : usdc) || '0')
   const overBalance = totalBase > balance
+  // The exact denom a budget was given in, which its payments must use.
+  const budgetDenom = budget?.remaining.find(c => sameDenom(c.denom, TOKENS[token].denom))?.denom ?? null
 
-  // Fees are paid in INJ. Payroll is one MsgMultiSend, so one fee; this is the
-  // estimate until the batch is simulated just before signing.
+  // Fees are paid in INJ, by whoever signs. Payroll is one transaction, so one
+  // fee; this is the estimate until the batch is simulated just before signing.
+  // From a budget, the owner's account pays the total and the signer only the fee.
   const fee = networkFee(payrollGas(recipients.length))
-  const feeCheck = checkFee(BigInt(inj || '0'), fee, token === 'INJ' ? totalBase : BigInt(0))
+  const feeCheck = checkFee(BigInt(own.inj || '0'), fee, token === 'INJ' && !budget ? totalBase : BigInt(0))
   const fundsError = balLoading ? null
+    : overBalance && budget ? `The total is more than ${shortAddress(budget.owner)} holds: ${formatBaseUnits(balance, decimals, 4)} ${token}.`
     : overBalance ? `The total is more than your ${token} balance of ${formatBaseUnits(balance, decimals, 4)} ${token}.`
-    : !feeCheck.ok ? feeShortfallMessage(feeCheck, token === 'INJ')
+    : !feeCheck.ok ? feeShortfallMessage(feeCheck, token === 'INJ' && !budget)
     : null
 
   const addRecipient = () => setRecipients(prev =>
@@ -91,29 +129,83 @@ export default function PayrollPage() {
   const invalidAmountRows = recipients.flatMap((r, i) => (r.amount.trim() && amounts[i] === null ? [i + 1] : []))
   const repeatedRows = accounts.flatMap((a, i) => (a && accounts.indexOf(a) !== i ? [i + 1] : []))
 
-  // The signing account (Keplr/Leap once connected, else the EVM wallet) and every row, checked on the review step.
-  const checks = usePayrollChecks(token, toInjectiveAddress(cosmosAddress ?? address), step === 3 ? accounts : [])
+  // The paying account (this one, or a budget's owner) and every row, checked on the review step.
+  const checks = usePayrollChecks(token, fromAccount, step === 3 ? accounts : [], budget ? BUDGET_MSGS : undefined)
 
-  const canProceedStep1 = payrollName.trim().length > 0
-  const canProceedStep2 = recipients.every((r, i) => accounts[i] && (amounts[i] ?? BigInt(0)) > BigInt(0))
+  // Exact base units per row, once every row has an account and an amount.
+  const outputs = accounts.every(Boolean) && amounts.every(a => a !== null && a > BigInt(0))
+    ? recipients.map((_, i) => ({ address: accounts[i]!, amountBase: amounts[i]!.toString() }))
+    : null
+  const budgetError = budget && outputs ? budgetProblem(budget, budgetDenom ?? TOKENS[token].denom, outputs) : null
+
+  const canProceedStep1 = payrollName.trim().length > 0 && !budgetGone
+  const canProceedStep2 = outputs !== null
+
+  const chooseFrom = (choice: string) => {
+    setPayFrom(choice)
+    const chosen = budgets.find(b => b.owner === choice)
+    const tokens = chosen ? budgetTokens(chosen) : []
+    if (chosen && tokens.length && !tokens.includes(token)) setToken(tokens[0])
+  }
+
+  // Start a new run from a saved one: same name, token, payer and rows, all editable.
+  const reuseRun = (run: PayrollRun) => {
+    const { decimals: runDecimals } = TOKENS[run.token]
+    setPayrollName(run.name)
+    setToken(run.token)
+    setPayFrom(run.operator ? run.from : OWN)
+    setRecipients(run.rows.map((row, i) => ({
+      id: `${Date.now()}-${i}`,
+      label: row.label ?? '',
+      address: row.address,
+      amount: formatBaseUnits(row.amountBase, runDecimals),
+    })))
+    setPaid(null)
+    setStatus({ type: null, message: '' })
+    setStep(1)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const handleDispatch = async () => {
     setLoading(true)
     setStatus({ type: null, message: '' })
     setPaid(null)
     try {
-      // One MsgMultiSend for everyone. Amounts are human-readable and
-      // converted to base units once inside sendPayroll.
       if (!signer) throw new Error('Connect a wallet to sign the payroll.')
-      const hash = await sendPayroll(
-        recipients.map((r, i) => ({ address: accounts[i]!, amount: r.amount.trim() })),
+      if (!outputs) throw new Error('Every row needs an account and an amount.')
+      const sender = await signerAddress(signer)
+      let denom: string
+      let hash: string
+      if (budget) {
+        // One MsgExec of one MsgSend per row, from the owner's account, signed by this one.
+        if (budget.operator !== sender) throw new Error(`This budget was given to ${shortAddress(budget.operator)}. Sign with that account.`)
+        denom = budgetDenom ?? TOKENS[token].denom
+        hash = await signAndBroadcast(buildBudgetPayroll(budget, denom, outputs), CHAIN_ID, MEMO_PAYROLL, signer)
+      } else {
+        // One MsgMultiSend for everyone, in the denom spelling this account holds.
+        denom = await resolveHeldDenom(sender, TOKENS[token])
+        const msg = buildPayrollMultiSend(sender, denom, outputs.map(o => ({ address: o.address, amount: o.amountBase })))
+        hash = await signAndBroadcast(msg, CHAIN_ID, MEMO_PAYROLL, signer)
+      }
+      saveRun({
+        id: hash,
+        name: payrollName.trim(),
         token,
-        MEMO_PAYROLL,
-        CHAIN_ID,
-        signer,
-      )
+        denom,
+        from: budget ? budget.owner : sender,
+        ...(budget && { operator: sender }),
+        rows: outputs.map((o, i) => ({ ...(recipients[i].label?.trim() && { label: recipients[i].label!.trim() }), ...o })),
+        hash,
+        paidAt: new Date().toISOString(),
+      })
+      void queryClient.invalidateQueries({ queryKey: ['bank-balances'] })
+      if (budget) void queryClient.invalidateQueries({ queryKey: ['payroll-budgets'] })
       const n = recipients.length
-      setPaid({ hash, message: `Payroll "${payrollName}" paid ${n} recipient${n > 1 ? 's' : ''} in ${token} in one transaction, confirmed on chain.` })
+      const source = budget ? ` from ${shortAddress(budget.owner)}'s account` : ''
+      setPaid({
+        hash,
+        message: `Payroll "${payrollName.trim()}" paid ${n} recipient${n > 1 ? 's' : ''} in ${token}${source} in one transaction, confirmed on chain. It's saved under Past runs on this device.`,
+      })
       setPayrollName('')
       setRecipients([{ id: Date.now().toString(), address: '', amount: '', label: '' }])
       setStep(1)
@@ -142,7 +234,7 @@ export default function PayrollPage() {
     <div style={{ maxWidth: '680px', margin: '0 auto' }}>
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Payroll</h1>
-        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Batch-pay your team in a single on-chain MsgMultiSend transaction.</p>
+        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Batch-pay your team in one on-chain transaction, from your account or from a payroll budget you were given.</p>
       </div>
 
       {paid && (
@@ -192,9 +284,72 @@ export default function PayrollPage() {
               ))}
             </div>
             <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-              Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}</span>
+              {budget ? (
+                <>
+                  Left in this budget: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{formatBaseUnits(budgetLeft(budget, TOKENS[token].denom), decimals, 4)} {token}</span>
+                  {' · '}{shortAddress(budget.owner)} holds {balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}
+                </>
+              ) : (
+                <>Available: <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>{balLoading ? '—' : formatBaseUnits(balance, decimals, 4)} {token}</span></>
+              )}
             </p>
           </div>
+          {(budgets.length > 0 || payFrom !== OWN) && (
+            <div>
+              <label className="label">Pay from</label>
+              <div role="radiogroup" aria-label="Pay from" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[null, ...budgets].map(b => {
+                  const value = b ? b.owner : OWN
+                  const selected = payFrom === value
+                  return (
+                    <button
+                      key={value}
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => chooseFrom(value)}
+                      style={{
+                        textAlign: 'left',
+                        padding: '10px 12px',
+                        borderRadius: '9px',
+                        border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                        background: selected ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ display: 'block', fontSize: '13px', fontWeight: 600 }}>
+                        {b ? `${shortAddress(b.owner)}'s payroll budget` : 'Your account'}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.5 }}>
+                        {b
+                          ? [
+                              budgetTokens(b).map(t => `${formatBaseUnits(budgetLeft(b, TOKENS[t].denom), TOKENS[t].decimals, 4)} ${t} left`).join(', ') || 'Only tokens NinjaPay doesn\u2019t pay in',
+                              b.expiresAt ? `until ${format(b.expiresAt, 'd MMM yyyy')}` : 'no end date',
+                              b.allowList.length ? `only ${b.allowList.length} listed account${b.allowList.length === 1 ? '' : 's'}` : 'any account',
+                            ].join(' · ')
+                          : signerAccount ? shortAddress(signerAccount) : ''}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              {budget && (
+                <p style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  The total comes out of {shortAddress(budget.owner)}&rsquo;s account and its budget. You sign and pay the network fee.
+                </p>
+              )}
+              {budgetGone && (
+                <div role="alert" className="alert-error" style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <span>
+                    {budgetsQuery.isError
+                      ? 'Couldn\u2019t read your payroll budgets from Injective. Try again in a moment, or pay from your account.'
+                      : `The payroll budget from ${shortAddress(payFrom)} is no longer open: it was revoked, used up or has ended. Pay from your account, or ask for a new budget.`}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           <button onClick={() => { if (canProceedStep1) setStep(2) }} disabled={!canProceedStep1} className="btn-primary" style={{ width: '100%', padding: '12px' }}>
             Continue to Recipients
           </button>
@@ -245,6 +400,12 @@ export default function PayrollPage() {
               A run pays up to {MAX_PAYROLL_RECIPIENTS} recipients. Split bigger payrolls into more runs.
             </p>
           )}
+          {budget && budget.allowList.length > 0 && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              This budget may only pay the {budget.allowList.length} account{budget.allowList.length === 1 ? '' : 's'} {shortAddress(budget.owner)} listed. Injective refuses anyone else.
+            </p>
+          )}
+          {budgetError && step === 2 && <p style={{ fontSize: '12px', color: 'var(--error)' }}>{budgetError}</p>}
           {invalidRows.map(n => (
             <p key={n} style={{ fontSize: '12px', color: 'var(--error)' }}>Row {n}: {targets[n - 1].error}</p>
           ))}
@@ -301,6 +462,12 @@ export default function PayrollPage() {
               <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Token</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{token}</span>
             </div>
+            {budget && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Paid from</span>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', textAlign: 'right' }}>{shortAddress(budget.owner)}&rsquo;s payroll budget</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
               <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Recipients</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{recipients.length}</span>
@@ -340,12 +507,12 @@ export default function PayrollPage() {
             <p key={w.message} role="alert" style={{ fontSize: '12px', color: 'var(--warning)' }}>{w.message}</p>
           ))}
 
-          {fundsError && (
-            <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+          {[budgetGone ? 'This payroll budget is no longer open. Go back and pay from your account.' : budgetError, fundsError].filter(Boolean).map(message => (
+            <div key={message} className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
-              <span>{fundsError}</span>
+              <span>{message}</span>
             </div>
-          )}
+          ))}
 
           {/* Recipient list preview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -376,16 +543,21 @@ export default function PayrollPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }} disabled={loading || cosmosLoading}>Back</button>
-            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !signer || !chainHealth.canSend || checks.blocks.length > 0} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
+            <button onClick={handleDispatch} disabled={loading || cosmosLoading || balLoading || !!fundsError || !!budgetError || budgetGone || !signer || !chainHealth.canSend || checks.blocks.length > 0} className="btn-primary" style={{ flex: 2, padding: '13px' }}>
               {(loading || cosmosLoading) ? <><span className="spinner" /> Dispatching...</> : <><Users2 size={15} /> Dispatch Payroll</>}
             </button>
           </div>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.6' }}>
-            Sent as one MsgMultiSend transaction: one signature and one fee, and either every recipient is paid or none is.
+            {budget
+              ? 'Sent as one transaction with a payment per recipient under the budget: one signature and one fee, and either every recipient is paid or none is.'
+              : 'Sent as one MsgMultiSend transaction: one signature and one fee, and either every recipient is paid or none is.'}
           </p>
         </div>
       )}
+
+      <PayrollRuns onReuse={reuseRun} />
+      <PayrollBudgetForm owner={signerAccount} signer={signer} />
     </div>
   )
 }

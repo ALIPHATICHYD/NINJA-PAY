@@ -65,6 +65,12 @@ export function cosmosTransfers(messages: Record<string, unknown>[]): { transfer
       for (const output of (msg.outputs as { address: string; coins: Coin[] }[] | undefined) ?? []) {
         toCoins(output.coins).forEach(coin => transfers.push({ from, to: output.address, coin }))
       }
+    } else if (kind === 'MsgExec') {
+      // An authz MsgExec runs the messages it carries as their signer, such
+      // as a claim payout or a payroll operator's MsgSends from the owner.
+      const inner = cosmosTransfers((msg.msgs as Record<string, unknown>[] | undefined) ?? [])
+      transfers.push(...inner.transfers)
+      otherActions += inner.otherActions
     } else {
       otherActions++
     }

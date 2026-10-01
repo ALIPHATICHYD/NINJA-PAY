@@ -46,3 +46,27 @@ export function downloadCsv(csv: string, filename: string) {
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+const RUN_COLUMNS = ['Payroll', 'Paid (UTC)', 'Label', 'Account', 'Amount', 'Token', 'Denom', 'Paid from', 'Checked against the chain', 'Transaction', 'Explorer']
+
+/** A saved payroll run as CSV, one row per recipient, with what the chain says about it. */
+export function payrollRunCsv(
+  run: { name: string; paidAt: string; token: string; denom: string; from: string; hash: string; rows: { label?: string; address: string; amountBase: string }[] },
+  decimals: number,
+  checked: string,
+): string {
+  const rows = run.rows.map(row => [
+    run.name,
+    run.paidAt,
+    row.label ?? '',
+    row.address,
+    formatCoinAmount({ denom: run.denom, amountBase: row.amountBase, decimals, token: run.token, verified: true }, decimals),
+    run.token,
+    run.denom,
+    run.from,
+    checked,
+    run.hash,
+    explorerTxUrl(run.hash),
+  ])
+  return [RUN_COLUMNS, ...rows].map(row => row.map(csvField).join(',')).join('\r\n') + '\r\n'
+}
