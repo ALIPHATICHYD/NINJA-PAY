@@ -10,7 +10,7 @@ import { NETWORK_LABEL, explorerName, explorerTxUrl } from '@/lib/injective/netw
 import { shortAddress } from '@/lib/injective/address'
 import {
   ACTIVITY_LABELS,
-  formatCoinAmount,
+  formatCoin,
   type ActivityItem,
   type ActivityType,
 } from '@/lib/injective/activity'
@@ -128,7 +128,7 @@ export default function TransactionsPage() {
                   </div>
                   <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-geist-mono), monospace', textAlign: 'right' }}>
                     {tx.direction === 'out' ? '−' : '+'}
-                    {tx.coins.map(c => `${formatCoinAmount(c)} ${c.token}`).join(' + ')}
+                    {tx.coins.map(c => formatCoin(c)).join(' + ')}
                   </p>
                   <StatusChip state={tx.success ? 'confirmed' : 'failed'} className="w-fit" />
                   <a

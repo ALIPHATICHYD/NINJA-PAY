@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { fetchActivity, type ActivityItem } from '@/lib/injective/activity'
+import { useTokenList } from '@/hooks/useTokenList'
+import { fetchActivity, withTokenNames, type ActivityItem } from '@/lib/injective/activity'
 import { toInjectiveAddress } from '@/lib/injective/address'
 import { resolveClaimEscrows } from '@/lib/supabase'
 
 /**
  * On-chain activity for every Injective account the user has connected:
  * the Keplr/Leap account and the inj1 form of the EVM wallet address.
+ * Tokens other than INJ and USDC are named from Injective's token list.
  */
 export function useActivity() {
   const { address: evmAddress } = useWallet()
@@ -47,5 +49,8 @@ export function useActivity() {
 
   useEffect(() => { load() }, [load])
 
-  return { items, loading, error, refetch: load, addresses }
+  const tokens = useTokenList()
+  const named = useMemo(() => withTokenNames(items, tokens), [items, tokens])
+
+  return { items: named, loading, error, refetch: load, addresses }
 }

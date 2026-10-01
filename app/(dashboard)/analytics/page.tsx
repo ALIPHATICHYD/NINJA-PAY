@@ -7,7 +7,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { usePrices } from '@/hooks/usePrices'
 import { useActivity } from '@/hooks/useActivity'
 import { NETWORK_LABEL } from '@/lib/injective/network'
-import { ACTIVITY_LABELS, coinValue, type ActivityItem, type ActivityType } from '@/lib/injective/activity'
+import { ACTIVITY_LABELS, coinValue, pricedAs, type ActivityItem, type ActivityType } from '@/lib/injective/activity'
 import { formatUsd, sumUsd, usdValue } from '@/lib/prices'
 
 type Period = '7D' | '30D' | '90D'
@@ -39,7 +39,7 @@ export default function AnalyticsPage() {
   }
 
   // USD value of a transfer at today's Injective oracle price, or null when a token in it has no fresh price.
-  const txUsd = (tx: ActivityItem) => sumUsd(tx.coins.map(c => usdValue(coinValue(c), c.token, prices)))
+  const txUsd = (tx: ActivityItem) => sumUsd(tx.coins.map(c => usdValue(coinValue(c), pricedAs(c), prices)))
 
   const now = new Date()
   const start = startOfDay(subDays(now, PERIOD_DAYS[period] - 1))

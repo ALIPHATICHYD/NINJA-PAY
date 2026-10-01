@@ -71,7 +71,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend` signed with Keplr/Leap: one signature, one fee, all or nothing. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. |
 | Claim links: create | `/claims` | Working on testnet (INJ verified) | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
 | Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
-| Transactions | `/transactions` | Working | Reads bank transfers for your Keplr/Leap account and your EVM wallet's `inj1` address straight from Injective testnet. Claim activity is labelled by matching escrow addresses to claim pools. |
+| Transactions | `/transactions` | Working | Reads bank transfers for your Keplr/Leap account and your EVM wallet's `inj1` address straight from Injective testnet. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…`, `0x…` or a `.inj` name, stores the `inj1…` form, and spots the same account saved twice in different formats. A beneficiary saved by name keeps the name and is paid at the saved address; the list warns when the name now points somewhere else. **Send** prefills `/send` with the address. |
 | Analytics | `/analytics` | Working | Sent and received volume in USD at today's Injective oracle price, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It uses the same on-chain history as Transactions. USD totals are hidden when a token has no current price. |
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No naira rate is quoted and no bank details are collected. |
@@ -158,6 +158,7 @@ Two details to keep in mind:
 
 - **Denom casing.** Injective's token list writes the address checksummed, and its agent-skills constants write it in lowercase. NinjaPay compares denoms case-insensitively and signs bank messages with the exact spelling the chain reports for the sender's balance.
 - **Legacy USDC.** Earlier builds used the Polygon USDC.e Peggy denom `peggy0x2791…4174`. It is not Circle's native USDC and is labelled `USDC.e (legacy)` in history. Reclaiming a claim pool returns every token it holds, including that one.
+- **Other tokens.** NinjaPay sends and prices only the two denoms above, matched exactly. Anything else in a wallet's history is named from the verified entries of Injective's token list, which `/api/tokens` reads on the server (the testnet list is over 20 MB). A listed token that calls itself INJ or USDC on another denom, such as Ethereum's bridged INJ (`peggy0xe28b…`), keeps its denom beside the name and is never priced as INJ. A token not on the list shows as a short denom and raw amount, marked unverified. Which assets can be cashed out to naira is for the licensed partner to decide, not this list.
 
 **Amounts.** Cosmos amounts are integer strings in base units: `1 INJ = 10^18 inj` and `1 USDC = 10^6` base units. Convert **exactly once**, at the edge where the message is built. Most of the current payment bugs come from converting twice.
 
@@ -178,6 +179,7 @@ app/
     layout.tsx                Web3Providers for public claim links
     [claimId]/page.tsx        Public claim redemption page
   api/evm-rpc/route.ts        Optional EVM RPC proxy that keeps a provider key on the server
+  api/tokens/route.ts         Injective's verified tokens, trimmed for the browser
 components/
   landing/                    Client leaves for the landing page (Reveal, Steps, Faq, HeroArt)
   Navigation.tsx              App nav with RainbowKit ConnectButton
@@ -194,6 +196,7 @@ hooks/
   useBalance.ts               INJ/USDC balances from the bank module
   useChainHealth.ts           Chain id and block freshness for the rail a page sends on
   useActivity.ts              On-chain history for the connected accounts
+  useTokenList.ts             Injective's verified tokens, by denom
   usePrices.ts                Indicative INJ and USDC prices, refreshed each minute
   useRecipients.ts            Recipient fields: address or .inj name, resolved
   useSwapQuote.ts             INJ → USDC quote, slippage floor, fee and oracle check
@@ -202,6 +205,7 @@ lib/
   injective/
     network.ts                Network, chain ids, endpoints, explorers, faucets
     tokens.ts                 INJ and native USDC: denoms, decimals, contracts
+    token-list.ts             Names for other denoms from Injective's verified token list
     address.ts                inj1… and 0x… as one account
     names.ts                  .inj names through the Injective Name Service
     swap.ts                   Swap precompile: INJ/USDC route, allowlist, quote maths
@@ -442,6 +446,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- History names tokens from Injective's verified token list, so an `ibc/` or `peggy` denom shows its name instead of a hash. INJ and USDC are recognised and priced by exact denom only; before, USD totals priced a coin by its label. The hardcoded testnet USDT entry is gone.
 - Payroll goes out as one `MsgMultiSend`, as the page always said, instead of one transaction per recipient. Each row is checked against the token's rules first.
 - Send transfers USDC from the connected EVM wallet as an ERC-20 transfer, like INJ. Before, USDC went through Keplr or Leap even for MetaMask users, sometimes from a different account than the connected wallet.
 - Send, Payroll and Beneficiaries take `.inj` names from the Injective Name Service, show the address a name points to, and show a typed address's primary name when it resolves back to that address. A beneficiary saved by name warns when the name has since been pointed at a different address.

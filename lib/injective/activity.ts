@@ -8,11 +8,20 @@
  */
 
 import { ENDPOINTS } from './network'
-import { INJ, USDC, LEGACY_PEGGY_USDC_DENOM } from './tokens'
+import { INJ, USDC, sameDenom } from './tokens'
+import { labelDenom, type TokenMap } from './token-list'
 
 export type ActivityType = 'send' | 'receive' | 'claim-fund' | 'claim-received' | 'claim-reclaim' | 'payroll'
 
-export type ActivityCoin = { token: 'INJ' | 'USDC' | string; denom: string; amountBase: string; decimals: number }
+export type ActivityCoin = {
+  /** A display name only: see `pricedAs` for what the coin actually is. */
+  token: 'INJ' | 'USDC' | string
+  denom: string
+  amountBase: string
+  decimals: number
+  /** False when neither NinjaPay nor Injective's verified token list knows the denom. */
+  verified: boolean
+}
 
 export type ActivityItem = {
   hash: string
@@ -33,26 +42,21 @@ export type EscrowResolver = (addresses: string[]) => Promise<Map<string, Escrow
 
 export const MEMO_PAYROLL = 'ninjapay:payroll'
 
-// Keyed by lowercase denom: erc20: denoms may arrive checksummed or not.
-const KNOWN_DENOMS: Record<string, { token: string; decimals: number }> = {
-  [INJ.denom.toLowerCase()]: { token: INJ.symbol, decimals: INJ.decimals },
-  [USDC.denom.toLowerCase()]: { token: USDC.symbol, decimals: USDC.decimals },
-  // Polygon USDC.e used before the move to native USDC. Not Circle's native USDC.
-  [LEGACY_PEGGY_USDC_DENOM.toLowerCase()]: { token: 'USDC.e (legacy)', decimals: 6 },
-  // Peggy-bridged USDT handed out by the Injective testnet faucet
-  peggy0x87ab3b4c8661e07d6372361211b96ed4dc36b1b5: { token: 'USDT', decimals: 6 },
+function toCoins(amount: { denom: string; amount: string }[]): ActivityCoin[] {
+  return amount.map(c => ({ denom: c.denom, amountBase: c.amount, ...labelDenom(c.denom) }))
 }
 
-function toCoins(amount: { denom: string; amount: string }[]): ActivityCoin[] {
-  return amount.map(c => {
-    const known = KNOWN_DENOMS[c.denom.toLowerCase()]
-    return {
-      denom: c.denom,
-      amountBase: c.amount,
-      token: known?.token ?? (c.denom.length > 12 ? `${c.denom.slice(0, 10)}…` : c.denom),
-      decimals: known?.decimals ?? 0,
-    }
-  })
+/** Names every coin from Injective's token list, once it has loaded. */
+export function withTokenNames(items: ActivityItem[], list: TokenMap): ActivityItem[] {
+  if (list.size === 0) return items
+  return items.map(item => ({ ...item, coins: item.coins.map(c => ({ ...c, ...labelDenom(c.denom, list) })) }))
+}
+
+/** Which priced token a coin is, by exact denom only, never by its name. */
+export function pricedAs(coin: ActivityCoin): 'INJ' | 'USDC' | null {
+  if (sameDenom(coin.denom, INJ.denom)) return 'INJ'
+  if (sameDenom(coin.denom, USDC.denom)) return 'USDC'
+  return null
 }
 
 type RestCoin = { denom: string; amount: string }
@@ -160,6 +164,11 @@ export function formatCoinAmount(coin: ActivityCoin, maxFractionDigits = 6): str
   const whole = digits.slice(0, -coin.decimals)
   const frac = digits.slice(-coin.decimals).slice(0, maxFractionDigits).replace(/0+$/, '')
   return frac ? `${whole}.${frac}` : whole
+}
+
+/** "1.5 INJ", or a raw amount and short denom marked unverified. */
+export function formatCoin(coin: ActivityCoin, maxFractionDigits = 6): string {
+  return `${formatCoinAmount(coin, maxFractionDigits)} ${coin.token}${coin.verified ? '' : ' (unverified)'}`
 }
 
 /** Numeric value of a coin, for charts and USD totals (float is fine for display). */
