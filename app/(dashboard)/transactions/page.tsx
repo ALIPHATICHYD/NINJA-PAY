@@ -37,7 +37,7 @@ function shorten(value: string): string {
 
 export default function TransactionsPage() {
   const { isConnected } = useWallet()
-  const { items, loading, error, refetch } = useActivity()
+  const { items, loading, error, warnings, hasMore, loadingMore, loadMore, refetch } = useActivity()
   const [filter, setFilter] = useState<Filter>('all')
 
   if (!isConnected) {
@@ -81,6 +81,9 @@ export default function TransactionsPage() {
       </div>
 
       {error && <div className="alert-error" style={{ marginBottom: '16px' }}>{error}</div>}
+      {warnings.map(w => (
+        <div key={w} className="alert-warning" style={{ marginBottom: '16px' }}>{w} The list below may be missing some transfers.</div>
+      ))}
 
       {loading && items.length === 0 ? (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -96,7 +99,13 @@ export default function TransactionsPage() {
           <div className="empty-state">
             <ListOrdered size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', display: 'block' }} />
             <p style={{ fontWeight: '500' }}>{items.length === 0 ? 'No transactions yet' : 'Nothing matches this filter'}</p>
-            <p>{items.length === 0 ? 'Transfers from your connected Injective accounts will appear here.' : 'Try another filter.'}</p>
+            <p>
+              {items.length === 0
+                ? 'Transfers from your connected Injective accounts will appear here.'
+                : hasMore
+                  ? 'Nothing in what has loaded so far. Load more to look further back.'
+                  : 'Try another filter.'}
+            </p>
           </div>
         </div>
       ) : (
@@ -147,9 +156,17 @@ export default function TransactionsPage() {
         ))
       )}
 
+      {hasMore && !loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <button onClick={loadMore} disabled={loadingMore} className="btn-secondary" style={{ fontSize: '13px', padding: '8px 16px' }}>
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      )}
+
       <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-        Shows bank transfers on {NETWORK_LABEL} for your Keplr/Leap account and your EVM wallet&apos;s inj1 address.
-        Transfers sent from an EVM wallet (MetaMask) are not listed yet.
+        Shows transfers on {NETWORK_LABEL} for your Keplr/Leap account and your EVM wallet: bank transfers from Injective&apos;s
+        indexer, and INJ and ERC-20 transfers sent from EVM wallets, from Blockscout.
       </p>
     </div>
   )

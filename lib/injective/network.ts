@@ -62,6 +62,7 @@ export const ENDPOINTS = {
   grpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_GRPC) ?? publicEndpoints.grpc,
   rest: configured(process.env.NEXT_PUBLIC_INJECTIVE_REST) ?? publicEndpoints.rest,
   indexer: configured(process.env.NEXT_PUBLIC_INJECTIVE_INDEXER) ?? publicEndpoints.indexer,
+  explorer: configured(process.env.NEXT_PUBLIC_INJECTIVE_EXPLORER) ?? publicEndpoints.explorer,
   evmRpc: configured(process.env.NEXT_PUBLIC_INJECTIVE_EVM_RPC) ?? PUBLIC_EVM_RPC,
 }
 
@@ -91,6 +92,9 @@ export const EXPLORERS = {
   evm: EVM.blockscout,
   cosmos: IS_MAINNET ? 'https://injscan.com' : 'https://testnet.explorer.injective.network',
 }
+
+/** Blockscout's REST API (v2), for transfers sent from EVM wallets. */
+export const BLOCKSCOUT_API = `${EVM.blockscout}/api/v2`
 
 /** EVM transaction hashes are 0x plus 64 hex digits; Cosmos ones are 64 hex digits without 0x. */
 export function isEvmTxHash(hash: string): boolean {

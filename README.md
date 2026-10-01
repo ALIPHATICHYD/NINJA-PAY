@@ -71,9 +71,9 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend` signed with Keplr/Leap: one signature, one fee, all or nothing. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. |
 | Claim links: create | `/claims` | Working on testnet (INJ verified) | Funds a one-time escrow account from the creator's Keplr/Leap wallet, then saves the pool. The escrow key lives only in the link's `#fragment` and the creator's browser. Creators can reclaim leftovers. |
 | Claim links: redeem | `/claim/[claimId]` | Working on testnet (INJ verified) | Reserves a share atomically in Supabase, then pays it from the escrow to the claimer's Keplr/Leap address (or the `inj1` form of their EVM address). |
-| Transactions | `/transactions` | Working | Reads bank transfers for your Keplr/Leap account and your EVM wallet's `inj1` address straight from Injective testnet. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
+| Transactions | `/transactions` | Working | One list, newest first, for your Keplr/Leap account and your EVM wallet: bank transfers from Injective's indexer, and INJ and ERC-20 transfers sent from EVM wallets (such as USDC from MetaMask) from Blockscout. **Load more** pages further back. Claim activity is labelled by matching escrow addresses to claim pools. Other tokens are named from Injective's verified token list; a token not on it shows as a short denom marked **unverified**. |
 | Beneficiaries | `/beneficiaries` | Working (this browser) | Saved to `localStorage`, deliberately not to Supabase, which has no auth yet. Accepts `inj1…`, `0x…` or a `.inj` name, stores the `inj1…` form, and spots the same account saved twice in different formats. A beneficiary saved by name keeps the name and is paid at the saved address; the list warns when the name now points somewhere else. **Send** prefills `/send` with the address. |
-| Analytics | `/analytics` | Working | Sent and received volume in USD at today's Injective oracle price, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It uses the same on-chain history as Transactions. USD totals are hidden when a token has no current price. |
+| Analytics | `/analytics` | Working | Sent and received volume in USD at today's Injective oracle price, transaction count, counterparties, a daily or weekly chart, and a breakdown by type. It covers the most recent page of history from each source (50 transactions), not the full history yet. USD totals are hidden when a token has no current price. |
 | Off-ramp to NGN | `/send` (Off-Ramp tab) | Not live | Placeholder only (`components/OfframpUnavailable.tsx`). No naira rate is quoted and no bank details are collected. |
 | INJ → USDC quote | `/send` (Off-Ramp tab) | Waiting on Injective's swap allowlist | Asks Injective's Swap precompile what the INJ/USDC spot market would give for an amount of INJ, with a 0.5% slippage floor, the market's taker fee rate, the swap's network fee and a check against the Pyth price. Quote only: no swap button and no naira amount. It shows a quote only once Injective adds the market to its swap allowlist, which NinjaPay can't do; until then it says so. |
 | Bill payments (airtime, data, electricity, cable) | `/bills` | Not live | Form is disabled; no payment is taken and nothing is sent to a provider. |
@@ -195,7 +195,7 @@ hooks/
   useCosmosTransaction.ts     Keplr/Leap connection and sendToken
   useBalance.ts               INJ/USDC balances from the bank module
   useChainHealth.ts           Chain id and block freshness for the rail a page sends on
-  useActivity.ts              On-chain history for the connected accounts
+  useActivity.ts              On-chain history for the connected accounts, paged and merged
   useTokenList.ts             Injective's verified tokens, by denom
   usePrices.ts                Indicative INJ and USDC prices, refreshed each minute
   useRecipients.ts            Recipient fields: address or .inj name, resolved
@@ -216,7 +216,8 @@ lib/
     bank.ts                   Balance queries, MsgMultiSend builder
     cosmos-transactions.ts    Keplr/Leap signing, sendToken
     claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
-    activity.ts               Transaction history from the chain
+    activity.ts               Bank-transfer history from Injective's indexer, merged across sources
+    evm-activity.ts           EVM wallet transfers (INJ value, ERC-20) from Blockscout
     constants.ts              Re-exports network settings, env-backed config
     broadcast.ts, evm-config.ts, types.ts
   money.ts                    Exact amount <-> base-unit conversion
@@ -270,7 +271,7 @@ Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visib
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes, for claims and analytics | `lib/supabase.ts` | Supabase → Project Settings → API. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes, for claims and analytics | `lib/supabase.ts` | Publishable anon key. Protect tables with RLS. |
 | `NEXT_PUBLIC_INJECTIVE_NETWORK` | No | `lib/injective/network.ts` | `mainnet` to target mainnet. Defaults to testnet. |
-| `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD and indexer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
+| `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` / `NEXT_PUBLIC_INJECTIVE_EXPLORER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD, indexer and indexer explorer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
 | `NEXT_PUBLIC_INJECTIVE_EVM_RPC` | No | `components/Web3Providers.tsx`, `lib/injective/health.ts` | EVM JSON-RPC for reads. A keyless provider URL, or `/api/evm-rpc` to use the server proxy below. The public RPC stays as a fallback. |
 | `INJECTIVE_EVM_RPC_URL` | No (server-only) | `app/api/evm-rpc/route.ts` | A premium EVM RPC URL with its API key. The proxy forwards only read methods and `eth_sendRawTransaction`, falls back to the public RPC, and logs nothing. Anyone who can reach the route can use it, so add rate limiting before relying on it. |
 | `NEXT_PUBLIC_WALLETCONNECT_ID` | Required for any deployment | `components/Web3Providers.tsx` | NinjaPay's own project id from [WalletConnect Cloud](https://cloud.walletconnect.com), with the site's domains on its allowlist. Mobile and QR-code wallets connect through it. A shared fallback id is hardcoded only so local development works. |
@@ -446,6 +447,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- Transactions lists transfers sent from EVM wallets. INJ and USDC sent from MetaMask used to be missing, because history only searched the chain's bank messages. History now comes from Injective's indexer and Blockscout, a page at a time with **Load more**, instead of two slow searches capped at 100 transactions each.
 - The Injective SDK packages moved together from 1.14.41 to 1.20.52, the release with Injective's EVM chain ids and the import paths the docs use. Transactions built and signed by both versions are byte-identical. Signing keeps a 120-block window, because 1.20 halved the default. The unused `@injectivelabs/wallet-ts` package is gone, and `npm audit` findings fell from 208 to 49.
 - History names tokens from Injective's verified token list, so an `ibc/` or `peggy` denom shows its name instead of a hash. INJ and USDC are recognised and priced by exact denom only; before, USD totals priced a coin by its label. The hardcoded testnet USDT entry is gone.
 - Payroll goes out as one `MsgMultiSend`, as the page always said, instead of one transaction per recipient. Each row is checked against the token's rules first.
