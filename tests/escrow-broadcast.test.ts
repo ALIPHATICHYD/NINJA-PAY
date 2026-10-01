@@ -80,6 +80,14 @@ describe('escrow payouts', () => {
     chain.simulate = [100_000]
     await expect(payShareFromEscrow(KEY, CLAIMER, 'USDC', '9000000')).rejects.toThrow(/not have enough funds/)
   })
+
+  it("doesn't broadcast what simulation shows the chain would refuse, so the fee reserve isn't spent", async () => {
+    chain.simulate = [new Error('failed to execute message; message index: 0: unauthorized: signer is not the sender')]
+    await expect(payShareFromEscrow(KEY, CLAIMER, 'USDC', '2500000')).rejects.toThrow(
+      "Injective would refuse this transaction (unauthorized: signer is not the sender), so it wasn't signed or sent and no fee was charged.",
+    )
+    expect(chain.sent).toHaveLength(0)
+  })
 })
 
 describe('escrow sweep', () => {

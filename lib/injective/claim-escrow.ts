@@ -18,7 +18,15 @@ import { ENDPOINTS } from './network'
 import { DENOMS, TOKENS, sameDenom } from './tokens'
 import { fetchAllBalances, balanceOf, type Coin } from './bank'
 import { toChainAmount } from '../money'
-import { describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction, HOOK_RESTRICTION_MESSAGE } from './transfer-errors'
+import {
+  describeExecutionFailure,
+  describeTransferError,
+  errorMessage,
+  isExecutionFailure,
+  isHookOutOfGas,
+  isHookRestriction,
+  HOOK_RESTRICTION_MESSAGE,
+} from './transfer-errors'
 
 export type ClaimToken = 'INJ' | 'USDC'
 
@@ -169,6 +177,12 @@ async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise
       gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
     } catch (error) {
       if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
+      // The chain refused the messages: broadcasting would only spend the pool's fee reserve.
+      // The pool's own checks explain the usual reason in the claimer's terms.
+      if (isExecutionFailure(errorMessage(error))) {
+        tx.check(held, escrowFee(ESCROW_FALLBACK_GAS))
+        throw new Error(describeExecutionFailure(errorMessage(error)))
+      }
       // Otherwise fall back to the default gas and let the broadcast decide.
     }
     gas = Math.min(Math.max(gas, minGas), ESCROW_MAX_GAS)

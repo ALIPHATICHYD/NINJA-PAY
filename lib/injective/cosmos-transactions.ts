@@ -21,7 +21,15 @@ import { ENDPOINTS, FAUCETS, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
 import { balanceOf, buildPayrollMultiSend, fetchAllBalances, resolveHeldDenom } from './bank'
 import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
-import { HOOK_RESTRICTION_MESSAGE, describeTransferError, errorMessage, isHookOutOfGas, isHookRestriction } from './transfer-errors'
+import {
+  HOOK_RESTRICTION_MESSAGE,
+  describeExecutionFailure,
+  describeTransferError,
+  errorMessage,
+  isExecutionFailure,
+  isHookOutOfGas,
+  isHookRestriction,
+} from './transfer-errors'
 import { toInjectiveAddress } from './address'
 import { toChainAmount } from '../money'
 
@@ -235,6 +243,8 @@ async function signAndBroadcastOnce(
   } catch (error) {
     // A real restriction shows up in simulation: stop before the wallet opens.
     if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
+    // So does any other refusal of the messages. Signing it anyway would only cost the fee.
+    if (isExecutionFailure(errorMessage(error))) throw new Error(describeExecutionFailure(errorMessage(error)))
     console.warn('Gas simulation failed, using fallback gas limit:', error)
   }
 

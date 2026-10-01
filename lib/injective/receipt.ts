@@ -9,8 +9,16 @@
  * - Cosmos hashes (64 hex digits) are read from the chain's REST API,
  *   GET /cosmos/tx/v1beta1/txs/{hash}.
  * - EVM hashes (0x plus 64 hex digits) are read over EVM JSON-RPC: the
- *   transaction, its receipt for status, fee and ERC-20 Transfer logs, and
- *   its block for the time.
+ *   transaction, its receipt for status and ERC-20 Transfer logs, and its
+ *   block for the time.
+ *
+ * An EVM transaction's fee is its gas limit times its fee cap
+ * (maxFeePerGas, or gasPrice for older transaction types). Injective charges
+ * that up front and refunds no unused gas, so gasUsed x effectiveGasPrice
+ * from the receipt can be lower than what was paid.
+ * Source: injective-core v1.20.3, injective-chain/modules/evm/types/msg.go
+ * (MsgEthereumTx.GetFee) and modules/evm/keeper/gas.go (RefundGas returns
+ * without refunding). Checked on a local chain by tests/e2e/evm.e2e.ts.
  */
 
 import { createPublicClient, erc20Abi, getAddress, http, parseEventLogs, type Hash } from 'viem'
@@ -119,7 +127,7 @@ async function evmReceipt(hash: Hash): Promise<Receipt | null> {
     status: receipt.status === 'success' ? 'confirmed' : 'failed',
     timestamp: new Date(Number(block.timestamp) * 1000),
     block: receipt.blockNumber.toString(),
-    fee: toCoins([{ denom: INJ.denom, amount: (receipt.gasUsed * receipt.effectiveGasPrice).toString() }])[0],
+    fee: toCoins([{ denom: INJ.denom, amount: (tx.gas * (tx.maxFeePerGas ?? tx.gasPrice ?? receipt.effectiveGasPrice)).toString() }])[0],
     memo: '',
     transfers,
     otherActions: transfers.length === 0 ? 1 : 0,

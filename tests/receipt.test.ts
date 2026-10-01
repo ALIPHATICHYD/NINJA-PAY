@@ -56,19 +56,21 @@ describe('Cosmos receipts', () => {
 })
 
 describe('EVM receipts', () => {
-  it('reads value, ERC-20 transfers, fee and time over JSON-RPC', async () => {
+  it('reads value, ERC-20 transfers, the fee charged and time over JSON-RPC', async () => {
     const from = '0x1111111111111111111111111111111111111111'
     const to = '0x2222222222222222222222222222222222222222'
     const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
     const results: Record<string, unknown> = {
       eth_chainId: '0x59f',
       eth_getTransactionByHash: {
-        hash: EVM_HASH, from, to: USDC.evmAddress, value: '0x0', input: '0x', nonce: '0x1', gas: '0x30d40', gasPrice: '0x9502f900',
-        blockHash: `0x${'1'.repeat(64)}`, blockNumber: '0x7b', transactionIndex: '0x0', type: '0x0', v: '0x1b', r: '0x1', s: '0x1', chainId: '0x59f',
+        hash: EVM_HASH, from, to: USDC.evmAddress, value: '0x0', input: '0x', nonce: '0x1', gas: '0x30d40',
+        // An EIP-1559 transaction with its fee cap 1.2x the price, as viem sets it by default.
+        gasPrice: '0x9896800', maxFeePerGas: '0xb71b000', maxPriorityFeePerGas: '0x0', accessList: [],
+        blockHash: `0x${'1'.repeat(64)}`, blockNumber: '0x7b', transactionIndex: '0x0', type: '0x2', v: '0x1', r: '0x1', s: '0x1', chainId: '0x59f', yParity: '0x1',
       },
       eth_getTransactionReceipt: {
         transactionHash: EVM_HASH, blockHash: `0x${'1'.repeat(64)}`, blockNumber: '0x7b', transactionIndex: '0x0', from, to: USDC.evmAddress,
-        status: '0x1', gasUsed: '0x1fbd0', cumulativeGasUsed: '0x1fbd0', effectiveGasPrice: '0x9502f900', type: '0x0', contractAddress: null,
+        status: '0x1', gasUsed: '0x1fbd0', cumulativeGasUsed: '0x1fbd0', effectiveGasPrice: '0x9896800', type: '0x2', contractAddress: null,
         logsBloom: `0x${'0'.repeat(512)}`,
         logs: [{
           address: USDC.evmAddress!.toLowerCase(), topics: [transferTopic, pad(from), pad(to)], data: encodeAbiParameters([{ type: 'uint256' }], [BigInt(1_500_000)]),
@@ -86,7 +88,8 @@ describe('EVM receipts', () => {
     expect(receipt).toMatchObject({
       status: 'confirmed',
       block: '123',
-      fee: { token: 'INJ', amountBase: (BigInt(0x1fbd0) * BigInt(0x9502f900)).toString() },
+      // Injective charges the whole gas limit at the fee cap, not gas used at the effective price.
+      fee: { token: 'INJ', amountBase: (BigInt(0x30d40) * BigInt(0xb71b000)).toString() },
       transfers: [{ from, to, coin: { token: 'USDC', amountBase: '1500000', denom: `erc20:${USDC.evmAddress}` } }],
       otherActions: 0,
     })

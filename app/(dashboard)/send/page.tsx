@@ -165,11 +165,16 @@ export default function SendPage() {
 
   // An inj1 recipient is sent to its 0x form: same account, same balance.
   // chainId makes wagmi refuse if the wallet is on another chain.
+  // Injective charges the whole gas limit at the fee cap and refunds nothing
+  // (see lib/injective/receipt.ts), so the cap is the price quoted above. The
+  // wallet sizes an INJ transfer's gas with the real value, which is 21,000
+  // to an ordinary address, as quoted.
   const handleSend = () => {
     if (!to || amountBase === null) return
+    const feeCap = { maxFeePerGas: gasPrice ?? GAS_PRICE, maxPriorityFeePerGas: BigInt(0) }
     if (sendToken === 'INJ') {
       injTx.reset()
-      injTx.sendTransaction({ chainId: INJECTIVE_EVM.id, to: to.evm, value: amountBase })
+      injTx.sendTransaction({ chainId: INJECTIVE_EVM.id, to: to.evm, value: amountBase, ...feeCap })
     } else {
       usdcTx.reset()
       usdcTx.writeContract({
@@ -179,6 +184,7 @@ export default function SendPage() {
         functionName: 'transfer',
         args: [to.evm, amountBase],
         gas: gasLimit,
+        ...feeCap,
       })
     }
   }

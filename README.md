@@ -39,6 +39,7 @@
 - [Known issues](#known-issues)
 - [Design system](#design-system)
 - [Scripts](#scripts)
+- [Testing](#testing)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [Community](#community)
@@ -238,6 +239,9 @@ lib/
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
   favicon.png, logo.svg, ninja-hero.webp
+tests/                        Unit tests (npm test)
+  e2e/                        Money paths on a local Injective chain (npm run test:e2e)
+.github/workflows/e2e.yml     Runs the end-to-end tests on demand
 ```
 
 ---
@@ -389,15 +393,16 @@ These policies let any client insert or update claim rows. The funds themselves 
 
 1. The user chooses INJ or USDC and enters a recipient. It can be written as `inj1…` or `0x…`. `parseAccountAddress` in `lib/injective/address.ts` checks it (bech32 checksum for `inj1…`, EIP-55 checksum for mixed-case `0x…`), shows the other form under the field, and blocks sending to your own wallet. A payment-request link from **Receive** (`/send?to=…&token=…&amount=…`) fills in all three and reminds the payer to check the address with the person who sent it.
    It can also be a `.inj` name. `lib/injective/names.ts` asks the Injective Name Service's registry contract for the name's resolver and the resolver for its address, and the page shows the full address under the field; that address is what gets paid. Names must be at least 3 lowercase letters, digits or hyphens, which keeps out lookalike Unicode names. A typed address shows its primary `.inj` name only if that name resolves back to the same address, as the INS docs advise.
-   Before **Send** is enabled, `lib/injective/transfer-checks.ts` asks the chain three things. Has Injective's circuit breaker switched off this kind of transaction? Do the token's permission rules pause sending or receiving, or leave either account without the role for it? Has the recipient ever been used? The first two block the send and explain why in plain words, as the chain's or the issuer's rule; NinjaPay doesn't screen transfers and never suggests a way around a restriction. An unused recipient is a warning only.
+   Before **Send** is enabled, `lib/injective/transfer-checks.ts` asks the chain three things. Has Injective's circuit breaker switched off this kind of transaction? (Injective's chain at v1.20.3 doesn't include the circuit module, so for now this finds nothing; see [Known issues](#known-issues).) Do the token's permission rules pause sending or receiving, or leave either account without the role for it? Has the recipient ever been used? The first two block the send and explain why in plain words, as the chain's or the issuer's rule; NinjaPay doesn't screen transfers and never suggests a way around a restriction. An unused recipient is a warning only.
    The amount is converted to exact base units as it is typed. The page shows the network fee in INJ (fees are always paid in INJ, even for USDC; `lib/injective/fees.ts`) and disables **Send** when the sending account can't cover the amount plus the fee. **Max** leaves room for the fee when sending INJ.
 2. **INJ:** the page calls wagmi `sendTransaction({ to, value })` with the recipient's `0x…` form and the exact base units. The connected EVM wallet signs, and `useWaitForTransactionReceipt` tracks confirmation.
+   Injective's EVM charges the whole gas limit at the transaction's fee cap (`maxFeePerGas`) and refunds no unused gas. So both INJ and USDC transfers ask the wallet for the price the page quoted, with no priority fee, and USDC transfers also for the quoted gas limit. The fee charged is then the fee shown. Left to itself, a wallet sets the cap above the price (viem uses 1.2x) and the user pays the difference.
 3. **USDC:** the page calls wagmi `writeContract` for an ERC-20 `transfer(to, amount)` on Circle's USDC contract, from the same wallet and with the same receipt tracking. USDC is a MultiVM token, so the transfer moves the bank balance Keplr and Leap show too. Every USDC transfer runs Circle's compliance hook, so the gas limit is the wallet's estimate plus 30%. Estimating already runs the hook, so a restricted transfer is reported as the issuer's rule before the wallet opens.
 
 Payroll and claim links still sign Cosmos transactions with Keplr or Leap. `sendToken` in `lib/injective/cosmos-transactions.ts` converts the **human-readable** amount to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It builds a `MsgSend` and hands it to `signAndBroadcast`, which:
    1. fetches the account number, sequence, and latest block height from the chain's REST API;
    2. builds the transaction with `createTransaction` and a timeout height;
-   3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation fails);
+   3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation can't be reached). If simulation shows the chain would refuse the messages, for example a payment larger than the balance, it stops before the wallet opens: signed and broadcast, the transaction would fail the same way and still be charged its fee;
    4. checks that the account holds enough INJ for that fee plus any INJ being sent, and stops with a plain message before the wallet opens if it doesn't;
    5. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`;
    6. broadcasts it and waits until the transaction is included in a block.
@@ -456,9 +461,12 @@ These are verified against the current code. They are the priority list before a
 | 5 | Low | `app/page.tsx` and `app/(dashboard)/page.tsx` both resolve to `/`. Next.js builds, but only one page is reachable. | `app/` |
 | 6 | Low | `amount` columns and share amounts are stored as human-readable strings. Floating-point math on them (`parseFloat`, `/ count`) can produce rounding drift. Use `bignumber.js`, which is already a dependency. | `app/(dashboard)/claims/page.tsx` |
 | 7 | Low | Ledger accounts in Keplr/Leap are rejected with a clear error. Injective needs EIP-712 (amino) signing for Ledger, which is not implemented. | `lib/injective/cosmos-transactions.ts` |
+| 8 | Low | The circuit-breaker check never finds anything. Injective's docs describe the circuit module, but the chain at v1.20.3 doesn't include it and answers the query with `501 Not Implemented`, which the check treats as no finding. The end-to-end tests fail if a later chain version starts serving it. | `lib/injective/transfer-checks.ts` |
 
 **Fixed:**
 
+- A transaction that simulation showed the chain would refuse, such as a payroll run larger than the balance, was still sent to the wallet with a fallback gas limit. Once signed it failed on chain and was charged its fee. Wallet signing and claim payouts now stop before signing and say why. Found by the end-to-end tests.
+- EVM receipts showed `gasUsed × effectiveGasPrice` as the fee, but Injective charges the gas limit at the fee cap and refunds nothing, so a receipt could show less than was paid (20% less for a viem transfer). Receipts now show the fee charged, and Send asks the wallet for the price it quoted. Found by the end-to-end tests; the rule is in injective-core's `MsgEthereumTx.GetFee`, and `RefundGas` is disabled.
 - Transactions lists transfers sent from EVM wallets. INJ and USDC sent from MetaMask used to be missing, because history only searched the chain's bank messages. History now comes from Injective's indexer and Blockscout, a page at a time with **Load more**, instead of two slow searches capped at 100 transactions each.
 - The Injective SDK packages moved together from 1.14.41 to 1.20.52, the release with Injective's EVM chain ids and the import paths the docs use. Transactions built and signed by both versions are byte-identical. Signing keeps a 120-block window, because 1.20 halved the default. The unused `@injectivelabs/wallet-ts` package is gone, and `npm audit` findings fell from 208 to 49.
 - History names tokens from Injective's verified token list, so an `ibc/` or `peggy` denom shows its name instead of a hash. INJ and USDC are recognised and priced by exact denom only; before, USD totals priced a coin by its label. The hardcoded testnet USDT entry is gone.
@@ -513,8 +521,38 @@ Conventions:
 | `npm run build` | Production build with type checking |
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint (`eslint-config-next`) |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:e2e` | End-to-end tests on a local Injective chain; see [Testing](#testing) |
 
-There is no automated test suite yet. `lib/supabase.test.ts` contains manual connectivity helpers, not a test runner.
+`lib/supabase.test.ts` contains manual connectivity helpers and isn't part of either suite.
+
+---
+
+## Testing
+
+`npm test` runs the unit tests in `tests/`. They mock the chain.
+
+`npm run test:e2e` runs the paths that move money against a real Injective chain on your machine. `tests/e2e/local-chain.ts` starts a single-validator chain from a fresh genesis and deletes it afterwards. It uses testnet's chain ids (`injective-888`, EVM `1439`), so NinjaPay's testnet settings apply unchanged with the endpoints pointed at `127.0.0.1`. Signing goes through NinjaPay's own code: a stand-in for Keplr signs `SIGN_MODE_DIRECT` with a throwaway key, and EVM transfers are sent with viem the way wagmi sends them. Keys are made fresh for each run and never written to the repo.
+
+What it covers:
+
+- **Payroll:** one `MsgMultiSend` pays every recipient exactly, with one signature and one fee, and the receipt reads it back. A run the account can't pay the fee for stops before the wallet opens. A run larger than the balance stops before signing, and nobody is paid.
+- **Claim links:** fund a pool, pay two claimers their full shares, and sweep the rest back to the creator. The fees stay within the pool's reserve. A claim larger than what's left is refused without spending the reserve.
+- **Sending INJ from an EVM wallet:** it arrives in the same account's `inj1` balance, and the fee charged is exactly the fee Send quotes. A wallet's higher fee cap is charged in full, and the receipt shows it.
+- **Approvals:** grant, list (given and received) and revoke.
+- **Checks before sending:** the unused-address warning, and the circuit breaker.
+
+A local chain doesn't have these, so they aren't covered: USDC (Circle's contract and compliance hook), `.inj` names (the INS contracts), swap quotes (no INJ/USDC market), and history and live updates (no indexer, explorer or Blockscout).
+
+You need an `injectived` binary built from Injective's chain source. Go fetches the version its `go.mod` asks for.
+
+```bash
+git clone --depth 1 --branch v1.20.3 https://github.com/InjectiveFoundation/injective-core
+(cd injective-core && go build -tags netgo -o ~/bin/injectived ./cmd/injectived)
+INJECTIVED=~/bin/injectived npm run test:e2e
+```
+
+The build takes a few minutes and the suite about 30 seconds. Injective's install guide also lists a Docker image, but at a tag (v1.14.1) from before the EVM. On GitHub, **Actions → End-to-end tests → Run workflow** builds the chain and runs the suite.
 
 ---
 
@@ -527,7 +565,7 @@ There is no automated test suite yet. `lib/supabase.test.ts` contains manual con
 5. **One EVM target.** Standardise on a single Injective EVM chain ID and RPC across RainbowKit and the helpers.
 6. **Server-side integrations.** Move Paystack and VTPass behind route handlers with secret keys, then enable bills.
 7. **Licensed NGN off-ramp.** Integrate a licensed payout partner. Until then, the off-ramp stays disabled.
-8. **Tests.** Unit tests for amount conversion and message builders, plus an end-to-end testnet send in CI.
+8. **Tests.** Unit tests and end-to-end tests on a local chain are in place (see [Testing](#testing)). USDC isn't covered end to end yet.
 
 ---
 
