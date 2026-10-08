@@ -21,6 +21,7 @@ import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { useTransferChecks } from '@/hooks/useTransferChecks'
 import { useRecipient } from '@/hooks/useRecipients'
+import { useUsdcRelay } from '@/hooks/useUsdcRelay'
 import type { ChainState } from '@/components/StatusChip'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { INJ, TOKENS, USDC } from '@/lib/injective/tokens'
@@ -76,7 +77,11 @@ export default function SendPage() {
   const injTx = useSendTransaction()
   const usdcTx = useWriteContract()
   const tx = sendToken === 'INJ' ? injTx : usdcTx
-  const txHash = tx.data
+  // USDC without INJ: the wallet signs the transfer and NinjaPay pays the fee (see useUsdcRelay).
+  const relay = useUsdcRelay()
+  const relayedHash = sendToken === 'USDC' && (relay.state.step === 'sent' || relay.state.step === 'reverted') ? relay.state.hash : undefined
+  const relayBusy = relay.state.step === 'signing' || relay.state.step === 'sending'
+  const txHash = relayedHash ?? tx.data
   // wagmi's wait throws when the transaction reverted, so on an error read the
   // receipt directly to tell "failed on chain" from "couldn't check yet".
   const { data: receipt, isLoading: isConfirming, isError: waitFailed } = useWaitForTransactionReceipt({
@@ -126,6 +131,8 @@ export default function SendPage() {
   const injSpend = sendToken === 'INJ' ? amountBase ?? BigInt(0) : BigInt(0)
   const feeCheck = checkFee(injBalance, fee, injSpend)
   const maxBase = sendToken === 'INJ' ? maxInjAfterFee(injBalance, fee) : tokenBalance
+  // Offered only when this account can't pay the fee itself, which the server checks too.
+  const relayOffer = sendToken === 'USDC' && relay.available && !balLoading && !balError && !feeCheck.ok
 
   // Estimating a USDC transfer runs the compliance hook, so a restriction shows up before signing.
   const hookBlock = sendToken === 'USDC' && estimateError && isHookRestriction(errorMessage(estimateError))
@@ -137,7 +144,7 @@ export default function SendPage() {
     : overBalance
       ? `That's more than your ${sendToken} balance.`
       : null
-  const feeError = !balLoading && !balError && amountBase !== null && amountBase > BigInt(0) && !overBalance && !feeCheck.ok
+  const feeError = !balLoading && !balError && amountBase !== null && amountBase > BigInt(0) && !overBalance && !feeCheck.ok && !relayOffer
     ? feeShortfallMessage(feeCheck, sendToken === 'INJ')
     : null
 
@@ -149,16 +156,21 @@ export default function SendPage() {
 
   const canSend = !!to && !isOwnAddress && !balLoading && !balError && chainHealth.canSend &&
     transferChecks.blocks.length === 0 && !hookBlock &&
-    amountBase !== null && amountBase > BigInt(0) && !overBalance && feeCheck.ok
+    amountBase !== null && amountBase > BigInt(0) && !overBalance && (feeCheck.ok || relayOffer)
 
   // One status line per transfer: waiting for the wallet, waiting for a block, confirmed or failed.
   const txStatus = ((): { state: ChainState; message: string; hash?: string } | null => {
     if (tx.isPending) return { state: 'awaiting-signature', message: 'Confirm the transfer in your wallet.' }
+    if (relay.state.step === 'signing') return { state: 'awaiting-signature', message: "Sign the transfer in your wallet. Signing isn't a transaction, so it costs nothing." }
+    if (relay.state.step === 'sending') return { state: 'pending', message: 'Signed. NinjaPay is sending it and paying the network fee.' }
     if (!txHash) return null
     if (isConfirming) return { state: 'pending', message: 'Sent. Waiting for it to be included in a block.', hash: txHash }
     const final = receipt ?? settledReceipt
-    if (final?.status === 'success') return { state: 'confirmed', message: `${sendToken} sent and confirmed on chain.`, hash: txHash }
-    if (final?.status === 'reverted') return { state: 'failed', message: `The transfer failed on chain, so no ${sendToken} was sent. The network fee was still charged.`, hash: txHash }
+    const feeNote = relayedHash ? 'NinjaPay paid the network fee.' : 'The network fee was still charged.'
+    if (final?.status === 'success') {
+      return { state: 'confirmed', message: `${sendToken} sent and confirmed on chain.${relayedHash ? ' NinjaPay paid the network fee.' : ''}`, hash: txHash }
+    }
+    if (final?.status === 'reverted') return { state: 'failed', message: `The transfer failed on chain, so no ${sendToken} was sent. ${feeNote}`, hash: txHash }
     if (waitFailed) return { state: 'pending', message: "Couldn't confirm it yet. Check the explorer for its status.", hash: txHash }
     return null
   })()
@@ -171,6 +183,12 @@ export default function SendPage() {
   // to an ordinary address, as quoted.
   const handleSend = () => {
     if (!to || amountBase === null) return
+    if (relayOffer) {
+      usdcTx.reset()
+      void relay.send(to.evm, amountBase)
+      return
+    }
+    relay.reset()
     const feeCap = { maxFeePerGas: gasPrice ?? GAS_PRICE, maxPriorityFeePerGas: BigInt(0) }
     if (sendToken === 'INJ') {
       injTx.reset()
@@ -343,10 +361,17 @@ export default function SendPage() {
               <p style={{ fontSize: '11px', color: 'var(--error)', marginTop: '5px' }}>{amountError}</p>
             ) : (
               <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>
-                Network fee ≈ {formatFee(fee)} INJ{sendToken === 'USDC' && ', paid in INJ'}
+                {relayOffer ? 'Network fee paid by NinjaPay' : <>Network fee ≈ {formatFee(fee)} INJ{sendToken === 'USDC' && ', paid in INJ'}</>}
               </p>
             )}
           </div>
+
+          {relayOffer && (
+            <div className="alert-pending" style={{ fontSize: '12px', lineHeight: 1.5 }}>
+              This account doesn&apos;t have enough INJ for the network fee, so NinjaPay can pay it. Your wallet will ask you to
+              sign this exact transfer. The signature can only send this amount to this recipient, once, within 10 minutes.
+            </div>
+          )}
 
           {feeError && (
             <div className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -367,21 +392,26 @@ export default function SendPage() {
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{sendErrorText(tx.error)}</span>
             </div>
           )}
+          {relay.state.step === 'error' && sendToken === 'USDC' && (
+            <div role="alert" className={relay.state.uncertain ? 'alert-warning' : 'alert-error'} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{relay.state.message}</span>
+            </div>
+          )}
           {txStatus && <TxStatus {...txStatus} />}
 
           <button
             onClick={handleSend}
-            disabled={!canSend || tx.isPending || isConfirming}
+            disabled={!canSend || tx.isPending || isConfirming || relayBusy}
             className="btn-primary"
             style={{ width: '100%', padding: '13px', fontSize: '15px' }}
           >
-            {(tx.isPending || isConfirming)
+            {(tx.isPending || isConfirming || relayBusy)
               ? <><span className="spinner" /> Processing…</>
-              : <><Send size={15} /> Send {sendToken}</>}
+              : <><Send size={15} /> {relayOffer ? 'Send without INJ' : `Send ${sendToken}`}</>}
           </button>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
-            {INJECTIVE_EVM.name} (chain {INJECTIVE_EVM.id}) · Fees paid in INJ
+            {INJECTIVE_EVM.name} (chain {INJECTIVE_EVM.id}) · {relayOffer ? 'Fee paid by NinjaPay' : 'Fees paid in INJ'}
           </p>
         </div>
       )}

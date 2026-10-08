@@ -94,6 +94,8 @@ describe('EVM receipts', () => {
       otherActions: 0,
     })
     expect(receipt?.timestamp?.getTime()).toBe(1790845200 * 1000)
+    // The page says "paid by" only when the fee payer isn't the sender, as for USDC sent without INJ.
+    expect(receipt?.feePayer?.toLowerCase()).toBe(from)
   })
 })
 

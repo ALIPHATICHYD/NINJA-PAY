@@ -67,6 +67,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 |---|---|---|---|
 | Send INJ | `/send` | Working on testnet | Native value transfer from the connected EVM wallet through wagmi `useSendTransaction`. The recipient can be typed as `inj1…`, `0x…` or a `.inj` name; an `inj1…` address is converted to its `0x…` form. |
 | Send USDC | `/send` | Built; not yet sent on testnet | An ERC-20 `transfer` on Circle's USDC contract from the connected EVM wallet, like any token in MetaMask. The gas limit is the wallet's estimate plus 30% for Circle's compliance hook. USDC is a MultiVM token, so the bank balance moves with it; Keplr and Leap aren't needed to send. |
+| Send USDC without INJ | `/send` | Built; off until set up | For an account with USDC but not enough INJ for the fee. The wallet signs the exact transfer as EIP-3009 typed data (no transaction, no fee), and `/api/relay/usdc` checks it and has it submitted, with NinjaPay paying the INJ gas. The USDC goes straight from the sender to the recipient; NinjaPay never holds it. Off unless the server has `USDC_RELAY_FACILITATOR_URL` or `USDC_RELAYER_PRIVATE_KEY`; while off, Send looks as before. Tested on a local chain with a stand-in token, not yet with Circle's USDC on testnet. |
 | Wallet setup | `/setup` | Working | Adds or switches the wallet to Injective's EVM network and adds USDC to its token list in one click each, with the values for adding them by hand. Links to the INJ and Circle USDC testnet faucets (on mainnet, Injective's page on getting INJ) and to Keplr and Leap. Linked from the landing page and from Send when the account has no INJ. |
 | Receive | `/receive` | Working | Shows the wallet's account as `inj1…` and `0x…` with a QR code for each and a network warning. **Ask for a set amount** makes a link and QR that open `/send` with the address, token and amount filled in; the page reports the payment as received once the account's balance of that token on Injective has gone up by at least that amount. Person-to-person only. |
 | Payroll | `/payroll` | Built; not yet sent on testnet | Rows take an address or a `.inj` name, shown with the address it points to on review. Pays everyone in one `MsgMultiSend`: one signature, one fee, all or nothing. The connected EVM wallet signs it as EIP-712 typed data, or Keplr/Leap signs it natively once connected. Up to 50 recipients per run. Every row is checked against the token's rules before signing, since one blocked recipient fails the batch. Paid runs are saved on the device and each is checked against its transaction before it shows as paid; a run can be used again or saved as CSV. An account can give another a payroll budget (an authz send approval with a cap, an end date and an optional list of accounts), and the other account can then pay runs from it. |
@@ -184,6 +185,7 @@ app/
     [claimId]/page.tsx        Public claim redemption page
   receipt/[hash]/page.tsx     Shareable receipt read from the chain (no wallet needed)
   api/evm-rpc/route.ts        Optional EVM RPC proxy that keeps a provider key on the server
+  api/relay/usdc/route.ts     Sends USDC for people without INJ, NinjaPay paying the fee (off until set up)
   api/tokens/route.ts         Injective's verified tokens, trimmed for the browser
 components/
   landing/                    Client leaves for the landing page (Reveal, Steps, Faq, HeroArt)
@@ -202,6 +204,7 @@ hooks/
   useWallet.ts                Thin wrapper over wagmi useAccount
   useCosmosTransaction.ts     Keplr/Leap connection and sendToken
   useEvmSigner.ts             The connected EVM wallet as a signer for Cosmos messages (EIP-712)
+  useUsdcRelay.ts             Send USDC without INJ: sign the transfer, then hand it to the relay
   useBalance.ts               INJ/USDC balances from the bank module
   useChainHealth.ts           Chain id and block freshness for the rail a page sends on
   useActivity.ts              On-chain history for the connected accounts, paged and merged
@@ -223,6 +226,8 @@ lib/
     transfer-checks.ts        Circuit breaker, token rules and new-address checks
     fees.ts                   INJ network fee maths and checks
     gas-price.ts              The gas price Injective requires right now, for Cosmos transactions
+    usdc-authorization.ts     USDC transfers signed as EIP-3009 typed data, and their checks
+    usdc-relay.ts             Server side of USDC without INJ: checks, submit, confirm from the receipt
     health.ts                 Chain id, block freshness and upgrade-plan checks
     transfer-errors.ts        USDC compliance-hook errors in plain words
     bank.ts                   Balance queries, MsgMultiSend builder
@@ -241,6 +246,7 @@ lib/
     constants.ts              Re-exports network settings, env-backed config
     broadcast.ts, evm-config.ts, types.ts
   money.ts                    Exact amount <-> base-unit conversion
+  rate-limit.ts               In-memory request limits for server routes
   prices.ts                   INJ and USDC prices from Injective's Pyth oracle
   payment-request.ts          Payment-request links to /send
   statement.ts                CSV activity statement and payroll runs, made in the browser
@@ -253,6 +259,7 @@ public/
 scripts/savanna.js            Draws the footer's savanna as SVG
 tests/                        Unit tests (npm test)
   e2e/                        Money paths on a local Injective chain (npm run test:e2e)
+    fixtures/                 A stand-in for Circle's USDC with EIP-3009 (source and compiled)
 .github/workflows/e2e.yml     Runs the end-to-end tests on demand
 ```
 
@@ -291,7 +298,7 @@ npm run build && npm start
 
 ## Environment variables
 
-Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visible to anyone**. Only put publishable values in them. `INJECTIVE_EVM_RPC_URL` is the one server-only variable. See [Security model](#security-model).
+Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visible to anyone**. Only put publishable values in them. `INJECTIVE_EVM_RPC_URL`, `USDC_RELAY_FACILITATOR_URL` and `USDC_RELAYER_PRIVATE_KEY` are server-only. See [Security model](#security-model).
 
 | Variable | Required | Used by | Notes |
 |---|---|---|---|
@@ -302,6 +309,8 @@ Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visib
 | `NEXT_PUBLIC_INJECTIVE_EVM_WS` | No | `lib/injective/live.ts` | EVM WebSocket (`wss://`) for live payment updates. Used in the browser, so it must be keyless. Defaults to Injective's public WebSocket endpoint from the [EVM network information](https://docs.injective.network/developers-evm/network-information) page. |
 | `NEXT_PUBLIC_INJECTIVE_EVM_RPC` | No | `components/Web3Providers.tsx`, `lib/injective/health.ts` | EVM JSON-RPC for reads. A keyless provider URL, or `/api/evm-rpc` to use the server proxy below. The public RPC stays as a fallback. |
 | `INJECTIVE_EVM_RPC_URL` | No (server-only) | `app/api/evm-rpc/route.ts` | A premium EVM RPC URL with its API key. The proxy forwards only read methods and `eth_sendRawTransaction`, falls back to the public RPC, and logs nothing. Anyone who can reach the route can use it, so add rate limiting before relying on it. |
+| `USDC_RELAY_FACILITATOR_URL` | No (server-only) | `lib/injective/usdc-relay.ts` | Turns on sending USDC without INJ through an x402 facilitator that settles Injective USDC (POST `/verify` and `/settle`, x402 v2). It submits the transfer and pays the gas, so NinjaPay holds no key. Used when both relay settings are set. No public facilitator lists Injective yet (checked 2026-10-08). |
+| `USDC_RELAYER_PRIVATE_KEY` | No (server-only) | `lib/injective/usdc-relay.ts` | Turns on sending USDC without INJ from a wallet NinjaPay controls, which pays the gas. `0x` plus 64 hex digits. Use a new wallet that holds only a little INJ; it never receives anyone's USDC. Set it in the host's environment settings, never in a file in the repo, and never with a `NEXT_PUBLIC_` prefix. |
 | `NEXT_PUBLIC_WALLETCONNECT_ID` | Required for any deployment | `components/Web3Providers.tsx` | NinjaPay's own project id from [WalletConnect Cloud](https://cloud.walletconnect.com), with the site's domains on its allowlist. Mobile and QR-code wallets connect through it. A shared fallback id is hardcoded only so local development works. |
 | `NEXT_PUBLIC_BACKEND_URL` | No | `lib/injective/constants.ts` | Defaults to `http://localhost:3001`. No backend ships with this repo. |
 | `NEXT_PUBLIC_PAYSTACK_KEY` | No | `lib/paystack.ts` | Not used by any page. Use a **public** key only (`pk_test_…`). |
@@ -411,6 +420,8 @@ These policies let any client insert or update claim rows. The funds themselves 
    Injective's EVM charges the whole gas limit at the transaction's fee cap (`maxFeePerGas`) and refunds no unused gas. So both INJ and USDC transfers ask the wallet for the price the page quoted, with no priority fee, and USDC transfers also for the quoted gas limit. The fee charged is then the fee shown. Left to itself, a wallet sets the cap above the price (viem uses 1.2x) and the user pays the difference.
 3. **USDC:** the page calls wagmi `writeContract` for an ERC-20 `transfer(to, amount)` on Circle's USDC contract, from the same wallet and with the same receipt tracking. USDC is a MultiVM token, so the transfer moves the bank balance Keplr and Leap show too. Every USDC transfer runs Circle's compliance hook, so the gas limit is the wallet's estimate plus 30%. Estimating already runs the hook, so a restricted transfer is reported as the issuer's rule before the wallet opens.
 
+4. **USDC without INJ:** when the account holds the USDC but not the INJ for the fee, and the server has the relay set up (`GET /api/relay/usdc`), Send offers **Send without INJ** instead of blocking. The wallet signs an EIP-3009 `TransferWithAuthorization` for exactly this amount and recipient, valid once for 10 minutes, as typed data in Circle's USDC domain (name `USDC`, version `2`; `lib/injective/usdc-authorization.ts`). Signing isn't a transaction and costs nothing. `/api/relay/usdc` then checks the signature, the time window, that the authorization is unused, that the sender holds the USDC and really can't pay the fee in INJ, that a dry run passes (which also runs Circle's compliance hook) and that the fee is at most 0.002 INJ, all before any gas is spent. It has `transferWithAuthorization` submitted by the facilitator or NinjaPay's relayer wallet, at the current gas price with the estimate plus 30% as the limit, and reports the transfer as sent only once the receipt shows the USDC `Transfer` from the sender to the recipient. If it can't tell whether a transfer went through, it says so rather than inviting a second payment. The receipt page shows who paid the fee. Each sender gets 10 relays an hour and everyone together 100, counted per server instance.
+
 Payroll, claim links and revokes are Cosmos transactions. The connected EVM wallet signs them, or Keplr or Leap once connected. `sendToken` in `lib/injective/cosmos-transactions.ts` converts the **human-readable** amount to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It builds a `MsgSend` and hands it to `signAndBroadcast`, which:
    1. fetches the account number, sequence, latest block height and current gas price from the chain's REST API. The gas price is the txfees module's minimum, or its adaptive base fee plus 12.5% when governance has turned that on and it is higher (`lib/injective/gas-price.ts`);
    2. builds the transaction with `createTransaction`, a timeout height and a fee at that gas price;
@@ -468,6 +479,7 @@ Pools created before this design have no escrow and are shown as *unfunded*. The
 
 - **Non-custodial by construction.** Private keys stay in the user's wallet. NinjaPay builds unsigned messages or transactions, and the wallet signs them.
 - **Never put secrets in `NEXT_PUBLIC_*` variables.** Anything with that prefix is readable in the browser bundle. Paystack **secret** keys, VTPass credentials, and any escrow private key must live in server-only code (route handlers or server actions) and non-public environment variables.
+- **One optional server key.** Sending USDC without INJ can use a wallet NinjaPay controls (`USDC_RELAYER_PRIVATE_KEY`). It only pays gas: the signed transfers it submits move USDC from the sender to the recipient and can't be redirected or reused. Keep only a little INJ in it. The relay logs no addresses, signatures or the key.
 - **Supabase is public infrastructure here.** The anon key is shipped to clients, so RLS is the only guard. See [Row Level Security](#row-level-security).
 - **Testnet only.** `constants.ts` hardcodes `Network.Testnet`. Moving to mainnet must be a deliberate change, reviewed alongside the fixes below.
 - **No audit.** Nothing in this repository has been security-reviewed or audited.
@@ -493,6 +505,7 @@ These are verified against the current code. They are the priority list before a
 | 9 | Low | A payroll paid from a budget shows on its receipt and under Past runs, but Transactions and Analytics may not list it. History comes from Injective's indexer, and how the indexer reports payments inside an authz `MsgExec` hasn't been checked, since a local chain has no indexer. | `lib/injective/activity.ts` |
 | 10 | Low | Past runs are kept in this browser's `localStorage`. Another browser, or cleared site data, shows none; the payments themselves are on chain. | `lib/payroll-runs.ts` |
 | 11 | Medium | There is no Terms of Service or Privacy Policy yet. So nothing says who may use NinjaPay (no minimum age) or what personal data it keeps: creator and claimer wallet addresses, claim-link names and transaction hashes in Supabase. Both need a lawyer, not code. The connect dialog used to say "you agree to our Terms of Service" and the app footer linked Terms, Privacy and Support to nowhere; those were removed until real pages exist. | `components/WalletButton.tsx`, `app/(dashboard)/layout.tsx` |
+| 12 | Medium | Sending USDC without INJ limits each sender to 10 relays an hour and everyone to 100, but the counts live in each server instance's memory, so on Vercel the real limit is higher and resets on restart. Someone with many funded accounts can spend the relayer wallet's INJ up to those limits (two relayed USDC transfers on Injective mainnet cost their relayer 0.00008 and 0.0003 INJ). A shared store would be needed for a hard cap. Its other open question is Injective's own facilitator: whether it is live, and on what terms, isn't confirmed. | `app/api/relay/usdc/route.ts` |
 
 **Fixed:**
 
@@ -579,8 +592,9 @@ What it covers:
 - **Payroll budgets:** an owner gives an operator a 3 INJ budget limited to two accounts; the operator pays a run from it over EIP-712, the owner's account pays exactly the run and the operator only the fee, and what's left of the budget is right. The run checks out against its transaction, and a saved run that says something else doesn't. A run over the budget, to an account off the list, or after the owner revokes is refused before the wallet opens, with no fee.
 - **EVM wallets signing Cosmos messages (EIP-712):** a payroll from an account that has never signed a Cosmos transaction, then a second transaction with the key the chain now holds; opening, paying out from and cancelling a claim link. A run the chain would refuse stops before the wallet opens, and a signature from a different account is refused before broadcasting.
 - **Checks before sending:** the unused-address warning, and the circuit breaker.
+- **Sending USDC without INJ:** with a stand-in for Circle's USDC (`tests/e2e/fixtures`, same EIP-712 domain and EIP-3009 methods), an account with no INJ signs a transfer the way MetaMask signs typed data, the relayer wallet submits it, the USDC moves exactly, the relayer pays the whole fee and the payer none, and the receipt shows both. The same signature is refused the second time; a payer with no USDC, one with INJ, a signature for another contract and a transfer the token reverts are refused before any gas is spent.
 
-A local chain doesn't have these, so they aren't covered: USDC (Circle's contract and compliance hook), `.inj` names (the INS contracts), swap quotes (no INJ/USDC market), and history and live updates (no indexer, explorer or Blockscout).
+A local chain doesn't have these, so they aren't covered: Circle's USDC contract and its compliance hook, `.inj` names (the INS contracts), swap quotes (no INJ/USDC market), and history and live updates (no indexer, explorer or Blockscout).
 
 You need an `injectived` binary built from Injective's chain source. Go fetches the version its `go.mod` asks for.
 
