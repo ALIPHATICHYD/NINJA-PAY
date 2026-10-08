@@ -19,6 +19,7 @@ import { PayrollRuns } from '@/components/PayrollRuns'
 import { PayrollBudgetForm } from '@/components/PayrollBudgetForm'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useChainHealth } from '@/hooks/useChainHealth'
+import { useCosmosGasPrice } from '@/hooks/useCosmosGasPrice'
 import { useRecipients } from '@/hooks/useRecipients'
 import { usePayrollChecks } from '@/hooks/usePayrollChecks'
 import { TxStatus } from '@/components/TxStatus'
@@ -107,7 +108,8 @@ export default function PayrollPage() {
   // Fees are paid in INJ, by whoever signs. Payroll is one transaction, so one
   // fee; this is the estimate until the batch is simulated just before signing.
   // From a budget, the owner's account pays the total and the signer only the fee.
-  const fee = networkFee(payrollGas(recipients.length))
+  const gasPrice = useCosmosGasPrice()
+  const fee = networkFee(payrollGas(recipients.length), gasPrice)
   const feeCheck = checkFee(BigInt(own.inj || '0'), fee, token === 'INJ' && !budget ? totalBase : BigInt(0))
   const fundsError = balLoading ? null
     : overBalance && budget ? `The total is more than ${shortAddress(budget.owner)} holds: ${formatBaseUnits(balance, decimals, 4)} ${token}.`

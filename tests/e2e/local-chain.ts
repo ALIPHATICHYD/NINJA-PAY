@@ -19,8 +19,9 @@
  *
  * Genesis follows Injective's own local setup (setup.sh in
  * InjectiveFoundation/injective-core): INJ as the staking, mint, crisis and
- * gov denom. Gas prices are left at injectived's defaults, which match the
- * 160,000,000inj NinjaPay pays.
+ * gov denom. The txfees module's minimum gas price is raised above
+ * injectived's default and its adaptive base fee is on (LOCAL_MIN_GAS_PRICE),
+ * so NinjaPay has to read the live price to get anything accepted.
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
@@ -33,7 +34,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { TestProject } from 'vitest/node'
 import { PrivateKey } from '@injectivelabs/sdk-ts'
-import { LOCAL_CHAIN, TEST_DENOM } from './local-chain-config'
+import { LOCAL_CHAIN, LOCAL_MIN_GAS_PRICE, TEST_DENOM } from './local-chain-config'
 
 declare module 'vitest' {
   export interface ProvidedContext {
@@ -99,6 +100,7 @@ type Genesis = {
     crisis: { constant_fee: { denom: string } }
     gov: { params: Record<string, { denom: string }[]> }
     evm: { params: { chain_config: { eip155_chain_id: string } } }
+    txfees: { params: { min_gas_price: string; mempool1559_enabled: boolean } }
   }
 }
 
@@ -134,6 +136,8 @@ export default async function setup(project: TestProject) {
       for (const coin of state.gov.params[key]) coin.denom = 'inj'
     }
     state.evm.params.chain_config.eip155_chain_id = LOCAL_CHAIN.evmChainId
+    state.txfees.params.min_gas_price = `${LOCAL_MIN_GAS_PRICE}.000000000000000000`
+    state.txfees.params.mempool1559_enabled = true
   })
   const config = join(home, 'config', 'config.toml')
   await writeFile(config, (await readFile(config, 'utf8')).replace(/^timeout_commit = ".*"$/m, 'timeout_commit = "1s"'))

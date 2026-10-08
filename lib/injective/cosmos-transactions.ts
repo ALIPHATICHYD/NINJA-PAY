@@ -39,6 +39,7 @@ import { ENDPOINTS, FAUCETS, INJECTIVE_EVM, NETWORK_LABEL } from './network'
 import { TOKENS } from './tokens'
 import { balanceOf, buildPayrollMultiSend, fetchAllBalances, resolveHeldDenom } from './bank'
 import { checkFee, feeShortfallMessage, injSpentBy, networkFee } from './fees'
+import { gasPriceFor, readFeeMarket } from './gas-price'
 import {
   HOOK_RESTRICTION_MESSAGE,
   describeExecutionFailure,
@@ -194,9 +195,10 @@ const SIMULATION_PUBKEY = 'Anm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeY'
  * data. Resolves with the tx hash once the tx is included in a block; rejects
  * if the wallet refuses or the chain rejects it.
  *
- * Before the wallet's signing window opens, it checks that the account holds
- * enough INJ for the simulated fee plus any INJ the messages send, and
- * rejects with a plain explanation if not.
+ * The fee uses the gas price Injective requires at that moment (see
+ * gas-price.ts). Before the wallet's signing window opens, it checks that the
+ * account holds enough INJ for the simulated fee plus any INJ the messages
+ * send, and rejects with a plain explanation if not.
  *
  * USDC transfers run Circle's compliance hook. If the hook runs out of gas
  * (not a real restriction, per Injective's docs), the transaction is rebuilt
@@ -266,7 +268,7 @@ async function signAndBroadcastOnce(
   const { address } = wallet
   const eip712 = signer.kind === 'evm'
 
-  const [accountResponse, latestBlock] = await Promise.all([
+  const [accountResponse, latestBlock, feeMarket] = await Promise.all([
     new ChainRestAuthApi(endpoints.rest).fetchAccount(address).catch((error: unknown) => {
       // The chain only creates an account once it has received funds.
       if (String((error as Error)?.message ?? error).includes('not found')) {
@@ -278,6 +280,8 @@ async function signAndBroadcastOnce(
       throw error
     }),
     new ChainRestTendermintApi(endpoints.rest).fetchLatestBlock(),
+    // Read fresh for every transaction: the price can rise while blocks are busy.
+    readFeeMarket(),
   ])
   const account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
   // Keplr reports the key itself. An EVM wallet doesn't, so use the one the
@@ -291,12 +295,13 @@ async function signAndBroadcastOnce(
   }, 0)
   const txApi = new TxRestApi(endpoints.rest)
   const evmChainId = INJECTIVE_EVM.id as EvmChainId
+  const feeFor = (gas: number) => getStdFee({ gas: gas.toString(), gasPrice: gasPriceFor(feeMarket, BigInt(gas)).toString() })
 
   const build = (gas: number, pubKey: string) => {
     const tx = createTransaction({
       message: msgs,
       memo,
-      fee: getStdFee({ gas: gas.toString() }),
+      fee: feeFor(gas),
       pubKey,
       sequence: account.sequence,
       accountNumber: account.accountNumber,
@@ -331,7 +336,7 @@ async function signAndBroadcastOnce(
     .catch(() => null) // If the balance can't be read, let the chain decide.
   if (injBalance !== null) {
     const injSpend = injSpentBy(msgs, address)
-    const check = checkFee(injBalance, networkFee(BigInt(gas)), injSpend)
+    const check = checkFee(injBalance, networkFee(BigInt(gas), gasPriceFor(feeMarket, BigInt(gas))), injSpend)
     if (!check.ok) throw new Error(feeShortfallMessage(check, injSpend > BigInt(0)))
   }
 
@@ -348,7 +353,7 @@ async function signAndBroadcastOnce(
         chainId,
         memo,
       },
-      fee: getStdFee({ gas: gas.toString() }),
+      fee: feeFor(gas),
       evmChainId,
     })
     const signature = await signer.signTypedData(JSON.stringify(typedData))

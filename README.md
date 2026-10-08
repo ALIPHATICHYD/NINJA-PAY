@@ -222,6 +222,7 @@ lib/
     swap.ts                   Swap precompile: INJ/USDC route, allowlist, quote maths
     transfer-checks.ts        Circuit breaker, token rules and new-address checks
     fees.ts                   INJ network fee maths and checks
+    gas-price.ts              The gas price Injective requires right now, for Cosmos transactions
     health.ts                 Chain id, block freshness and upgrade-plan checks
     transfer-errors.ts        USDC compliance-hook errors in plain words
     bank.ts                   Balance queries, MsgMultiSend builder
@@ -411,8 +412,8 @@ These policies let any client insert or update claim rows. The funds themselves 
 3. **USDC:** the page calls wagmi `writeContract` for an ERC-20 `transfer(to, amount)` on Circle's USDC contract, from the same wallet and with the same receipt tracking. USDC is a MultiVM token, so the transfer moves the bank balance Keplr and Leap show too. Every USDC transfer runs Circle's compliance hook, so the gas limit is the wallet's estimate plus 30%. Estimating already runs the hook, so a restricted transfer is reported as the issuer's rule before the wallet opens.
 
 Payroll, claim links and revokes are Cosmos transactions. The connected EVM wallet signs them, or Keplr or Leap once connected. `sendToken` in `lib/injective/cosmos-transactions.ts` converts the **human-readable** amount to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It builds a `MsgSend` and hands it to `signAndBroadcast`, which:
-   1. fetches the account number, sequence, and latest block height from the chain's REST API;
-   2. builds the transaction with `createTransaction` and a timeout height;
+   1. fetches the account number, sequence, latest block height and current gas price from the chain's REST API. The gas price is the txfees module's minimum, or its adaptive base fee plus 12.5% when governance has turned that on and it is higher (`lib/injective/gas-price.ts`);
+   2. builds the transaction with `createTransaction`, a timeout height and a fee at that gas price;
    3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation can't be reached). If simulation shows the chain would refuse the messages, for example a payment larger than the balance, it stops before the wallet opens: signed and broadcast, the transaction would fail the same way and still be charged its fee;
    4. checks that the account holds enough INJ for that fee plus any INJ being sent, and stops with a plain message before the wallet opens if it doesn't;
    5. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`, or the EVM wallet to sign the transaction as EIP-712 typed data (`eth_signTypedData_v4`, switching the wallet to Injective's EVM network first if needed). The typed data is Injective's v2 layout: the messages and the fee, account, sequence and timeout as two JSON strings, which injective-core renders the same way to check the signature. An EVM wallet doesn't report its public key, so the key is recovered from the signature, checked against the connected account, and sent with the account's first Cosmos transaction;
@@ -495,6 +496,7 @@ These are verified against the current code. They are the priority list before a
 
 **Fixed:**
 
+- Keplr and Leap transactions, EVM wallets signing over EIP-712, payroll and claim-link payouts now pay the gas price Injective requires at that moment, read from its txfees module. They used to pay a fixed 160,000,000inj per unit of gas, so they would have been turned away if governance raised the minimum or turned on the adaptive base fee that Injective's October 2026 white paper describes. MetaMask sends already read `eth_gasPrice`. A claim that fails only because fees are briefly higher than the link set aside says the network is busy, and a payout whose price rose before the chain checked it is retried once at the new price. The end-to-end chain now runs at twice the default minimum with the base fee on, where the old code failed 11 of 19 tests.
 - MetaMask and other EVM wallets can sign Payroll, claim links (create and cancel) and revokes on Approvals. They sign the Cosmos transaction as EIP-712 typed data, which Injective checks against the transaction itself, so Keplr or Leap is no longer needed for anything. Before, those screens asked every user to install Keplr or Leap. A signature from a different account than the one connected is refused before it is sent.
 - A transaction that simulation showed the chain would refuse, such as a payroll run larger than the balance, was still sent to the wallet with a fallback gas limit. Once signed it failed on chain and was charged its fee. Wallet signing and claim payouts now stop before signing and say why. Found by the end-to-end tests.
 - EVM receipts showed `gasUsed × effectiveGasPrice` as the fee, but Injective charges the gas limit at the fee cap and refunds nothing, so a receipt could show less than was paid (20% less for a viem transfer). Receipts now show the fee charged, and Send asks the wallet for the price it quoted. Found by the end-to-end tests; the rule is in injective-core's `MsgEthereumTx.GetFee`, and `RefundGas` is disabled.
@@ -565,7 +567,7 @@ Conventions:
 
 `npm test` runs the unit tests in `tests/`. They mock the chain.
 
-`npm run test:e2e` runs the paths that move money against a real Injective chain on your machine. `tests/e2e/local-chain.ts` starts a single-validator chain from a fresh genesis and deletes it afterwards. It uses testnet's chain ids (`injective-888`, EVM `1439`), so NinjaPay's testnet settings apply unchanged with the endpoints pointed at `127.0.0.1`. Signing goes through NinjaPay's own code: a stand-in for Keplr signs `SIGN_MODE_DIRECT` with a throwaway key, a stand-in for MetaMask signs EIP-712 typed data with viem, and EVM transfers are sent with viem the way wagmi sends them. Keys are made fresh for each run and never written to the repo.
+`npm run test:e2e` runs the paths that move money against a real Injective chain on your machine. `tests/e2e/local-chain.ts` starts a single-validator chain from a fresh genesis and deletes it afterwards. It uses testnet's chain ids (`injective-888`, EVM `1439`), so NinjaPay's testnet settings apply unchanged with the endpoints pointed at `127.0.0.1`. Its minimum gas price is twice injectived's default, with the adaptive base fee on, so a path that paid a fixed gas price would be turned away. Signing goes through NinjaPay's own code: a stand-in for Keplr signs `SIGN_MODE_DIRECT` with a throwaway key, a stand-in for MetaMask signs EIP-712 typed data with viem, and EVM transfers are sent with viem the way wagmi sends them. Keys are made fresh for each run and never written to the repo.
 
 What it covers:
 

@@ -38,10 +38,25 @@ export const HOOK_OUT_OF_GAS_MESSAGE =
   "USDC's compliance check ran out of gas, even after a retry with a higher limit. " +
   'This is not a restriction on your account. Try again in a moment.'
 
-/** A readable version of a chain error for the two hook cases; anything else is returned unchanged. */
+/**
+ * The chain turned the transaction away because its gas price was below what
+ * Injective required at that moment ("insufficient fee; got: … required: …",
+ * from injective-core's txfees module or cosmos-sdk). This happens when the
+ * adaptive base fee rose after the price was read. A rejected transaction is
+ * never included, so it is charged nothing.
+ */
+export function isInsufficientFee(message: string): boolean {
+  return /insufficient fees?\b/i.test(message)
+}
+
+export const INSUFFICIENT_FEE_MESSAGE =
+  "Injective's network fee went up while this transaction was on its way, so the chain didn't accept it and no fee was charged. Try again."
+
+/** A readable version of a chain error for the hook and fee cases; anything else is returned unchanged. */
 export function describeTransferError(message: string): string {
   if (isHookOutOfGas(message)) return HOOK_OUT_OF_GAS_MESSAGE
   if (isHookRestriction(message)) return HOOK_RESTRICTION_MESSAGE
+  if (isInsufficientFee(message)) return INSUFFICIENT_FEE_MESSAGE
   return message
 }
 

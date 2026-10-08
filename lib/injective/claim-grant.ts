@@ -56,10 +56,12 @@ import {
   FEE_RESERVE_PER_TX,
   GAS_BUFFER,
   TOKEN_DECIMALS,
+  checkFeeAtPrice,
   escrowFee,
   splitEqually,
   type ClaimToken,
 } from './claim-escrow'
+import { fetchGasPrice } from './gas-price'
 import {
   HOOK_RESTRICTION_MESSAGE,
   describeExecutionFailure,
@@ -68,6 +70,7 @@ import {
   isExecutionFailure,
   isHookOutOfGas,
   isHookRestriction,
+  isInsufficientFee,
 } from './transfer-errors'
 import { toChainAmount } from '../money'
 
@@ -276,11 +279,11 @@ export async function payShareFromGrant(
       throw new Error('Could not read this claim link from Injective. Try again.')
     }
 
-    const build = (gas: number) =>
+    const build = (gas: number, gasPrice?: bigint) =>
       createTransaction({
         message: msg,
         memo: '',
-        fee: { amount: [{ denom: DENOMS.INJ, amount: escrowFee(gas).toString() }], gas: gas.toString(), granter: creator },
+        fee: { amount: [{ denom: DENOMS.INJ, amount: escrowFee(gas, gasPrice).toString() }], gas: gas.toString(), granter: creator },
         pubKey: key.toPublicKey().toBase64(),
         sequence: account.sequence,
         accountNumber: account.accountNumber,
@@ -304,11 +307,12 @@ export async function payShareFromGrant(
       // Otherwise fall back to the default gas and let the broadcast decide.
     }
     gas = Math.min(Math.max(gas, minGas), ESCROW_MAX_GAS)
-    check(escrowFee(gas))
+    const gasPrice = await fetchGasPrice(gas)
+    checkFeeAtPrice(check, gas, gasPrice)
 
     let failure: string
     try {
-      const { txRaw, signBytes } = build(gas)
+      const { txRaw, signBytes } = build(gas, gasPrice)
       txRaw.signatures = [key.sign(signBytes)]
       const result = await txApi.broadcast(txRaw)
       if (result.code === 0) return result.txHash
@@ -321,8 +325,9 @@ export async function payShareFromGrant(
       minGas = gas * 2
       continue
     }
-    // Someone else's claim used the same sequence number a moment earlier. Nothing was charged.
-    if (attempt === 0 && /account sequence mismatch/i.test(failure)) continue
+    // Someone else's claim used the same sequence number a moment earlier, or the
+    // gas price rose before the chain checked it. Nothing was charged either way.
+    if (attempt === 0 && (/account sequence mismatch/i.test(failure) || isInsufficientFee(failure))) continue
     throw new Error(describeTransferError(failure))
   }
   throw new Error('Transaction failed.')

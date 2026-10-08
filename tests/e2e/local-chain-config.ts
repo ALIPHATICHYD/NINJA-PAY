@@ -20,5 +20,13 @@ export const LOCAL_CHAIN = {
   evmWs: 'ws://127.0.0.1:28546',
 }
 
+/**
+ * The chain's minimum gas price, in inj per unit of gas: twice injectived's
+ * default of 160,000,000, with the adaptive base fee switched on. Governance
+ * can do the same on mainnet, so any path that still paid the default price
+ * would be turned away here.
+ */
+export const LOCAL_MIN_GAS_PRICE = BigInt(320_000_000)
+
 /** A token besides INJ, held by the funding account, for tests where INJ would be caught by NinjaPay's own fee check first. */
 export const TEST_DENOM = 'ninjapaytest'

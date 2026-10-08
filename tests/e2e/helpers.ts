@@ -12,7 +12,7 @@ import { InjectiveDirectEthSecp256k1Wallet } from '@injectivelabs/sdk-ts/cosmjs'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { CosmosSigner } from '@/lib/injective/cosmos-transactions'
 import { NETWORK } from '@/lib/injective/network'
-import { LOCAL_CHAIN } from './local-chain-config'
+import { LOCAL_CHAIN, LOCAL_MIN_GAS_PRICE } from './local-chain-config'
 
 export const INJ = BigInt(10) ** BigInt(18)
 
@@ -32,7 +32,8 @@ export async function fund(accounts: TestAccount[], amount: bigint, denom = 'inj
     network: NETWORK,
     endpoints: { grpc: LOCAL_CHAIN.api, rest: LOCAL_CHAIN.api, indexer: LOCAL_CHAIN.api },
     privateKey: funder,
-    simulateTx: true,
+    // With simulation on, sdk-ts rebuilds the fee at its default gas price and drops the one passed below.
+    simulateTx: false,
   })
   const coins = [{ denom, amount: amount.toString() }]
   await broadcaster.broadcast({
@@ -40,6 +41,8 @@ export async function fund(accounts: TestAccount[], amount: bigint, denom = 'inj
       inputs: [{ address: funder.toBech32(), coins: [{ denom, amount: (amount * BigInt(accounts.length)).toString() }] }],
       outputs: accounts.map(account => ({ address: account.inj, coins })),
     }),
+    // Funding isn't under test: generous gas, comfortably over the local chain's minimum price.
+    gas: { gas: 200_000 + 50_000 * accounts.length, gasPrice: (LOCAL_MIN_GAS_PRICE * BigInt(2)).toString() },
   })
 }
 

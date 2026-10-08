@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeExecutionFailure, describeTransferError, isExecutionFailure, isHookOutOfGas, isHookRestriction } from '@/lib/injective/transfer-errors'
+import { describeExecutionFailure, describeTransferError, isExecutionFailure, isHookOutOfGas, isHookRestriction, isInsufficientFee } from '@/lib/injective/transfer-errors'
 
 // The out-of-gas text is quoted from Injective's USDC page.
 const OUT_OF_GAS =
@@ -58,5 +58,21 @@ describe('transactions the chain refuses in simulation', () => {
     expect(describeExecutionFailure('rpc error: failed to execute message; message index: 1: invalid coins [x/bank/types/msgs.go:12] With gas wanted: 1')).toBe(
       "Injective would refuse this transaction (invalid coins), so it wasn't signed or sent and no fee was charged.",
     )
+  })
+})
+
+describe('fee errors', () => {
+  // The txfees module's wording (injective-core v1.20.3, keeper/feedecorator.go) and cosmos-sdk's.
+  const TXFEES = 'insufficient fee; got: 20800000000000inj required: 23400000000000inj'
+  const SDK = 'insufficient fees; got: 20800000000000inj required: 23400000000000inj'
+
+  it('recognises a gas price below what the chain required', () => {
+    expect(isInsufficientFee(TXFEES)).toBe(true)
+    expect(isInsufficientFee(SDK)).toBe(true)
+    expect(isInsufficientFee('insufficient funds: 1inj is smaller than 2inj')).toBe(false)
+  })
+
+  it('explains it in plain words and says nothing was charged', () => {
+    expect(describeTransferError(TXFEES)).toMatch(/network fee went up.*no fee was charged\. Try again\./)
   })
 })

@@ -15,6 +15,7 @@ import { MsgSend, MsgBroadcasterWithPk, PrivateKey } from '@injectivelabs/sdk-ts
 import { DEFAULT_GAS_PRICE } from '@injectivelabs/utils'
 import { NETWORK } from './constants'
 import { ENDPOINTS } from './network'
+import { fetchGasPrice } from './gas-price'
 import { DENOMS, TOKENS, sameDenom } from './tokens'
 import { fetchAllBalances, balanceOf, type Coin } from './bank'
 import { toChainAmount } from '../money'
@@ -25,6 +26,7 @@ import {
   isExecutionFailure,
   isHookOutOfGas,
   isHookRestriction,
+  isInsufficientFee,
   HOOK_RESTRICTION_MESSAGE,
 } from './transfer-errors'
 
@@ -38,16 +40,43 @@ const TOKEN_DENOM: Record<ClaimToken, string> = { INJ: DENOMS.INJ, USDC: DENOMS.
 // compliance hook, and is capped at what the pool's fee reserve pays for.
 // Claim links that keep funds in the creator's wallet (claim-grant.ts) size
 // their gas the same way.
+//
+// The reserve is sized at Injective's minimum gas price. Each payout pays the
+// price the chain requires at that moment (gas-price.ts), which is higher
+// only while blocks are busy. A payout's simulated gas is usually well under
+// the cap, so the reserve still covers a price several times the minimum.
 export const ESCROW_GAS_PRICE = BigInt(DEFAULT_GAS_PRICE)
 export const ESCROW_FALLBACK_GAS = 200_000 // when simulation is unavailable
 export const ESCROW_MAX_GAS = 600_000
 export const GAS_BUFFER = 1.3
 
-export const escrowFee = (gas: number) => BigInt(gas) * ESCROW_GAS_PRICE
+export const escrowFee = (gas: number, gasPrice: bigint = ESCROW_GAS_PRICE) => BigInt(gas) * gasPrice
 
 // INJ set aside in the escrow to pay fees: one tx per share plus one sweep,
 // each at the gas cap (600,000 gas x 160,000,000 inj = 0.000096 INJ).
 export const FEE_RESERVE_PER_TX = escrowFee(ESCROW_MAX_GAS)
+
+export const NETWORK_BUSY_MESSAGE =
+  'Injective is busy right now, and its network fee is higher than this claim link set aside. ' +
+  'Nothing was sent. Try again in a few minutes.'
+
+/**
+ * Run a claim link's fee check at the live gas price and return the fee. If
+ * the check fails only because the price is above the minimum the link's
+ * fees were set aside at, the error says the network is busy instead of
+ * that the link ran out.
+ */
+export function checkFeeAtPrice(check: (fee: bigint) => void, gas: number, gasPrice: bigint): bigint {
+  const fee = escrowFee(gas, gasPrice)
+  try {
+    check(fee)
+  } catch (error) {
+    if (gasPrice <= ESCROW_GAS_PRICE) throw error
+    check(escrowFee(gas)) // Throws the real reason if even the minimum fee doesn't fit.
+    throw new Error(NETWORK_BUSY_MESSAGE)
+  }
+  return fee
+}
 
 const KEY_FRAGMENT_PARAM = 'k'
 // Marks a link whose funds stay in the creator's wallet (claim-grant.ts).
@@ -163,8 +192,10 @@ type EscrowTx = {
 
 /**
  * Sign with the escrow key and broadcast. Balances are read fresh, gas is
- * sized by simulation (capped at ESCROW_MAX_GAS), and if USDC's compliance
- * hook runs out of gas the transaction is retried once with twice the gas.
+ * sized by simulation (capped at ESCROW_MAX_GAS) and priced at the chain's
+ * current gas price. If USDC's compliance hook runs out of gas the
+ * transaction is retried once with twice the gas, and if the price rose
+ * before the chain saw it, once at the new price.
  */
 async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise<string> {
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
@@ -200,14 +231,14 @@ async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise
     }
     gas = Math.min(Math.max(gas, minGas), ESCROW_MAX_GAS)
 
-    const fee = escrowFee(gas)
-    tx.check(held, fee)
+    const gasPrice = await fetchGasPrice(gas)
+    const fee = checkFeeAtPrice(f => tx.check(held, f), gas, gasPrice)
 
     let failure: string
     try {
       const result = await broadcaster.broadcast({
         msgs: tx.build(held, fee),
-        gas: { gas, gasPrice: ESCROW_GAS_PRICE.toString() },
+        gas: { gas, gasPrice: gasPrice.toString() },
       })
       if (result.code === 0) return result.txHash
       failure = result.rawLog || `Transaction failed with code ${result.code}`
@@ -219,6 +250,8 @@ async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise
       minGas = gas * 2
       continue
     }
+    // The price rose before the chain checked it. Nothing was charged; read it again.
+    if (attempt === 0 && isInsufficientFee(failure)) continue
     throw new Error(describeTransferError(failure))
   }
   throw new Error('Transaction failed.')
