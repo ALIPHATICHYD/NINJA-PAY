@@ -491,6 +491,7 @@ These are verified against the current code. They are the priority list before a
 | 8 | Low | The circuit-breaker check never finds anything. Injective's docs describe the circuit module, but the chain at v1.20.3 doesn't include it and answers the query with `501 Not Implemented`, which the check treats as no finding. The end-to-end tests fail if a later chain version starts serving it. | `lib/injective/transfer-checks.ts` |
 | 9 | Low | A payroll paid from a budget shows on its receipt and under Past runs, but Transactions and Analytics may not list it. History comes from Injective's indexer, and how the indexer reports payments inside an authz `MsgExec` hasn't been checked, since a local chain has no indexer. | `lib/injective/activity.ts` |
 | 10 | Low | Past runs are kept in this browser's `localStorage`. Another browser, or cleared site data, shows none; the payments themselves are on chain. | `lib/payroll-runs.ts` |
+| 11 | Medium | There is no Terms of Service or Privacy Policy yet. So nothing says who may use NinjaPay (no minimum age) or what personal data it keeps: creator and claimer wallet addresses, claim-link names and transaction hashes in Supabase. Both need a lawyer, not code. The connect dialog used to say "you agree to our Terms of Service" and the app footer linked Terms, Privacy and Support to nowhere; those were removed until real pages exist. | `components/WalletButton.tsx`, `app/(dashboard)/layout.tsx` |
 
 **Fixed:**
 
