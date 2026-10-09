@@ -1,9 +1,11 @@
 /**
  * Network fees, which are always paid in INJ, even when the transfer is USDC.
  *
- * fee = gas × gas price. Validators' minimum gas price is 160,000,000inj per
- * unit of gas (0.16 nINJ), and the EVM uses the same price. A plain INJ
- * transfer on the EVM costs 21,000 gas.
+ * fee = gas × gas price. Injective's minimum gas price is 160,000,000inj per
+ * unit of gas (0.16 nINJ), on the EVM and the Cosmos side alike. While
+ * blocks are busy the chain can require more: EVM sends read eth_gasPrice,
+ * and Cosmos transactions read gas-price.ts. A plain INJ transfer on the EVM
+ * costs 21,000 gas.
  *
  * Sources (checked 2026-09-30):
  * - https://docs.injective.network/defi/transaction-fees
@@ -16,7 +18,7 @@ import { formatBaseUnits } from '../money'
 import { FAUCETS } from './network'
 import { INJ } from './tokens'
 
-/** Minimum gas price in inj base units per unit of gas. */
+/** Minimum gas price in inj base units per unit of gas, used until the live price is read. */
 export const GAS_PRICE = BigInt(DEFAULT_GAS_PRICE)
 
 /** Gas for a plain INJ transfer on Injective's EVM. */

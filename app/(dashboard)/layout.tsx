@@ -41,19 +41,6 @@ export default function DashboardLayout({
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             © 2026 NinjaPay · Built on Injective
           </p>
-          <div style={{ display: 'flex', gap: '20px' }}>
-            {['Terms of Service', 'Privacy Policy', 'Support'].map(item => (
-              <a
-                key={item}
-                href="#"
-                style={{ fontSize: '12px', color: 'var(--text-muted)', transition: 'color 0.15s' }}
-                onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-secondary)')}
-                onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)')}
-              >
-                {item}
-              </a>
-            ))}
-          </div>
         </div>
       </footer>
       <LivePayments />

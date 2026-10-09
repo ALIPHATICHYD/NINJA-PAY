@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { createPublicClient, createWalletClient, getAddress, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { ENDPOINTS, INJECTIVE_EVM } from '@/lib/injective/network'
-import { EVM_TRANSFER_GAS, GAS_PRICE, networkFee } from '@/lib/injective/fees'
+import { EVM_TRANSFER_GAS, networkFee } from '@/lib/injective/fees'
 import { fetchReceipt } from '@/lib/injective/receipt'
 import { INJ, balance, fund, newAccount, type TestAccount } from './helpers'
+import { LOCAL_MIN_GAS_PRICE } from './local-chain-config'
 
 const transport = http(ENDPOINTS.evmRpc)
 const chain = createPublicClient({ chain: INJECTIVE_EVM, transport })
@@ -22,7 +23,8 @@ describe('sending INJ from an EVM wallet on a local chain', () => {
     const gas = await chain.estimateGas({ account: sender.evm, to: recipient.evm, value: BigInt(0) })
     const gasPrice = await chain.getGasPrice()
     const quoted = networkFee(gas, gasPrice)
-    expect([gas, gasPrice]).toEqual([EVM_TRANSFER_GAS, GAS_PRICE])
+    // eth_gasPrice follows the chain's minimum, here above injectived's default.
+    expect([gas, gasPrice]).toEqual([EVM_TRANSFER_GAS, LOCAL_MIN_GAS_PRICE])
 
     // Send passes the quoted price as the cap and leaves the gas limit to the wallet.
     const hash = await walletOf(sender).sendTransaction({ to: recipient.evm, value, maxFeePerGas: gasPrice, maxPriorityFeePerGas: BigInt(0) })

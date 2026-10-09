@@ -352,8 +352,7 @@ export function WalletButton() {
                 lineHeight: '1.5',
               }}
             >
-              By connecting, you agree to our Terms of Service. NinjaPay never
-              stores your private keys.
+              NinjaPay never stores your private keys.
             </p>
           </div>
         </div>

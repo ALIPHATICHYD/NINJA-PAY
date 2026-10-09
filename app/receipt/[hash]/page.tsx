@@ -151,7 +151,15 @@ export default function ReceiptPage({ params }: { params: Promise<{ hash: string
           </Row>
         )}
         {receipt.block && <Row label="Block">{receipt.block}</Row>}
-        {receipt.fee && <Row label="Network fee">{formatCoin(receipt.fee, 8)}</Row>}
+        {receipt.fee && (
+          <Row label="Network fee">
+            {formatCoin(receipt.fee, 8)}
+            {receipt.feePayer && receipt.transfers.length > 0 &&
+              !receipt.transfers.some(t => t.from.toLowerCase() === receipt.feePayer!.toLowerCase()) && (
+              <span className="block text-ink-3">Paid by {receipt.feePayer}, not the sender</span>
+            )}
+          </Row>
+        )}
         {receipt.memo && <Row label="Memo">{receipt.memo}</Row>}
         <Row label="Transaction">{receipt.hash}</Row>
       </dl>

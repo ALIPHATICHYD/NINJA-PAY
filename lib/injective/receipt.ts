@@ -36,6 +36,8 @@ export type Receipt = {
   timestamp: Date | null
   block: string | null
   fee: ActivityCoin | null
+  /** Who paid the fee, for EVM transactions: the sender, or a relayer such as NinjaPay's for USDC sent without INJ. */
+  feePayer?: string
   memo: string
   transfers: ReceiptTransfer[]
   /** Messages or calls in the transaction that aren't transfers. */
@@ -134,6 +136,7 @@ async function evmReceipt(hash: Hash): Promise<Receipt | null> {
     timestamp: new Date(Number(block.timestamp) * 1000),
     block: receipt.blockNumber.toString(),
     fee: toCoins([{ denom: INJ.denom, amount: (tx.gas * (tx.maxFeePerGas ?? tx.gasPrice ?? receipt.effectiveGasPrice)).toString() }])[0],
+    feePayer: tx.from,
     memo: '',
     transfers,
     otherActions: transfers.length === 0 ? 1 : 0,

@@ -6,7 +6,14 @@ const chain = vi.hoisted(() => ({
   balances: [] as { denom: string; amount: string }[],
   simulate: [] as (number | Error)[],
   broadcast: [] as { code: number; rawLog?: string }[],
-  sent: [] as { gas: number; amount: { denom: string; amount: string }[] }[],
+  sent: [] as { gas: number; gasPrice: string; amount: { denom: string; amount: string }[] }[],
+  /** Gas prices the chain reports, one per read; the minimum once they run out. */
+  gasPrices: [] as bigint[],
+}))
+
+vi.mock('@/lib/injective/gas-price', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/lib/injective/gas-price')>()),
+  fetchGasPrice: async () => chain.gasPrices.shift() ?? BigInt(160_000_000),
 }))
 
 vi.mock('@/lib/injective/bank', async importOriginal => ({
@@ -22,8 +29,8 @@ vi.mock('@injectivelabs/sdk-ts', async importOriginal => {
       if (next === undefined || next instanceof Error) throw next ?? new Error('simulation unavailable')
       return { gasInfo: { gasUsed: next } }
     }
-    async broadcast({ msgs, gas }: { msgs: { toData(): { amount: { denom: string; amount: string }[] } }; gas: { gas: number } }) {
-      chain.sent.push({ gas: gas.gas, amount: msgs.toData().amount })
+    async broadcast({ msgs, gas }: { msgs: { toData(): { amount: { denom: string; amount: string }[] } }; gas: { gas: number; gasPrice: string } }) {
+      chain.sent.push({ gas: gas.gas, gasPrice: gas.gasPrice, amount: msgs.toData().amount })
       const next = chain.broadcast.shift() ?? { code: 0 }
       return { ...next, txHash: `HASH${chain.sent.length}` }
     }
@@ -48,6 +55,7 @@ beforeEach(() => {
   chain.simulate = []
   chain.broadcast = []
   chain.sent = []
+  chain.gasPrices = []
 })
 
 describe('escrow payouts', () => {
@@ -62,6 +70,28 @@ describe('escrow payouts', () => {
     chain.broadcast = [{ code: 11, rawLog: HOOK_OOG }, { code: 0 }]
     await expect(payShareFromEscrow(KEY, CLAIMER, 'USDC', '2500000')).resolves.toBe('HASH2')
     expect(chain.sent.map(t => t.gas)).toEqual([130_000, 260_000])
+  })
+
+  it('pays the gas price Injective requires at that moment', async () => {
+    chain.simulate = [100_000]
+    chain.gasPrices = [BigInt(320_000_000)]
+    await payShareFromEscrow(KEY, CLAIMER, 'USDC', '2500000')
+    expect(chain.sent[0].gasPrice).toBe('320000000')
+  })
+
+  it('says the network is busy, not that the pool ran out, when only the higher price breaks the reserve', async () => {
+    chain.simulate = [100_000]
+    chain.gasPrices = [GAS_PRICE * BigInt(100)]
+    await expect(payShareFromEscrow(KEY, CLAIMER, 'USDC', '2500000')).rejects.toThrow(/Injective is busy right now.*Nothing was sent/)
+    expect(chain.sent).toHaveLength(0)
+  })
+
+  it('reads the price again and retries once when it rose before the chain checked the transaction', async () => {
+    chain.simulate = [100_000, 100_000]
+    chain.gasPrices = [GAS_PRICE, BigInt(180_000_000)]
+    chain.broadcast = [{ code: 13, rawLog: 'insufficient fee; got: 20800000000000inj required: 23400000000000inj' }, { code: 0 }]
+    await expect(payShareFromEscrow(KEY, CLAIMER, 'USDC', '2500000')).resolves.toBe('HASH2')
+    expect(chain.sent.map(t => t.gasPrice)).toEqual(['160000000', '180000000'])
   })
 
   it('caps gas at what the fee reserve covers', async () => {
