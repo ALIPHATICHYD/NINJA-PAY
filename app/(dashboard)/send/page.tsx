@@ -22,10 +22,15 @@ import { useChainHealth } from '@/hooks/useChainHealth'
 import { useTransferChecks } from '@/hooks/useTransferChecks'
 import { useRecipient } from '@/hooks/useRecipients'
 import { useUsdcRelay } from '@/hooks/useUsdcRelay'
+import { useCosmosGasPrice } from '@/hooks/useCosmosGasPrice'
+import { useEvmSigner, usePhantom } from '@/hooks/useEvmSigner'
+import { sendToken as sendWithSigner } from '@/lib/injective/cosmos-transactions'
+import { PHANTOM_NETWORK_HINT } from '@/lib/injective/phantom'
 import type { ChainState } from '@/components/StatusChip'
 import { formatBaseUnits, toChainAmount } from '@/lib/money'
 import { INJ, TOKENS, USDC } from '@/lib/injective/tokens'
 import {
+  COSMOS_SEND_GAS,
   EVM_TOKEN_TRANSFER_GAS,
   EVM_TRANSFER_GAS,
   GAS_PRICE,
@@ -37,7 +42,7 @@ import {
   withGasHeadroom,
 } from '@/lib/injective/fees'
 import { HOOK_RESTRICTION_MESSAGE, errorMessage, isHookOutOfGas, isHookRestriction } from '@/lib/injective/transfer-errors'
-import { FAUCETS, INJECTIVE_EVM } from '@/lib/injective/network'
+import { CHAIN_ID, FAUCETS, INJECTIVE_EVM } from '@/lib/injective/network'
 import { isSameAccount, shortAddress, toInjectiveAddress } from '@/lib/injective/address'
 import { parsePaymentRequest } from '@/lib/payment-request'
 
@@ -82,6 +87,15 @@ export default function SendPage() {
   const relayedHash = sendToken === 'USDC' && (relay.state.step === 'sent' || relay.state.step === 'reverted') ? relay.state.hash : undefined
   const relayBusy = relay.state.step === 'signing' || relay.state.step === 'sending'
   const txHash = relayedHash ?? tx.data
+
+  // Phantom can't send on Injective's EVM, so it signs a Cosmos bank transfer of the same
+  // INJ or USDC as EIP-712 typed data (hooks/useEvmSigner.ts). It returns once the chain has it.
+  const phantom = usePhantom()
+  const evmSigner = useEvmSigner()
+  const [phantomSend, setPhantomSend] = useState<
+    { step: 'idle' } | { step: 'signing' } | { step: 'sent'; hash: string; token: 'INJ' | 'USDC' } | { step: 'error'; message: string }
+  >({ step: 'idle' })
+  const phantomBusy = phantomSend.step === 'signing'
   // wagmi's wait throws when the transaction reverted, so on an error read the
   // receipt directly to tell "failed on chain" from "couldn't check yet".
   const { data: receipt, isLoading: isConfirming, isError: waitFailed } = useWaitForTransactionReceipt({
@@ -122,12 +136,14 @@ export default function SendPage() {
     account: address as `0x${string}` | undefined,
     chainId: INJECTIVE_EVM.id,
     ...(sendToken === 'INJ' ? { to: to?.evm, value: BigInt(0) } : { to: USDC.evmAddress, data: usdcTransfer }),
-    query: { enabled: !!address && (sendToken === 'INJ' ? !!to : !!usdcTransfer), retry: false },
+    query: { enabled: !phantom && !!address && (sendToken === 'INJ' ? !!to : !!usdcTransfer), retry: false },
   })
   const { data: gasPrice } = useGasPrice({ chainId: INJECTIVE_EVM.id })
   const gas = gasEstimate ?? (sendToken === 'INJ' ? EVM_TRANSFER_GAS : EVM_TOKEN_TRANSFER_GAS)
   const gasLimit = sendToken === 'USDC' ? withGasHeadroom(gas) : undefined
-  const fee = networkFee(gasLimit ?? gas, gasPrice ?? GAS_PRICE)
+  // Phantom's transfer is a Cosmos transaction, which pays the txfees module's price.
+  const cosmosGasPrice = useCosmosGasPrice()
+  const fee = phantom ? networkFee(COSMOS_SEND_GAS, cosmosGasPrice) : networkFee(gasLimit ?? gas, gasPrice ?? GAS_PRICE)
   const injSpend = sendToken === 'INJ' ? amountBase ?? BigInt(0) : BigInt(0)
   const feeCheck = checkFee(injBalance, fee, injSpend)
   const maxBase = sendToken === 'INJ' ? maxInjAfterFee(injBalance, fee) : tokenBalance
@@ -148,8 +164,8 @@ export default function SendPage() {
     ? feeShortfallMessage(feeCheck, sendToken === 'INJ')
     : null
 
-  // Both tokens go over the EVM: check it is live and on the right chain.
-  const chainHealth = useChainHealth('evm')
+  // Both tokens go over the EVM (Phantom's over Cosmos): check it is live and on the right chain.
+  const chainHealth = useChainHealth(phantom ? 'cosmos' : 'evm')
 
   // Circuit breaker, the token's permission rules, and whether the recipient has ever been used.
   const transferChecks = useTransferChecks(sendToken, toInjectiveAddress(address), to && !isOwnAddress ? to.injective : null)
@@ -160,6 +176,11 @@ export default function SendPage() {
 
   // One status line per transfer: waiting for the wallet, waiting for a block, confirmed or failed.
   const txStatus = ((): { state: ChainState; message: string; hash?: string } | null => {
+    if (phantom) {
+      if (phantomSend.step === 'signing') return { state: 'awaiting-signature', message: 'Sign the transfer in Phantom. NinjaPay sends it to Injective once you sign.' }
+      if (phantomSend.step === 'sent') return { state: 'confirmed', message: `${phantomSend.token} sent and confirmed on chain.`, hash: phantomSend.hash }
+      return null
+    }
     if (tx.isPending) return { state: 'awaiting-signature', message: 'Confirm the transfer in your wallet.' }
     if (relay.state.step === 'signing') return { state: 'awaiting-signature', message: "Sign the transfer in your wallet. Signing isn't a transaction, so it costs nothing." }
     if (relay.state.step === 'sending') return { state: 'pending', message: 'Signed. NinjaPay is sending it and paying the network fee.' }
@@ -183,6 +204,15 @@ export default function SendPage() {
   // to an ordinary address, as quoted.
   const handleSend = () => {
     if (!to || amountBase === null) return
+    if (phantom) {
+      if (!evmSigner) return
+      const token = sendToken
+      setPhantomSend({ step: 'signing' })
+      sendWithSigner(to.injective, amount, CHAIN_ID, token, undefined, evmSigner)
+        .then(hash => setPhantomSend({ step: 'sent', hash, token }))
+        .catch((error: Error) => setPhantomSend({ step: 'error', message: sendErrorText(error) }))
+      return
+    }
     if (relayOffer) {
       usdcTx.reset()
       void relay.send(to.evm, amountBase)
@@ -286,7 +316,7 @@ export default function SendPage() {
           </div>
           {!balLoading && !balError && injBalance === BigInt(0) && (
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-10px' }}>
-              No INJ for fees yet. <Link href="/setup" style={{ color: 'var(--accent-text)' }}>Set up your wallet</Link> to add the network and get {FAUCETS ? 'test funds' : 'INJ'}.
+              No INJ for fees yet. <Link href="/setup" style={{ color: 'var(--accent-text)' }}>Set up your wallet</Link> to {phantom ? 'get' : 'add the network and get'} {FAUCETS ? 'test funds' : 'INJ'}.
             </p>
           )}
           {balError && (
@@ -397,22 +427,30 @@ export default function SendPage() {
               <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{relay.state.message}</span>
             </div>
           )}
+          {phantom && phantomSend.step === 'error' && (
+            <div role="alert" className="alert-error" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={14} style={{ marginTop: '2px', flexShrink: 0 }} /> <span>{phantomSend.message}</span>
+            </div>
+          )}
           {txStatus && <TxStatus {...txStatus} />}
 
           <button
             onClick={handleSend}
-            disabled={!canSend || tx.isPending || isConfirming || relayBusy}
+            disabled={!canSend || tx.isPending || isConfirming || relayBusy || phantomBusy}
             className="btn-primary"
             style={{ width: '100%', padding: '13px', fontSize: '15px' }}
           >
-            {(tx.isPending || isConfirming || relayBusy)
+            {(tx.isPending || isConfirming || relayBusy || phantomBusy)
               ? <><span className="spinner" /> Processing…</>
               : <><Send size={15} /> {relayOffer ? 'Send without INJ' : `Send ${sendToken}`}</>}
           </button>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
-            {INJECTIVE_EVM.name} (chain {INJECTIVE_EVM.id}) · {relayOffer ? 'Fee paid by NinjaPay' : 'Fees paid in INJ'}
+            {phantom
+              ? <>Signed in Phantom, sent on {CHAIN_ID} · Fees paid in INJ</>
+              : <>{INJECTIVE_EVM.name} (chain {INJECTIVE_EVM.id}) · {relayOffer ? 'Fee paid by NinjaPay' : 'Fees paid in INJ'}</>}
           </p>
+          {phantom && <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '-12px' }}>{PHANTOM_NETWORK_HINT}</p>}
         </div>
       )}
 

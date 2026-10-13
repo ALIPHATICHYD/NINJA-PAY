@@ -29,20 +29,20 @@ const NETWORK_STATS: { label: string; text?: string; count?: { value: number; de
   { label: 'Block time', count: { value: 0.59, decimals: 2, suffix: 's' } },
   { label: 'Median transaction cost', text: '$0.0001' },
   { label: 'Onchain transactions', count: { value: 3, decimals: 2, suffix: 'B' } },
-  { label: 'Wallets: Keplr, Leap, MetaMask', count: { value: 3 } },
+  { label: 'Wallets: Keplr, Leap, MetaMask, Phantom', count: { value: 4 } },
 ]
 
-const MARQUEE = ['Send INJ', 'Send USDC', 'Batch payroll', 'Claim links', 'Keplr', 'Leap', 'MetaMask', 'Non-custodial']
+const MARQUEE = ['Send INJ', 'Send USDC', 'Batch payroll', 'Claim links', 'Keplr', 'Leap', 'MetaMask', 'Phantom', 'Non-custodial']
 
 const WHY = [
   { icon: Shield, title: 'Non-Custodial', desc: 'You hold your keys. NinjaPay never takes custody of your funds.' },
   { icon: Zap, title: 'Sub-Second Finality', desc: 'Injective blocks finalize in under a second, so transfers land almost immediately.' },
-  { icon: Wallet, title: 'Multi-Wallet', desc: 'Keplr, Leap, and MetaMask. Use the wallet you already have.' },
+  { icon: Wallet, title: 'Multi-Wallet', desc: 'Keplr, Leap, MetaMask, and Phantom. Use the wallet you already have.' },
   { icon: Receipt, title: 'Transparent Fees', desc: 'Your wallet shows the network fee before you sign anything.' },
 ]
 
 const STEPS = [
-  { title: 'Connect your wallet', desc: 'Use Keplr, Leap, or MetaMask to connect your Injective wallet with one click.' },
+  { title: 'Connect your wallet', desc: 'Use Keplr, Leap, MetaMask, or Phantom to connect your Injective wallet with one click.' },
   { title: 'Choose an action', desc: 'Send tokens, create a claim pool, or run payroll from the dashboard.' },
   { title: 'Sign the transaction', desc: 'Review all details, then sign from your wallet. No private keys ever leave your device.' },
   { title: 'Settle on-chain', desc: 'Transactions settle on Injective in under a second. View them in your history instantly.' },
@@ -51,7 +51,7 @@ const STEPS = [
 const FAQS = [
   {
     q: 'What networks does NinjaPay support?',
-    a: "NinjaPay runs natively on Injective. Wallet connect supports Keplr and Leap (Cosmos) as well as MetaMask (EVM-compatible via Injective's EVM layer).",
+    a: "NinjaPay runs natively on Injective. Wallet connect supports Keplr and Leap (Cosmos) as well as MetaMask (EVM-compatible via Injective's EVM layer). Phantom works too: it can't join Injective's EVM, so it signs transfers from its Ethereum network, and it can send INJ and USDC, run payroll and make claim links.",
   },
   {
     q: 'Is NinjaPay non-custodial?',

@@ -1,6 +1,14 @@
 'use client'
 
 import { getDefaultConfig, RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
+import {
+  baseAccount,
+  metaMaskWallet,
+  phantomWallet,
+  rainbowWallet,
+  safeWallet,
+  walletConnectWallet,
+} from '@rainbow-me/rainbowkit/wallets'
 import { WagmiProvider, fallback, http } from 'wagmi'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import '@rainbow-me/rainbowkit/styles.css'
@@ -19,6 +27,11 @@ const config = getDefaultConfig({
   // shared id kept only so local development works; set NEXT_PUBLIC_WALLETCONNECT_ID
   // for every deployment.
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_ID || 'b56e18d47c72ab683b10814fe9495694',
+  // RainbowKit's default list, plus Phantom. Phantom can't join Injective's EVM, so it signs
+  // Injective transfers as EIP-712 typed data instead (hooks/useEvmSigner.ts).
+  wallets: [
+    { groupName: 'Popular', wallets: [metaMaskWallet, phantomWallet, rainbowWallet, safeWallet, baseAccount, walletConnectWallet] },
+  ],
   // Injective's native EVM (1439 testnet, 1776 mainnet), not the deprecated inEVM.
   chains: [INJECTIVE_EVM],
   transports: { [INJECTIVE_EVM.id]: evmTransport },

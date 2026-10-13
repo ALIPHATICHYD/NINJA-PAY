@@ -6,6 +6,8 @@ import { CheckCircle2, ExternalLink } from 'lucide-react'
 import { CopyButton } from '@/components/CopyButton'
 import { FAUCETS, GET_INJ_URL, INJECTIVE_EVM, NETWORK_LABEL, PUBLIC_EVM_RPC } from '@/lib/injective/network'
 import { USDC } from '@/lib/injective/tokens'
+import { usePhantom } from '@/hooks/useEvmSigner'
+import { PHANTOM_NETWORK_HINT, SOLANA_BRIDGES } from '@/lib/injective/phantom'
 
 /*
  * Values from https://docs.injective.network/developers-evm/network-information
@@ -65,6 +67,8 @@ const Note = ({ children }: { children: ReactNode }) => (
 export default function SetupPage() {
   const { isConnected, chainId } = useAccount()
   const onInjective = isConnected && chainId === INJECTIVE_EVM.id
+  // Phantom can't add Injective's network and doesn't need to: it signs transfers from its own.
+  const phantom = usePhantom()
   const { switchChain, isPending: switching, error: switchError } = useSwitchChain()
   const { watchAsset, isPending: adding, error: addError } = useWatchAsset()
   const [usdcAdded, setUsdcAdded] = useState(false)
@@ -86,6 +90,20 @@ export default function SetupPage() {
         </p>
       </div>
 
+      {phantom ? (
+        <Step n={1} title="Phantom is ready" done>
+          <Note>
+            Phantom can&apos;t add {INJECTIVE_EVM.name}, and it doesn&apos;t need to. Your Phantom Ethereum address is also your
+            Injective account, and Phantom signs NinjaPay transfers for it directly: sending INJ and USDC, payroll, claim links
+            and approvals all work.
+          </Note>
+          <Note>{PHANTOM_NETWORK_HINT}</Note>
+          <Note>
+            Phantom won&apos;t list your Injective balances itself, so check them in NinjaPay. Sending USDC with NinjaPay paying the
+            fee needs a wallet on {INJECTIVE_EVM.name}, such as MetaMask.
+          </Note>
+        </Step>
+      ) : (
       <Step n={1} title={`Add ${INJECTIVE_EVM.name} to your wallet`} done={onInjective}>
         {onInjective ? (
           <Note>Your wallet is on {INJECTIVE_EVM.name}.</Note>
@@ -113,7 +131,9 @@ export default function SetupPage() {
           ]}
         />
       </Step>
+      )}
 
+      {!phantom && (
       <Step n={2} title="Add USDC to your token list" done={usdcAdded}>
         <Note>
           This is Circle&apos;s native USDC on Injective. Your wallet shows its balance once it knows the token. It&apos;s the same balance
@@ -132,8 +152,9 @@ export default function SetupPage() {
         {addError && <p style={{ fontSize: '12px', color: 'var(--error)' }}>Your wallet didn&apos;t add USDC. You can import it by hand with the values below.</p>}
         <Values rows={[['Token contract', USDC.evmAddress!, true], ['Symbol', USDC.symbol], ['Decimals', String(USDC.decimals)]]} />
       </Step>
+      )}
 
-      <Step n={3} title={FAUCETS ? 'Get test funds' : 'Get INJ for fees'}>
+      <Step n={phantom ? 2 : 3} title={FAUCETS ? 'Get test funds' : 'Get INJ for fees'}>
         <Note>Every transfer pays its network fee in INJ, including USDC transfers.</Note>
         {FAUCETS ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -147,7 +168,21 @@ export default function SetupPage() {
         )}
       </Step>
 
-      <Step n={4} title="Optional: a Cosmos wallet">
+      <Step n={phantom ? 3 : 4} title="Optional: bring INJ or USDC from Solana">
+        <Note>
+          INJ and USDC held in Phantom on Solana can move to your Injective account. Send them to your 0x address, which is
+          the same account as your inj1 address.
+          {FAUCETS && ' These bridges move real funds on mainnet. On testnet, use the faucets above.'}
+        </Note>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {SOLANA_BRIDGES.map(bridge => (
+            <Outlink key={bridge.href} href={bridge.href}>{bridge.label}</Outlink>
+          ))}
+        </div>
+        <Note>NinjaPay doesn&apos;t run these bridges and takes no part in the transfer.</Note>
+      </Step>
+
+      <Step n={phantom ? 4 : 5} title="Optional: a Cosmos wallet">
         <Note>
           Your EVM wallet signs these too, so Keplr and Leap are optional. Use one of them if your funds are in its
           account.

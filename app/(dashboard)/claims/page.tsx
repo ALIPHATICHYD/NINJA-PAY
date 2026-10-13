@@ -269,7 +269,7 @@ export default function ClaimsPage() {
     return (
       <div style={{ maxWidth: '520px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div className="alert-warning">
-          Connect a wallet to create and manage claim links: an EVM wallet such as MetaMask, or Keplr or Leap.
+          Connect a wallet to create and manage claim links: an EVM wallet such as MetaMask or Phantom, or Keplr or Leap.
         </div>
         {walletError && <div className="alert-error">{walletError}</div>}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

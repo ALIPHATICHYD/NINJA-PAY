@@ -55,7 +55,7 @@ NinjaPay is a Next.js dApp for moving value on Injective without handing over yo
 - **Claim links**: shareable links that split an amount across a group.
 - **History and analytics** for a connected wallet.
 
-Every transfer is built in the browser and signed by the user's own wallet (Keplr, Leap, or an EVM wallet through RainbowKit). NinjaPay does not run a backend that holds keys or funds. The only server-side state is claim-pool metadata stored in Supabase.
+Every transfer is built in the browser and signed by the user's own wallet (Keplr, Leap, or an EVM wallet through RainbowKit, Phantom included). NinjaPay does not run a backend that holds keys or funds. The only server-side state is claim-pool metadata stored in Supabase.
 
 The longer-term goal is real-world utility for users in Nigeria: cashing out to NGN bank accounts and paying utility bills. Both are deliberately **disabled** until a licensed payout partner is integrated. The interface says so wherever they appear.
 
@@ -83,6 +83,7 @@ The longer-term goal is real-world utility for users in Nigeria: cashing out to 
 | INJ → USDC quote | `/send` (Off-Ramp tab) | Waiting on Injective's swap allowlist | Asks Injective's Swap precompile what the INJ/USDC spot market would give for an amount of INJ, with a 0.5% slippage floor, the market's taker fee rate, the swap's network fee and a check against the Pyth price. Quote only: no swap button and no naira amount. It shows a quote only once Injective adds the market to its swap allowlist, which NinjaPay can't do; until then it says so. |
 | Bill payments (airtime, data, electricity, cable) | `/bills` | Not live | Form is disabled; no payment is taken and nothing is sent to a provider. |
 | Wallet connection | all app routes | Working | RainbowKit (EVM wallets) for everything: Send as EVM transactions, and Payroll, claim links and revokes as Cosmos messages signed over EIP-712. Keplr/Leap is optional and signs those natively when connected. Keplr/Leap is only asked to connect when the user clicks **Connect Keplr or Leap**; later visits reconnect quietly. |
+| Phantom | all app routes | Built; not yet tried with Phantom | Phantom is in the connect list. It can't join Injective's EVM network (Phantom has no custom networks), but its Ethereum account is the same Injective account, so it signs Injective's Cosmos messages as EIP-712 typed data under Ethereum's chain id, which the chain also accepts: `1` on mainnet, Sepolia's `11155111` on testnet (`lib/injective/phantom.ts`). Send pays INJ and USDC as a `MsgSend`, and Payroll, claim links and revokes work as for MetaMask. On testnet Phantom needs its Testnet Mode for Sepolia. Setup shows Phantom its own steps and links Injective's guides for bringing INJ and USDC from Solana. Things bound to Injective's EVM chain id stay with MetaMask and other EVM wallets: EVM transactions and sending USDC without INJ. Tested on a local chain with a Sepolia-signed transfer, not yet with the Phantom app. |
 
 `lib/paystack.ts` and `lib/vtpass.ts` contain integration code for Paystack and VTPass, but no page imports them today.
 
@@ -232,6 +233,7 @@ lib/
     transfer-errors.ts        USDC compliance-hook errors in plain words
     bank.ts                   Balance queries, MsgMultiSend builder
     cosmos-transactions.ts    Cosmos signing: Keplr/Leap direct, EVM wallets over EIP-712; sendToken
+    phantom.ts                Phantom: how it's spotted, its testnet hint, Solana bridge links
     claim-escrow.ts           Claim-link escrow: plan, fund, pay out, sweep
     claim-grant.ts            Claim links paid from the creator's wallet: approve, pay out, cancel
     payroll-budget.ts         Payroll budgets: give, read, check and pay a run from one
@@ -273,7 +275,7 @@ tests/                        Unit tests (npm test)
 - A **Supabase** project (the free tier is fine).
 - At least one wallet:
   - [Keplr](https://www.keplr.app/) or [Leap](https://www.leapwallet.io/) for the Cosmos rail (`inj1…` addresses).
-  - MetaMask or any WalletConnect wallet for the EVM rail (`0x…` addresses).
+  - MetaMask, Phantom or any WalletConnect wallet for the EVM rail (`0x…` addresses). Phantom on testnet needs its Testnet Mode (Settings, Developer Settings).
 - **Testnet INJ** from the [Injective testnet faucet](https://testnet.faucet.injective.network/).
 
 ### Install and run
@@ -422,12 +424,14 @@ These policies let any client insert or update claim rows. The funds themselves 
 
 4. **USDC without INJ:** when the account holds the USDC but not the INJ for the fee, and the server has the relay set up (`GET /api/relay/usdc`), Send offers **Send without INJ** instead of blocking. The wallet signs an EIP-3009 `TransferWithAuthorization` for exactly this amount and recipient, valid once for 10 minutes, as typed data in Circle's USDC domain (name `USDC`, version `2`; `lib/injective/usdc-authorization.ts`). Signing isn't a transaction and costs nothing. `/api/relay/usdc` then checks the signature, the time window, that the authorization is unused, that the sender holds the USDC and really can't pay the fee in INJ, that a dry run passes (which also runs Circle's compliance hook) and that the fee is at most 0.002 INJ, all before any gas is spent. It has `transferWithAuthorization` submitted by the facilitator or NinjaPay's relayer wallet, at the current gas price with the estimate plus 30% as the limit, and reports the transfer as sent only once the receipt shows the USDC `Transfer` from the sender to the recipient. If it can't tell whether a transfer went through, it says so rather than inviting a second payment. The receipt page shows who paid the fee. Each sender gets 10 relays an hour and everyone together 100, counted per server instance.
 
+5. **Phantom:** Phantom can't send on Injective's EVM, so for Phantom both INJ and USDC go as a Cosmos `MsgSend` from the same account, through `sendToken` and the steps below. Phantom signs it as EIP-712 typed data under Ethereum's chain id (`ETHEREUM_SIGNING_CHAIN_ID`: `1` on mainnet, `11155111` on testnet); injective-core accepts those ids beside Injective's own (`injective-chain/app/ante/eip712.go` at v1.20.3). The page quotes the Cosmos fee and shows the transfer as confirmed once it is in a block. Sending USDC without INJ isn't offered to Phantom, because the EIP-3009 authorization names Injective's EVM chain id.
+
 Payroll, claim links and revokes are Cosmos transactions. The connected EVM wallet signs them, or Keplr or Leap once connected. `sendToken` in `lib/injective/cosmos-transactions.ts` converts the **human-readable** amount to base units once with `toChainAmount`, which is string-based and rejects too many decimal places. It builds a `MsgSend` and hands it to `signAndBroadcast`, which:
    1. fetches the account number, sequence, latest block height and current gas price from the chain's REST API. The gas price is the txfees module's minimum, or its adaptive base fee plus 12.5% when governance has turned that on and it is higher (`lib/injective/gas-price.ts`);
    2. builds the transaction with `createTransaction`, a timeout height and a fee at that gas price;
    3. simulates it to size the gas limit (with a 1.3x buffer, and a fixed fallback if simulation can't be reached). If simulation shows the chain would refuse the messages, for example a payment larger than the balance, it stops before the wallet opens: signed and broadcast, the transaction would fail the same way and still be charged its fee;
    4. checks that the account holds enough INJ for that fee plus any INJ being sent, and stops with a plain message before the wallet opens if it doesn't;
-   5. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`, or the EVM wallet to sign the transaction as EIP-712 typed data (`eth_signTypedData_v4`, switching the wallet to Injective's EVM network first if needed). The typed data is Injective's v2 layout: the messages and the fee, account, sequence and timeout as two JSON strings, which injective-core renders the same way to check the signature. An EVM wallet doesn't report its public key, so the key is recovered from the signature, checked against the connected account, and sent with the account's first Cosmos transaction;
+   5. asks Keplr or Leap to sign in `SIGN_MODE_DIRECT`, or the EVM wallet to sign the transaction as EIP-712 typed data (`eth_signTypedData_v4`, switching the wallet to Injective's EVM network first if needed; Phantom signs under Ethereum's chain id instead, and is asked to switch to Ethereum or Sepolia). The typed data is Injective's v2 layout: the messages and the fee, account, sequence and timeout as two JSON strings, which injective-core renders the same way to check the signature. An EVM wallet doesn't report its public key, so the key is recovered from the signature, checked against the connected account, and sent with the account's first Cosmos transaction;
    6. broadcasts it and waits until the transaction is included in a block.
 
 ### Payroll (`/payroll`)
@@ -506,6 +510,7 @@ These are verified against the current code. They are the priority list before a
 | 10 | Low | Past runs are kept in this browser's `localStorage`. Another browser, or cleared site data, shows none; the payments themselves are on chain. | `lib/payroll-runs.ts` |
 | 11 | Medium | There is no Terms of Service or Privacy Policy yet. So nothing says who may use NinjaPay (no minimum age) or what personal data it keeps: creator and claimer wallet addresses, claim-link names and transaction hashes in Supabase. Both need a lawyer, not code. The connect dialog used to say "you agree to our Terms of Service" and the app footer linked Terms, Privacy and Support to nowhere; those were removed until real pages exist. | `components/WalletButton.tsx`, `app/(dashboard)/layout.tsx` |
 | 12 | Medium | Sending USDC without INJ limits each sender to 10 relays an hour and everyone to 100, but the counts live in each server instance's memory, so on Vercel the real limit is higher and resets on restart. Someone with many funded accounts can spend the relayer wallet's INJ up to those limits (two relayed USDC transfers on Injective mainnet cost their relayer 0.00008 and 0.0003 INJ). A shared store would be needed for a hard cap. Its other open question is Injective's own facilitator: whether it is live, and on what terms, isn't confirmed. | `app/api/relay/usdc/route.ts` |
+| 13 | Low | Phantom support hasn't been tried with the Phantom app. The chain accepts the signatures (shown on a local chain for Sepolia's chain id, and a mainnet id is refused on testnet), but whether Phantom signs this typed data while on Ethereum or Sepolia, and switches between them when asked, needs a real wallet. Phantom also doesn't list Injective balances itself. | `hooks/useEvmSigner.ts` |
 
 **Fixed:**
 

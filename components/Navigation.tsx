@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { User } from 'lucide-react'
+import { usePhantom } from '@/hooks/useEvmSigner'
 
 const NAV_LINKS = [
   { label: 'Send',          href: '/send' },
@@ -19,6 +20,8 @@ const NAV_LINKS = [
 
 export function Navigation() {
   const pathname = usePathname()
+  // Phantom stays on its own Ethereum network and signs Injective transfers from there.
+  const phantom = usePhantom()
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
@@ -161,7 +164,7 @@ export function Navigation() {
                   </button>
                 )
               }
-              if (chain.unsupported) {
+              if (chain.unsupported && !phantom) {
                 return (
                   <button onClick={openChainModal} className="alert-error" style={{ border: 'none', cursor: 'pointer', padding: '10px 14px', borderRadius: '8px', fontWeight: '600' }}>
                     Wrong Network

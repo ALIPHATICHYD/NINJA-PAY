@@ -87,6 +87,15 @@ export const INJECTIVE_EVM = defineChain({
 })
 
 /**
+ * The Ethereum chain id a wallet that can't join Injective's EVM (Phantom) signs Cosmos
+ * messages under. The chain accepts EIP-712 signatures for Ethereum mainnet (1) on
+ * injective-1 and for Sepolia (11155111) on injective-888, besides Injective's own EVM ids
+ * (injective-core v1.20.3, injective-chain/app/ante/eip712.go, "thus Metamask will be able
+ * to submit signatures without switching networks").
+ */
+export const ETHEREUM_SIGNING_CHAIN_ID = IS_MAINNET ? 1 : 11155111
+
+/**
  * Explorers. Blockscout shows EVM transactions (0x hashes from MetaMask);
  * InjScan (formerly explorer.injective.network) shows Cosmos transactions.
  */
