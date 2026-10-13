@@ -20,6 +20,7 @@ import {
 import {
   MAX_RELAY_FEE,
   RELAY_MESSAGES,
+  isNonceConflict,
   relayBackend,
   relayTransfer,
   serverEvmRpc,
@@ -248,6 +249,47 @@ describe("relaying a signed USDC transfer from NinjaPay's wallet", () => {
     const outcome = await relay(chain)
     expect(node.sent).toHaveLength(2)
     expect(outcome).toEqual({ status: 'CONFIRMED', hash: keccak256(node.sent[1]) })
+  })
+})
+
+describe('the relayer under load', () => {
+  it('takes the next nonce once when another server instance used this one a moment earlier', async () => {
+    let first = true
+    const chain: Chain = { receipt: 'success' }
+    const node = stubNode(chain)
+    const fetchMock = vi.mocked(fetch)
+    const answer = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (url, init) => {
+      const body = JSON.parse(String(init?.body))
+      if (!Array.isArray(body) && body.method === 'eth_sendRawTransaction' && first) {
+        first = false
+        node.sent.push(body.params[0])
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: 'invalid nonce; got 5, expected 6' } }))
+      }
+      return answer(url, init)
+    })
+    const outcome = await relay(chain)
+    expect(node.sent).toHaveLength(2)
+    expect(outcome).toEqual({ status: 'CONFIRMED', hash: keccak256(node.sent[1]) })
+  })
+
+  it("sends the next transfer without waiting for the last one's block", async () => {
+    // No receipt ever comes, so each transfer waits out its whole receipt timeout.
+    const chain: Chain = { receipt: 'none' }
+    const node = stubNode(chain)
+    const [a, b] = await Promise.all([signed(), signed()])
+    const started = Date.now()
+    const outcomes = await Promise.all([relay(chain, relayer, a), relay(chain, relayer, b)])
+    expect(node.sent).toHaveLength(2)
+    expect(outcomes.map(o => o.status)).toEqual(['SUBMITTED', 'SUBMITTED'])
+    // Waiting one after the other would take two receipt timeouts (2 x 300 ms).
+    expect(Date.now() - started).toBeLessThan(550)
+  })
+
+  it('tells a nonce taken by someone else from other refusals', () => {
+    expect(isNonceConflict('invalid nonce; got 5, expected 6')).toBe(true)
+    expect(isNonceConflict('nonce too low')).toBe(true)
+    expect(isNonceConflict('insufficient funds for gas * price + value')).toBe(false)
   })
 })
 

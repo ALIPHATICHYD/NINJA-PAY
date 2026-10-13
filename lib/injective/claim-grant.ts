@@ -73,10 +73,9 @@ import {
   isInsufficientFee,
 } from './transfer-errors'
 import { toChainAmount } from '../money'
+import { LINK_TX_TIMEOUT_BLOCKS, broadcastForLink, type LinkBroadcastOptions } from './link-broadcast'
 
 const SEND_AUTHORIZATION = '/cosmos.bank.v1beta1.SendAuthorization'
-// Blocks a claim transaction stays valid for, as in signAndBroadcast.
-const TIMEOUT_BLOCKS = 120
 
 /** How long a new link can pay out. */
 export const LINK_LIFETIME_DAYS = [1, 7, 30] as const
@@ -215,7 +214,9 @@ export async function fetchGrantLinkState(creator: string, linkAddress: string, 
  * Pay one share to `recipient` from the creator's wallet, signed with the
  * link key and paid for by the creator's fee allowance. The link's state and
  * the creator's balances are read fresh first, so a claim the chain would
- * refuse is never signed or charged.
+ * refuse is never signed or charged. Claimers who claim at the same moment
+ * take turns (link-broadcast.ts); a payout that may have landed throws
+ * PayoutUncertainError instead of failing.
  */
 export async function payShareFromGrant(
   linkKeyHex: string,
@@ -223,6 +224,7 @@ export async function payShareFromGrant(
   recipient: string,
   token: ClaimToken,
   amountBase: string,
+  options: Pick<LinkBroadcastOptions, 'onSigned'> = {},
 ): Promise<string> {
   const key = PrivateKey.fromHex(linkKeyHex)
   const linkAddress = key.toBech32()
@@ -274,18 +276,18 @@ export async function payShareFromGrant(
         new ChainRestTendermintApi(ENDPOINTS.rest).fetchLatestBlock(),
       ])
       account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
-      timeoutHeight = Number(latestBlock.header.height) + TIMEOUT_BLOCKS
+      timeoutHeight = Number(latestBlock.header.height) + LINK_TX_TIMEOUT_BLOCKS
     } catch {
       throw new Error('Could not read this claim link from Injective. Try again.')
     }
 
-    const build = (gas: number, gasPrice?: bigint) =>
+    const build = (gas: number, gasPrice?: bigint, sequence: number = account.sequence) =>
       createTransaction({
         message: msg,
         memo: '',
         fee: { amount: [{ denom: DENOMS.INJ, amount: escrowFee(gas, gasPrice).toString() }], gas: gas.toString(), granter: creator },
         pubKey: key.toPublicKey().toBase64(),
-        sequence: account.sequence,
+        sequence,
         accountNumber: account.accountNumber,
         chainId: CHAIN_ID,
         timeoutHeight,
@@ -310,24 +312,20 @@ export async function payShareFromGrant(
     const gasPrice = await fetchGasPrice(gas)
     checkFeeAtPrice(check, gas, gasPrice)
 
-    let failure: string
-    try {
-      const { txRaw, signBytes } = build(gas, gasPrice)
+    const sent = await broadcastForLink(sequence => {
+      const { txRaw, signBytes } = build(gas, gasPrice, sequence)
       txRaw.signatures = [key.sign(signBytes)]
-      const result = await txApi.broadcast(txRaw)
-      if (result.code === 0) return result.txHash
-      failure = result.rawLog || `Transaction failed with code ${result.code}`
-    } catch (error) {
-      failure = errorMessage(error)
-    }
+      return txRaw
+    }, account.sequence, options)
+    if ('txHash' in sent) return sent.txHash
+    const { failure } = sent
 
     if (attempt === 0 && isHookOutOfGas(failure) && gas < ESCROW_MAX_GAS) {
       minGas = gas * 2
       continue
     }
-    // Someone else's claim used the same sequence number a moment earlier, or the
-    // gas price rose before the chain checked it. Nothing was charged either way.
-    if (attempt === 0 && (/account sequence mismatch/i.test(failure) || isInsufficientFee(failure))) continue
+    // The gas price rose before the chain checked it. Nothing was charged; read it again.
+    if (attempt === 0 && isInsufficientFee(failure)) continue
     throw new Error(describeTransferError(failure))
   }
   throw new Error('Transaction failed.')

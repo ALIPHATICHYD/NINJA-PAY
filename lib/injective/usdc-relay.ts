@@ -168,12 +168,19 @@ export function transferWithAuthorizationData(auth: TransferAuthorization, signa
 }
 
 // One transaction at a time from the relayer wallet on this server instance,
-// so two transfers don't take the same account nonce.
+// so two transfers don't take the same account nonce. Only choosing the nonce
+// and sending wait in line: waiting for the block happens outside it, so a
+// burst of transfers isn't held up one receipt at a time.
 let relayerQueue: Promise<unknown> = Promise.resolve()
 function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
   const run = relayerQueue.then(task, task)
   relayerQueue = run.catch(() => undefined)
   return run
+}
+
+/** Another sender (another server instance) took this nonce first. Nothing was sent. */
+export function isNonceConflict(message: string): boolean {
+  return /nonce too low|invalid nonce|replacement transaction underpriced|already known/i.test(message)
 }
 
 /** True when the node answered with a JSON-RPC error, so the transaction was not accepted. */
@@ -372,20 +379,26 @@ export async function relayTransfer(auth: TransferAuthorization, signature: Hex,
   }
 
   const { privateKey } = options.backend
-  return oneAtATime(async () => {
+  const sent = await oneAtATime(async (): Promise<{ hash: Hash } | { rejected: string } | { refused: RelayOutcome }> => {
     let sent = await submitFromRelayer(client, privateKey, chain, usdc, data, gas, gasPrice)
     // The base fee rose between reading the price and sending: read it again, once.
     if ('rejected' in sent && isInsufficientFee(sent.rejected)) {
       const price = await client.getGasPrice()
-      if (networkFee(gas, price) > MAX_RELAY_FEE) return { status: 'REFUSED', message: RELAY_MESSAGES.feeTooHigh } as const
+      if (networkFee(gas, price) > MAX_RELAY_FEE) return { refused: { status: 'REFUSED', message: RELAY_MESSAGES.feeTooHigh } }
       sent = await submitFromRelayer(client, privateKey, chain, usdc, data, gas, price)
     }
-    if ('rejected' in sent) {
-      if (/insufficient funds|balance < tx cost/i.test(sent.rejected)) {
-        console.warn('The USDC relayer wallet is out of INJ for gas. Top it up with INJ.')
-      }
-      return { status: 'FAILED', message: failureText(new Error(sent.rejected)) } as const
+    // Another server instance sent from the relayer with this nonce a moment earlier: take the next, once.
+    if ('rejected' in sent && isNonceConflict(sent.rejected)) {
+      sent = await submitFromRelayer(client, privateKey, chain, usdc, data, gas, gasPrice)
     }
-    return confirm(client, sent.hash, auth, usdc, timeout)
+    return sent
   })
+  if ('refused' in sent) return sent.refused
+  if ('rejected' in sent) {
+    if (/insufficient funds|balance < tx cost/i.test(sent.rejected)) {
+      console.warn('The USDC relayer wallet is out of INJ for gas. Top it up with INJ.')
+    }
+    return { status: 'FAILED', message: failureText(new Error(sent.rejected)) }
+  }
+  return confirm(client, sent.hash, auth, usdc, timeout)
 }

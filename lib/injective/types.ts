@@ -46,6 +46,8 @@ export interface ClaimRecord {
   claimerAddress: string
   txHash: string | null
   status: 'pending' | 'paid'
+  /** When the share was reserved. */
+  createdAt?: Date
 }
 
 export interface PayrollOutput {

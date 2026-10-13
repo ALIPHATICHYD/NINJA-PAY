@@ -23,19 +23,46 @@ vi.mock('@/lib/injective/bank', async importOriginal => ({
 
 vi.mock('@injectivelabs/sdk-ts', async importOriginal => {
   const actual = await importOriginal<typeof import('@injectivelabs/sdk-ts')>()
-  class FakeBroadcaster {
+  type Args = Parameters<typeof actual.createTransaction>[0]
+  // What each built transaction was made from, so a broadcast can be read back.
+  const built = new WeakMap<object, Args>()
+  const createTransaction = (args: Args) => {
+    const tx = actual.createTransaction(args)
+    built.set(tx.txRaw, args)
+    return tx
+  }
+  class FakeTxRestApi {
     async simulate() {
       const next = chain.simulate.shift()
       if (next === undefined || next instanceof Error) throw next ?? new Error('simulation unavailable')
       return { gasInfo: { gasUsed: next } }
     }
-    async broadcast({ msgs, gas }: { msgs: { toData(): { amount: { denom: string; amount: string }[] } }; gas: { gas: number; gasPrice: string } }) {
-      chain.sent.push({ gas: gas.gas, gasPrice: gas.gasPrice, amount: msgs.toData().amount })
+    async broadcast(txRaw: object) {
+      const args = built.get(txRaw)!
+      const message = (Array.isArray(args.message) ? args.message[0] : args.message) as { toData(): { amount: { denom: string; amount: string }[] } }
+      const gas = Number(args.fee!.gas)
+      chain.sent.push({ gas, gasPrice: (BigInt(args.fee!.amount[0].amount) / BigInt(gas)).toString(), amount: message.toData().amount })
       const next = chain.broadcast.shift() ?? { code: 0 }
       return { ...next, txHash: `HASH${chain.sent.length}` }
     }
   }
-  return { ...actual, MsgBroadcasterWithPk: FakeBroadcaster }
+  class FakeAuthApi {
+    async fetchAccount(address: string) {
+      return { account: { '@type': '/injective.types.v1beta1.EthAccount', base_account: { address, pub_key: null, account_number: '7', sequence: '0' }, code_hash: '' } }
+    }
+  }
+  class FakeTendermintApi {
+    async fetchLatestBlock() {
+      return { header: { height: '100' } }
+    }
+  }
+  return {
+    ...actual,
+    createTransaction,
+    TxRestApi: FakeTxRestApi,
+    ChainRestAuthApi: FakeAuthApi,
+    ChainRestTendermintApi: FakeTendermintApi,
+  }
 })
 
 const { payShareFromEscrow, sweepEscrow } = await import('@/lib/injective/claim-escrow')

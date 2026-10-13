@@ -11,10 +11,19 @@
  * unique constraints), not by the chain.
  */
 
-import { MsgSend, MsgBroadcasterWithPk, PrivateKey } from '@injectivelabs/sdk-ts'
+import {
+  BaseAccount,
+  ChainRestAuthApi,
+  ChainRestTendermintApi,
+  MsgSend,
+  PrivateKey,
+  TxRestApi,
+  createTransaction,
+} from '@injectivelabs/sdk-ts'
 import { DEFAULT_GAS_PRICE } from '@injectivelabs/utils'
-import { NETWORK } from './constants'
+import { CHAIN_ID } from './constants'
 import { ENDPOINTS } from './network'
+import { LINK_TX_TIMEOUT_BLOCKS, broadcastForLink, type LinkBroadcastOptions } from './link-broadcast'
 import { fetchGasPrice } from './gas-price'
 import { DENOMS, TOKENS, sameDenom } from './tokens'
 import { fetchAllBalances, balanceOf, type Coin } from './bank'
@@ -195,29 +204,50 @@ type EscrowTx = {
  * sized by simulation (capped at ESCROW_MAX_GAS) and priced at the chain's
  * current gas price. If USDC's compliance hook runs out of gas the
  * transaction is retried once with twice the gas, and if the price rose
- * before the chain saw it, once at the new price.
+ * before the chain saw it, once at the new price. Claimers paid from the same
+ * escrow at the same moment take turns (link-broadcast.ts), and a payout that
+ * may have landed throws PayoutUncertainError instead of failing.
  */
-async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise<string> {
-  const escrowAddress = escrowAddressFromKey(privateKeyHex)
-  const broadcaster = new MsgBroadcasterWithPk({
-    network: NETWORK,
-    endpoints: { grpc: ENDPOINTS.grpc, rest: ENDPOINTS.rest, indexer: ENDPOINTS.indexer },
-    privateKey: privateKeyHex,
-    simulateTx: false,
-  })
+async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx, options: Pick<LinkBroadcastOptions, 'onSigned'> = {}): Promise<string> {
+  const key = PrivateKey.fromHex(privateKeyHex)
+  const escrowAddress = key.toBech32()
+  const txApi = new TxRestApi(ENDPOINTS.rest)
 
   let minGas = 0
   for (let attempt = 0; attempt < 2; attempt++) {
     let held: Coin[]
+    let account: { accountNumber: number; sequence: number }
+    let timeoutHeight: number
     try {
-      held = await fetchAllBalances(escrowAddress)
+      const [balances, accountResponse, latestBlock] = await Promise.all([
+        fetchAllBalances(escrowAddress),
+        new ChainRestAuthApi(ENDPOINTS.rest).fetchAccount(escrowAddress),
+        new ChainRestTendermintApi(ENDPOINTS.rest).fetchLatestBlock(),
+      ])
+      held = balances
+      account = BaseAccount.fromRestApi(accountResponse).toAccountDetails()
+      timeoutHeight = Number(latestBlock.header.height) + LINK_TX_TIMEOUT_BLOCKS
     } catch {
       throw new Error('Could not read the claim pool balance. Try again.')
     }
 
+    const build = (gas: number, fee: bigint, sequence: number = account.sequence) =>
+      createTransaction({
+        message: tx.build(held, fee),
+        memo: '',
+        fee: { amount: [{ denom: DENOMS.INJ, amount: fee.toString() }], gas: gas.toString() },
+        pubKey: key.toPublicKey().toBase64(),
+        sequence,
+        accountNumber: account.accountNumber,
+        chainId: CHAIN_ID,
+        timeoutHeight,
+      })
+
     let gas = ESCROW_FALLBACK_GAS
     try {
-      const { gasInfo } = await broadcaster.simulate({ msgs: tx.build(held, escrowFee(ESCROW_MAX_GAS)) })
+      const { txRaw } = build(ESCROW_MAX_GAS, escrowFee(ESCROW_MAX_GAS))
+      txRaw.signatures = [new Uint8Array(0)]
+      const { gasInfo } = await txApi.simulate(txRaw)
       gas = Math.ceil(Number(gasInfo.gasUsed) * GAS_BUFFER)
     } catch (error) {
       if (isHookRestriction(errorMessage(error))) throw new Error(HOOK_RESTRICTION_MESSAGE)
@@ -234,17 +264,13 @@ async function broadcastFromEscrow(privateKeyHex: string, tx: EscrowTx): Promise
     const gasPrice = await fetchGasPrice(gas)
     const fee = checkFeeAtPrice(f => tx.check(held, f), gas, gasPrice)
 
-    let failure: string
-    try {
-      const result = await broadcaster.broadcast({
-        msgs: tx.build(held, fee),
-        gas: { gas, gasPrice: gasPrice.toString() },
-      })
-      if (result.code === 0) return result.txHash
-      failure = result.rawLog || `Transaction failed with code ${result.code}`
-    } catch (error) {
-      failure = errorMessage(error)
-    }
+    const sent = await broadcastForLink(sequence => {
+      const { txRaw, signBytes } = build(gas, fee, sequence)
+      txRaw.signatures = [key.sign(signBytes)]
+      return txRaw
+    }, account.sequence, options)
+    if ('txHash' in sent) return sent.txHash
+    const { failure } = sent
 
     if (attempt === 0 && isHookOutOfGas(failure) && gas < ESCROW_MAX_GAS) {
       minGas = gas * 2
@@ -263,6 +289,7 @@ export async function payShareFromEscrow(
   recipient: string,
   token: ClaimToken,
   amountBase: string,
+  options: Pick<LinkBroadcastOptions, 'onSigned'> = {},
 ): Promise<string> {
   const escrowAddress = escrowAddressFromKey(privateKeyHex)
   const needed = BigInt(amountBase)
@@ -285,7 +312,7 @@ export async function payShareFromEscrow(
       // Use the escrow's own spelling of the denom so the chain matches the coins it holds.
       amount: { denom: tokenCoin(held)?.denom ?? TOKEN_DENOM[token], amount: amountBase },
     }),
-  })
+  }, options)
 }
 
 /**

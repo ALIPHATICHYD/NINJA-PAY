@@ -47,6 +47,7 @@ type ClaimRow = {
   claimer_address: string
   tx_hash: string | null
   status: ClaimRecord['status']
+  created_at?: string
 }
 
 function toClaimPool(row: ClaimPoolRow): ClaimPool {
@@ -61,6 +62,21 @@ function toClaimPool(row: ClaimPoolRow): ClaimPool {
     shares: row.shares || [],
     linkCode: row.link_code,
     createdAt: new Date(row.created_at),
+  }
+}
+
+/** Whether the database answers a trivial read within five seconds. Reads no rows. */
+export async function pingDatabase(): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  try {
+    const { error } = await supabase
+      .from('claim_pools')
+      .select('id', { head: true })
+      .limit(1)
+      .abortSignal(AbortSignal.timeout(5_000))
+    return !error
+  } catch {
+    return false
   }
 }
 
@@ -165,6 +181,7 @@ function toClaimRecord(row: ClaimRow): ClaimRecord {
     claimerAddress: row.claimer_address,
     txHash: row.tx_hash,
     status: row.status,
+    createdAt: row.created_at ? new Date(row.created_at) : undefined,
   }
 }
 
@@ -175,6 +192,13 @@ export async function getClaimsForPools(poolIds: string[]): Promise<ClaimRecord[
     console.error('Failed to load claims:', error)
     return []
   }
+  return (data || []).map(toClaimRecord)
+}
+
+/** Like getClaimsForPools, but a failed read throws: reserving must not mistake it for an empty pool. */
+async function readClaims(poolId: string): Promise<ClaimRecord[]> {
+  const { data, error } = await supabase.from('claims').select().eq('pool_id', poolId)
+  if (error) throw new Error(error.message || "Couldn't read this link's claims. Try again.")
   return (data || []).map(toClaimRecord)
 }
 
@@ -193,19 +217,23 @@ export async function getClaimByClaimer(poolId: string, claimerAddress: string):
 }
 
 /**
- * Reserve the next free share for a claimer. The claims table has unique
+ * Reserve a free share for a claimer. The claims table has unique
  * (pool_id, share_index) and unique (pool_id, claimer_address) constraints,
  * so the insert itself is the lock: two claimers can never get the same
- * share, and one address can never hold two shares.
+ * share, and one address can never hold two shares. Each claimer tries a
+ * random free share, so a crowd arriving together doesn't all race for the
+ * same one.
  */
 export async function reserveClaimShare(
   pool: ClaimPool,
-  claimerAddress: string
+  claimerAddress: string,
+  random: () => number = Math.random,
 ): Promise<{ record: ClaimRecord } | { error: 'already-claimed' | 'fully-claimed' }> {
   for (let attempt = 0; attempt < pool.shares.length; attempt++) {
-    const taken = new Set((await getClaimsForPools([pool.id])).map(c => c.shareIndex))
-    const free = pool.shares.findIndex((_, i) => !taken.has(i))
-    if (free === -1) return { error: 'fully-claimed' }
+    const taken = new Set((await readClaims(pool.id)).map(c => c.shareIndex))
+    const freeShares = pool.shares.map((_, i) => i).filter(i => !taken.has(i))
+    if (freeShares.length === 0) return { error: 'fully-claimed' }
+    const free = freeShares[Math.floor(random() * freeShares.length)]
 
     const { data, error } = await supabase
       .from('claims')
@@ -219,6 +247,21 @@ export async function reserveClaimShare(
     // Someone else took this share between our read and insert; try the next one.
   }
   return { error: 'fully-claimed' }
+}
+
+/**
+ * Record the payout's hash on its reservation before the payout is sent, so a
+ * claim interrupted at any point can be checked against the chain later.
+ * Throws if it can't be saved: the payout must not go out unrecorded.
+ */
+export async function recordClaimTx(claimId: string, txHash: string): Promise<void> {
+  const { error } = await supabase.from('claims').update({ tx_hash: txHash }).eq('id', claimId).eq('status', 'pending')
+  if (error) throw new Error("Couldn't save your claim before sending it, so nothing was sent. Try again.")
+}
+
+/** Pending reservations in a pool, for recovery. */
+export async function getPendingClaims(poolId: string): Promise<ClaimRecord[]> {
+  return (await readClaims(poolId)).filter(c => c.status === 'pending')
 }
 
 export async function markClaimPaid(claimId: string, txHash: string): Promise<void> {
