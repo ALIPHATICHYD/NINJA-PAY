@@ -188,6 +188,8 @@ app/
   receipt/[hash]/page.tsx     Shareable receipt read from the chain (no wallet needed)
   api/evm-rpc/route.ts        Optional EVM RPC proxy that keeps a provider key on the server
   api/health/route.ts         What an uptime monitor polls: chain, EVM, database and relay
+  api/claims/route.ts         Claim-link bookings written by the server, signed by the link's key
+  api/cron/settle-claims/     Daily job that settles claims nobody came back to (vercel.json)
   api/relay/usdc/route.ts     Sends USDC for people without INJ, NinjaPay paying the fee (off until set up)
   api/tokens/route.ts         Injective's verified tokens, trimmed for the browser
 components/
@@ -254,16 +256,21 @@ lib/
   rate-limit.ts               In-memory request limits for server routes
   circuit-breaker.ts          Skips a failing provider for a while instead of waiting on it
   claim-recovery.ts           Settles claims left pending, by asking the chain
+  claim-proof.ts              The link's key signs each claim booking; the server checks it
+  claims-client.ts            Claim bookings from the browser: the server first, the public key until it is set up
+  shared-rate-limit.ts        Rate limits counted in the database, shared by every server instance
   prices.ts                   INJ and USDC prices from Injective's Pyth oracle
   payment-request.ts          Payment-request links to /send
   statement.ts                CSV activity statement and payroll runs, made in the browser
   payroll-runs.ts             Paid payroll runs, saved in this browser
-  supabase.ts                 Claim pools and transaction history
+  supabase.ts                 Claim pools and claims: reads, and writes through either key
+  supabase-server.ts          The service-role client, for server routes only
   paystack.ts, vtpass.ts      Payout and bill integrations (not wired to any page)
 public/
   favicon.png                 The app icon at 512px (social cards, README)
   brand/                      The in-app logo (ninja-mark.svg), hero mark (ninja-hero.svg) and the footer's engraved savanna (savanna.webp)
 scripts/savanna.js            Draws the footer's savanna as SVG
+sql/                          Phase 2 database changes: shared rate limits, and the claim-write lock
 tests/                        Unit tests (npm test)
   e2e/                        Money paths on a local Injective chain (npm run test:e2e)
     fixtures/                 A stand-in for Circle's USDC with EIP-3009 (source and compiled)
@@ -305,12 +312,14 @@ npm run build && npm start
 
 ## Environment variables
 
-Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visible to anyone**. Only put publishable values in them. `INJECTIVE_EVM_RPC_URL`, `USDC_RELAY_FACILITATOR_URL` and `USDC_RELAYER_PRIVATE_KEY` are server-only. See [Security model](#security-model).
+Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visible to anyone**. Only put publishable values in them. `INJECTIVE_EVM_RPC_URL`, `USDC_RELAY_FACILITATOR_URL`, `USDC_RELAYER_PRIVATE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` are server-only. See [Security model](#security-model).
 
 | Variable | Required | Used by | Notes |
 |---|---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes, for claims and analytics | `lib/supabase.ts` | Supabase → Project Settings → API. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes, for claims and analytics | `lib/supabase.ts` | Publishable anon key. Protect tables with RLS. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No (server-only) | `lib/supabase-server.ts` | Supabase → Project Settings → API keys → `service_role` (secret). With it, the server writes claim links (`/api/claims`) and counts the relay's limits in the database, so the database can refuse writes from browsers. It skips Row Level Security, so set it only in the host's environment settings, never with a `NEXT_PUBLIC_` prefix. See [Locking claim writes](#locking-claim-writes). |
+| `CRON_SECRET` | No (server-only) | `app/api/cron/settle-claims/route.ts` | Any long random string. Vercel sends it to the daily claim-settling job, which refuses calls without it. |
 | `NEXT_PUBLIC_INJECTIVE_NETWORK` | No | `lib/injective/network.ts` | `mainnet` to target mainnet. Defaults to testnet. |
 | `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` / `NEXT_PUBLIC_INJECTIVE_EXPLORER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD, indexer and indexer explorer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
 | `NEXT_PUBLIC_INJECTIVE_EVM_WS` | No | `lib/injective/live.ts` | EVM WebSocket (`wss://`) for live payment updates. Used in the browser, so it must be keyless. Defaults to Injective's public WebSocket endpoint from the [EVM network information](https://docs.injective.network/developers-evm/network-information) page. |
@@ -411,7 +420,20 @@ create policy "read transactions"  on transactions for select using (true);
 create policy "insert transactions" on transactions for insert with check (true);
 ```
 
-These policies let any client insert or update claim rows. The funds themselves are protected by the link's key and the chain's limits on it, not by the database: a forged `claims` row cannot move tokens. What a hostile client *can* do is reserve shares it never pays out, or mark rows paid. That is acceptable on testnet. For production, move reservation behind a server route that checks a signature from the claimer, or move claim state on-chain (see [Roadmap](#roadmap)). No `update` policy on `claim_pools` is needed any more.
+These policies let any client insert or update claim rows. The funds themselves are protected by the link's key and the chain's limits on it, not by the database: a forged `claims` row cannot move tokens. What a hostile client *can* do is reserve shares it never pays out, or mark rows paid. That is acceptable on testnet, and the next section closes it.
+
+### Locking claim writes
+
+With `SUPABASE_SERVICE_ROLE_KEY` set, the browser no longer writes claim rows. It sends each write to `/api/claims`, signed by the claim link's key (`lib/claim-proof.ts`), and the server checks the signature belongs to that link before writing with the service role. Settling a claim needs no signature, because the server only does what the chain says about its payout. Without the key, `/api/claims` answers `503` and the browser writes with the anon key as before, so the key can be added at any time.
+
+Once the server writes claim links, the database can refuse writes from browsers. In order:
+
+1. Run `sql/phase2-rate-limits.sql` in the Supabase SQL editor. It adds a `rate_limits` table and a `hit_rate_limit` function that only the service role can use, and changes nothing existing.
+2. Add `SUPABASE_SERVICE_ROLE_KEY` (and `CRON_SECRET`) in Vercel and redeploy.
+3. Check that `/api/health` says "the server writes claim links", then create and claim one link.
+4. Run `sql/phase2-lock-claim-writes.sql`. It drops the public insert, update and delete policies on `claim_pools`, `claims` and `transactions`, and keeps the public reads the claim page needs. The file ends with the statements that undo it.
+
+Both files were checked on Postgres 16 with Supabase's roles: before the lock the anon role can insert and delete claim rows; after it, its inserts are refused, its updates and deletes change nothing, it can still read, and the service role can still write.
 
 ---
 
@@ -475,7 +497,7 @@ Nothing leaves the creator's wallet until someone claims. The trade-off is that 
 
 1. The page reads the key from the fragment and checks that it derives the pool's `escrow_address`.
 2. The claimer connects Keplr or Leap, or an EVM wallet (its `0x` address is converted to the matching `inj1` address).
-3. The page reserves a free share, picked at random so claimers arriving together rarely want the same one, by inserting a `claims` row. The unique constraints on `(pool_id, share_index)` and `(pool_id, claimer_address)` make that insert the lock.
+3. The page reserves a free share, picked at random so claimers arriving together rarely want the same one, by inserting a `claims` row: through `/api/claims` with a request signed by the link's key when the server is set up, or with the anon key before then. The unique constraints on `(pool_id, share_index)` and `(pool_id, claimer_address)` make that insert the lock.
 4. The escrow key signs a `MsgSend` of that share to the claimer. Gas is sized by simulation (1.3x, capped at 600,000, which the fee reserve covers). The payout's hash is saved on the row before it is sent; if it can't be saved, nothing is sent. If USDC's compliance hook runs out of gas, the payout is retried once with twice the gas. The row is then marked `paid`. If the chain refused the payout or ran it and it failed, the reservation is deleted so someone else can claim that share.
 
 **Escrow: reclaiming.** In `/claims`, the creator's browser can sweep everything left in the escrow (unclaimed shares plus unused fee reserve) back to the funding address. After a sweep, remaining claimers will see that the pool is out of funds.
@@ -499,6 +521,7 @@ Pools created before this design have no escrow and are shown as *unfunded*. The
 - **Never put secrets in `NEXT_PUBLIC_*` variables.** Anything with that prefix is readable in the browser bundle. Paystack **secret** keys, VTPass credentials, and any escrow private key must live in server-only code (route handlers or server actions) and non-public environment variables.
 - **One optional server key.** Sending USDC without INJ can use a wallet NinjaPay controls (`USDC_RELAYER_PRIVATE_KEY`). It only pays gas: the signed transfers it submits move USDC from the sender to the recipient and can't be redirected or reused. Keep only a little INJ in it. The relay logs no addresses, signatures or the key.
 - **Supabase is public infrastructure here.** The anon key is shipped to clients, so RLS is the only guard. See [Row Level Security](#row-level-security).
+- **A second optional server key.** `SUPABASE_SERVICE_ROLE_KEY` lets the server write claim links and count rate limits. It can read and write every table, so it lives only in the host's settings, and only route handlers import `lib/supabase-server.ts`. The server writes a claim row only for a request signed by that link's key, or when the chain settles it.
 - **Testnet only.** `constants.ts` hardcodes `Network.Testnet`. Moving to mainnet must be a deliberate change, reviewed alongside the fixes below.
 - **No audit.** Nothing in this repository has been security-reviewed or audited.
 
@@ -532,14 +555,14 @@ NinjaPay is a website, a few server routes on Vercel, a Supabase database for cl
 | The relayer wallet runs low on INJ | Nothing at first: `/api/health` reports it while 20 transfers' worth is left. Once it is empty, **Send without INJ** says NinjaPay can't pay network fees right now, and no USDC moves | The chain refuses a transfer the relayer can't pay gas for, so the sender's signed transfer is never used | Send a little INJ to the relayer wallet. Its key is in the host's settings, not in the app |
 | Many people claim one link at once | Claims take a few seconds longer. Past what one link can pay in 60 seconds, some people are told to try again in a minute, with nothing sent | Payouts take turns on the link's account (see [Claim links](#claim-links-claims--claimclaimid)) | Nothing. For a very large drop, split it across several links |
 | A claimer closes the tab mid-claim | When they come back, the link shows their claim as paid, under way, or open to claim again | Settles the claim against the chain when it is next needed | Nothing |
-| A Vercel instance restarts | Nothing | The relay's per-sender limits start counting again (known issue 12) | Nothing |
+| A Vercel instance restarts | Nothing | With `SUPABASE_SERVICE_ROLE_KEY` set, nothing: the relay's limits are counted in the database. Without it, they start counting again (known issue 12) | Nothing |
 | A bad deploy | Errors on pages that worked before | Nothing | Roll back to the previous deployment in Vercel (Instant Rollback), then fix forward |
 
 Wallets, pages and the chain hold everything that matters, so there is nothing for NinjaPay to restore after an outage beyond the database, so keep backups of it on Supabase's side. Claim links' keys were never in it.
 
 ### Load
 
-On the local test chain one claim link paid about 1.6 claims a second, all from one account taking turns. That puts the limit for people claiming the same link within the same minute at roughly 90; this is an estimate, and blocks on testnet and mainnet will make it differ. Different links pay from different accounts, so they don't wait on each other. The relay sends one transfer at a time per server instance, waiting only for its nonce and send, not for the block. The parts that don't scale yet are listed in [Known issues](#known-issues): the relay's limits are kept per instance (12), and the browser reserves claim shares with the public database key (see [Row Level Security](#row-level-security)).
+On the local test chain one claim link paid about 1.6 claims a second, all from one account taking turns. That puts the limit for people claiming the same link within the same minute at roughly 90; this is an estimate, and blocks on testnet and mainnet will make it differ. Different links pay from different accounts, so they don't wait on each other. The relay sends one transfer at a time per server instance, waiting only for its nonce and send, not for the block. Until `SUPABASE_SERVICE_ROLE_KEY` is set, two parts stay as they were: the relay's limits are kept per instance (known issue 12), and browsers write claim rows with the public database key. See [Locking claim writes](#locking-claim-writes).
 
 ## Known issues
 
@@ -558,11 +581,14 @@ These are verified against the current code. They are the priority list before a
 | 9 | Low | A payroll paid from a budget shows on its receipt and under Past runs, but Transactions and Analytics may not list it. History comes from Injective's indexer, and how the indexer reports payments inside an authz `MsgExec` hasn't been checked, since a local chain has no indexer. | `lib/injective/activity.ts` |
 | 10 | Low | Past runs are kept in this browser's `localStorage`. Another browser, or cleared site data, shows none; the payments themselves are on chain. | `lib/payroll-runs.ts` |
 | 11 | Medium | There is no Terms of Service or Privacy Policy yet. So nothing says who may use NinjaPay (no minimum age) or what personal data it keeps: creator and claimer wallet addresses, claim-link names and transaction hashes in Supabase. Both need a lawyer, not code. The connect dialog used to say "you agree to our Terms of Service" and the app footer linked Terms, Privacy and Support to nowhere; those were removed until real pages exist. | `components/WalletButton.tsx`, `app/(dashboard)/layout.tsx` |
-| 12 | Medium | Sending USDC without INJ limits each sender to 10 relays an hour and everyone to 100, but the counts live in each server instance's memory, so on Vercel the real limit is higher and resets on restart. Someone with many funded accounts can spend the relayer wallet's INJ up to those limits (two relayed USDC transfers on Injective mainnet cost their relayer 0.00008 and 0.0003 INJ). A shared store would be needed for a hard cap. Its other open question is Injective's own facilitator: whether it is live, and on what terms, isn't confirmed. | `app/api/relay/usdc/route.ts` |
+| 12 | Medium | Sending USDC without INJ limits each sender to 10 relays an hour and everyone to 100, but the counts live in each server instance's memory, so on Vercel the real limit is higher and resets on restart. Someone with many funded accounts can spend the relayer wallet's INJ up to those limits (two relayed USDC transfers on Injective mainnet cost their relayer 0.00008 and 0.0003 INJ). With `SUPABASE_SERVICE_ROLE_KEY` and `sql/phase2-rate-limits.sql` in place, the counts are kept in the database and hold across instances; until then they are per instance. Its other open question is Injective's own facilitator: whether it is live, and on what terms, isn't confirmed. | `app/api/relay/usdc/route.ts` |
 | 13 | Low | Phantom support hasn't been tried with the Phantom app. The chain accepts the signatures (shown on a local chain for Sepolia's chain id, and a mainnet id is refused on testnet), but whether Phantom signs this typed data while on Ethereum or Sepolia, and switches between them when asked, needs a real wallet. Phantom also doesn't list Injective balances itself. | `hooks/useEvmSigner.ts` |
 
 **Fixed:**
 
+- Anyone could write claim rows with the public database key, even without the link: reserve shares, mark them paid, or delete them. With `SUPABASE_SERVICE_ROLE_KEY` set, the server writes claim links instead, only for requests signed by that link's key, and `sql/phase2-lock-claim-writes.sql` then makes the database refuse writes from browsers. In a browser run against the local chain with the lock in place, a forged insert was refused, a forged delete changed nothing, and claims still paid out.
+- The relay's limits (10 an hour per sender, 100 for everyone) are counted in the database once the service key is set, so they hold across Vercel instances and restarts.
+- A daily job (`/api/cron/settle-claims`) settles claim reservations nobody came back to.
 - Several people claiming one link at the same moment used to fail: all but one got `account sequence mismatch`, because every payout comes from the link's one account. On the local chain 7 of 8 failed. Payouts now take turns, and 8 (and, in a heavier run, 25) all get their exact share, for both kinds of link.
 - A claim payout whose answer was lost (a dropped connection, a timeout) was treated as failed and its share freed, so the same person could claim again and be paid twice. The payout's hash is now saved before it is sent and looked up when the answer is lost; a payout that may have landed keeps its share.
 - Claim reservations left `pending` locked their share for good. They are now settled against the chain when the link is next used.
@@ -673,7 +699,7 @@ The build takes a few minutes and the suite about 30 seconds. Injective's instal
 
 1. **Harden the Cosmos rail.** Verify sends end to end on testnet, show the simulated fee before signing, and try a Ledger through MetaMask's EIP-712 signing.
 2. **Payroll for teams.** One `MsgMultiSend` per run, saved runs checked against the chain, and payroll budgets for an operator are in place. Still to do: CSV import. A treasury that needs several approvers per run waits on Injective enabling the group module; NinjaPay would never be one of its members, since that would give it a say over the funds. Whether payroll needs tax (PAYE) or CBN reporting is a question for an accountant and counsel, so NinjaPay doesn't present runs as tax records.
-3. **Trustless claim links.** Links paid from the creator's wallet now leave the funds there, capped and expiring on chain, and claims left pending settle themselves. Still to do: reserve shares through a server route instead of from the browser. An escrow contract that enforces one claim per address on chain would hold users' funds, so it waits on counsel's view of custody.
+3. **Trustless claim links.** Links paid from the creator's wallet now leave the funds there, capped and expiring on chain, and claims left pending settle themselves. Claim bookings can now go through a server route; what is left is setting the key and locking the database (see [Locking claim writes](#locking-claim-writes)). An escrow contract that enforces one claim per address on chain would hold users' funds, so it waits on counsel's view of custody.
 4. **Persistent history.** Record every broadcast in `transactions`, and read status back from the chain by transaction hash.
 5. **One EVM target.** Standardise on a single Injective EVM chain ID and RPC across RainbowKit and the helpers.
 6. **Server-side integrations.** Move Paystack and VTPass behind route handlers with secret keys, then enable bills.

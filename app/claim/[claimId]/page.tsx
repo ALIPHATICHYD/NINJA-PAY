@@ -9,17 +9,9 @@ import { useWallet } from '@/hooks/useWallet'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import {
-  getClaimPoolByLink,
-  getClaimsForPools,
-  getClaimByClaimer,
-  reserveClaimShare,
-  recordClaimTx,
-  markClaimPaid,
-  releaseClaim,
-  isSupabaseConfigured,
-} from '@/lib/supabase'
-import { CLAIM_IN_PROGRESS_MESSAGE, freeStaleShares, settleClaim, type Settled } from '@/lib/claim-recovery'
+import { getClaimPoolByLink, getClaimsForPools, getClaimByClaimer, isSupabaseConfigured } from '@/lib/supabase'
+import { CLAIM_IN_PROGRESS_MESSAGE, type Settled } from '@/lib/claim-recovery'
+import { confirmPaid, freeStale, recordPayout, release, reserveShare, settle } from '@/lib/claims-client'
 import { PAYOUT_UNCERTAIN_MESSAGE, PayoutUncertainError } from '@/lib/injective/link-broadcast'
 import { toInjectiveAddress } from '@/lib/injective/address'
 import {
@@ -136,7 +128,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     let active = true
     getClaimByClaimer(pool.id, claimerAddress).then(async claim => {
       if (!claim) return
-      const settled = await settleClaim(claim).catch((): Settled => (claim.status === 'paid' ? 'paid' : 'pending'))
+      const settled = await settle(claim).catch((): Settled => (claim.status === 'paid' ? 'paid' : 'pending'))
       if (!active) return
       if (settled === 'paid') {
         setAlreadyClaimed(true)
@@ -157,7 +149,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
       // Finish a claim this address started before, rather than start another.
       const earlier = await getClaimByClaimer(pool.id, claimerAddress)
       if (earlier) {
-        const settled = await settleClaim(earlier)
+        const settled = await settle(earlier)
         if (settled === 'paid') {
           setAlreadyClaimed(true)
           if (earlier.status !== 'paid') setClaimedCount(n => n + 1)
@@ -171,10 +163,10 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
         }
       }
 
-      let reservation = await reserveClaimShare(pool, claimerAddress)
+      let reservation = await reserveShare(pool, claimerAddress, escrowKey)
       // The link looks full: free shares left by claims that never finished, then look again.
-      if ('error' in reservation && reservation.error === 'fully-claimed' && (await freeStaleShares(pool.id)) > 0) {
-        reservation = await reserveClaimShare(pool, claimerAddress)
+      if ('error' in reservation && reservation.error === 'fully-claimed' && (await freeStale(pool.id)) > 0) {
+        reservation = await reserveShare(pool, claimerAddress, escrowKey)
       }
       if ('error' in reservation) {
         setStatus({
@@ -190,17 +182,17 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
       const { record } = reservation
       const share = pool.shares[record.shareIndex]
       if (!share?.amountBase) {
-        await releaseClaim(record.id)
+        await release(record.id, escrowKey)
         throw new Error('This share has no payable amount.')
       }
 
       try {
         // Each payout's hash is saved on the reservation before it is sent.
-        const onSigned = (hash: string) => recordClaimTx(record.id, hash)
+        const onSigned = (hash: string) => recordPayout(record.id, hash, escrowKey)
         const txHash = kind === 'grant'
           ? await payShareFromGrant(escrowKey, pool.creatorAddress, claimerAddress, pool.token, share.amountBase, { onSigned })
           : await payShareFromEscrow(escrowKey, claimerAddress, pool.token, share.amountBase, { onSigned })
-        await markClaimPaid(record.id, txHash)
+        await confirmPaid(record, txHash)
         setAlreadyClaimed(true)
         setClaimedCount(n => n + 1)
         setStatus({ type: 'success', message: `You received ${share.amount} ${pool.token}.`, txHash })
@@ -211,7 +203,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
           return
         }
         // Nothing was paid, so free the share for someone else.
-        await releaseClaim(record.id)
+        await release(record.id, escrowKey).catch(() => {})
         throw payoutError
       }
     } catch (error) {

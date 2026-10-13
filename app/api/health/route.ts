@@ -12,6 +12,7 @@ import { checkCosmosHealth, checkEvmHealth } from '@/lib/injective/health'
 import { INJECTIVE_EVM } from '@/lib/injective/network'
 import { MAX_RELAY_FEE, relayBackend, serverEvmRpc } from '@/lib/injective/usdc-relay'
 import { isSupabaseConfigured, pingDatabase } from '@/lib/supabase'
+import { serviceSupabase } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +48,7 @@ async function runChecks(): Promise<Record<string, Check>> {
     chain: chain.ok ? { ok: true, detail: 'producing blocks' } : { ok: false, detail: chain.reason },
     evm: evm.ok ? { ok: true, detail: 'producing blocks' } : { ok: false, detail: evm.reason },
     database: database
-      ? { ok: true, detail: 'answering' }
+      ? { ok: true, detail: serviceSupabase() ? 'answering; the server writes claim links' : 'answering; browsers write claim links' }
       : { ok: false, detail: isSupabaseConfigured ? 'not answering' : 'not configured' },
     relay,
   }

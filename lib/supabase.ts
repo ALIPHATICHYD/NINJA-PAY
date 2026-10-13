@@ -84,40 +84,6 @@ export async function pingDatabase(): Promise<boolean> {
 const UNIQUE_VIOLATION = '23505'
 const NO_ROWS = 'PGRST116'
 
-/**
- * Create a claim pool row. Only the escrow's public address is stored; the
- * escrow key never leaves the creator's browser.
- */
-export async function createClaimPool(
-  pool: Omit<ClaimPool, 'id' | 'createdAt'>
-): Promise<ClaimPool> {
-  const { data, error } = await supabase
-    .from('claim_pools')
-    .insert({
-      creator_address: pool.creatorAddress,
-      name: pool.name,
-      total_amount: pool.totalAmount,
-      claim_type: pool.claimType,
-      token: pool.token,
-      escrow_address: pool.escrowAddress,
-      shares: pool.shares,
-      claimed_by: [],
-      link_code: pool.linkCode,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to create claim pool:', error)
-    throw new Error(
-      error.message?.includes('escrow_address') || error.message?.includes('token')
-        ? 'The database is missing the claim escrow columns. Run the migration in the README.'
-        : error.message || 'Failed to save the claim pool.'
-    )
-  }
-  return toClaimPool(data)
-}
-
 export async function getClaimPoolByLink(linkCode: string): Promise<ClaimPool | null> {
   const { data, error } = await supabase
     .from('claim_pools')
@@ -195,86 +161,166 @@ export async function getClaimsForPools(poolIds: string[]): Promise<ClaimRecord[
   return (data || []).map(toClaimRecord)
 }
 
-/** Like getClaimsForPools, but a failed read throws: reserving must not mistake it for an empty pool. */
-async function readClaims(poolId: string): Promise<ClaimRecord[]> {
-  const { data, error } = await supabase.from('claims').select().eq('pool_id', poolId)
-  if (error) throw new Error(error.message || "Couldn't read this link's claims. Try again.")
-  return (data || []).map(toClaimRecord)
-}
-
-export async function getClaimByClaimer(poolId: string, claimerAddress: string): Promise<ClaimRecord | null> {
-  const { data, error } = await supabase
-    .from('claims')
-    .select()
-    .eq('pool_id', poolId)
-    .eq('claimer_address', claimerAddress)
-    .maybeSingle()
-  if (error) {
-    console.error('Failed to check claim status:', error)
-    return null
-  }
-  return data ? toClaimRecord(data) : null
-}
-
 /**
- * Reserve a free share for a claimer. The claims table has unique
- * (pool_id, share_index) and unique (pool_id, claimer_address) constraints,
- * so the insert itself is the lock: two claimers can never get the same
- * share, and one address can never hold two shares. Each claimer tries a
- * random free share, so a crowd arriving together doesn't all race for the
- * same one.
+ * Claim-link writes, and the reads they depend on, against one Supabase
+ * client: the browser's public one below, or the server's service-role one
+ * (lib/supabase-server.ts), which /api/claims uses once it is set up.
  */
-export async function reserveClaimShare(
-  pool: ClaimPool,
-  claimerAddress: string,
-  random: () => number = Math.random,
-): Promise<{ record: ClaimRecord } | { error: 'already-claimed' | 'fully-claimed' }> {
-  for (let attempt = 0; attempt < pool.shares.length; attempt++) {
-    const taken = new Set((await readClaims(pool.id)).map(c => c.shareIndex))
-    const freeShares = pool.shares.map((_, i) => i).filter(i => !taken.has(i))
-    if (freeShares.length === 0) return { error: 'fully-claimed' }
-    const free = freeShares[Math.floor(random() * freeShares.length)]
-
-    const { data, error } = await supabase
-      .from('claims')
-      .insert({ pool_id: pool.id, share_index: free, claimer_address: claimerAddress, status: 'pending' })
-      .select()
-      .single()
-
-    if (!error) return { record: toClaimRecord(data) }
-    if (error.code !== UNIQUE_VIOLATION) throw new Error(error.message || 'Failed to reserve a share.')
-    if (error.message?.includes('claims_one_per_claimer')) return { error: 'already-claimed' }
-    // Someone else took this share between our read and insert; try the next one.
+export function createClaimStore(db: SupabaseClient) {
+  /** Like getClaimsForPools, but a failed read throws: reserving must not mistake it for an empty pool. */
+  async function readClaims(poolId: string): Promise<ClaimRecord[]> {
+    const { data, error } = await db.from('claims').select().eq('pool_id', poolId)
+    if (error) throw new Error(error.message || "Couldn't read this link's claims. Try again.")
+    return (data || []).map(toClaimRecord)
   }
-  return { error: 'fully-claimed' }
+
+  return {
+    /**
+     * Create a claim pool row. Only the link's public address is stored; its
+     * key never leaves the creator's browser.
+     */
+    async createClaimPool(pool: Omit<ClaimPool, 'id' | 'createdAt'>): Promise<ClaimPool> {
+      const { data, error } = await db
+        .from('claim_pools')
+        .insert({
+          creator_address: pool.creatorAddress,
+          name: pool.name,
+          total_amount: pool.totalAmount,
+          claim_type: pool.claimType,
+          token: pool.token,
+          escrow_address: pool.escrowAddress,
+          shares: pool.shares,
+          claimed_by: [],
+          link_code: pool.linkCode,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Failed to create claim pool:', error)
+        throw new Error(
+          error.message?.includes('escrow_address') || error.message?.includes('token')
+            ? 'The database is missing the claim escrow columns. Run the migration in the README.'
+            : error.message || 'Failed to save the claim pool.'
+        )
+      }
+      return toClaimPool(data)
+    },
+
+    async getClaimPoolById(poolId: string): Promise<ClaimPool | null> {
+      const { data, error } = await db.from('claim_pools').select().eq('id', poolId).maybeSingle()
+      if (error) throw new Error(error.message || "Couldn't read this claim link. Try again.")
+      return data ? toClaimPool(data) : null
+    },
+
+    async getClaimById(claimId: string): Promise<ClaimRecord | null> {
+      const { data, error } = await db.from('claims').select().eq('id', claimId).maybeSingle()
+      if (error) throw new Error(error.message || "Couldn't read this claim. Try again.")
+      return data ? toClaimRecord(data) : null
+    },
+
+    async getClaimByClaimer(poolId: string, claimerAddress: string): Promise<ClaimRecord | null> {
+      const { data, error } = await db
+        .from('claims')
+        .select()
+        .eq('pool_id', poolId)
+        .eq('claimer_address', claimerAddress)
+        .maybeSingle()
+      if (error) {
+        console.error('Failed to check claim status:', error)
+        return null
+      }
+      return data ? toClaimRecord(data) : null
+    },
+
+    /**
+     * Reserve a free share for a claimer. The claims table has unique
+     * (pool_id, share_index) and unique (pool_id, claimer_address) constraints,
+     * so the insert itself is the lock: two claimers can never get the same
+     * share, and one address can never hold two shares. Each claimer tries a
+     * random free share, so a crowd arriving together doesn't all race for the
+     * same one.
+     */
+    async reserveClaimShare(
+      pool: ClaimPool,
+      claimerAddress: string,
+      random: () => number = Math.random,
+    ): Promise<{ record: ClaimRecord } | { error: 'already-claimed' | 'fully-claimed' }> {
+      for (let attempt = 0; attempt < pool.shares.length; attempt++) {
+        const taken = new Set((await readClaims(pool.id)).map(c => c.shareIndex))
+        const freeShares = pool.shares.map((_, i) => i).filter(i => !taken.has(i))
+        if (freeShares.length === 0) return { error: 'fully-claimed' }
+        const free = freeShares[Math.floor(random() * freeShares.length)]
+
+        const { data, error } = await db
+          .from('claims')
+          .insert({ pool_id: pool.id, share_index: free, claimer_address: claimerAddress, status: 'pending' })
+          .select()
+          .single()
+
+        if (!error) return { record: toClaimRecord(data) }
+        if (error.code !== UNIQUE_VIOLATION) throw new Error(error.message || 'Failed to reserve a share.')
+        if (error.message?.includes('claims_one_per_claimer')) return { error: 'already-claimed' }
+        // Someone else took this share between our read and insert; try the next one.
+      }
+      return { error: 'fully-claimed' }
+    },
+
+    /**
+     * Record the payout's hash on its reservation before the payout is sent, so a
+     * claim interrupted at any point can be checked against the chain later.
+     * Throws if it can't be saved: the payout must not go out unrecorded.
+     */
+    async recordClaimTx(claimId: string, txHash: string): Promise<void> {
+      const { error } = await db.from('claims').update({ tx_hash: txHash }).eq('id', claimId).eq('status', 'pending')
+      if (error) throw new Error("Couldn't save your claim before sending it, so nothing was sent. Try again.")
+    },
+
+    /** Pending reservations in a pool, for recovery. */
+    async getPendingClaims(poolId: string): Promise<ClaimRecord[]> {
+      return (await readClaims(poolId)).filter(c => c.status === 'pending')
+    },
+
+    /** The oldest pending reservations made before `before`, across every pool. */
+    async getStalePendingClaims(before: Date, limit: number): Promise<ClaimRecord[]> {
+      const { data, error } = await db
+        .from('claims')
+        .select()
+        .eq('status', 'pending')
+        .lt('created_at', before.toISOString())
+        .order('created_at', { ascending: true })
+        .limit(limit)
+      if (error) throw new Error(error.message || "Couldn't read pending claims.")
+      return (data || []).map(toClaimRecord)
+    },
+
+    async markClaimPaid(claimId: string, txHash: string): Promise<void> {
+      const { error } = await db.from('claims').update({ status: 'paid', tx_hash: txHash }).eq('id', claimId)
+      // The payout already happened on-chain; a failed status write is logged, not surfaced.
+      if (error) console.error('Failed to mark claim paid:', error)
+    },
+
+    /** Release a reservation after a failed payout so the share can be claimed again. */
+    async releaseClaim(claimId: string): Promise<void> {
+      const { error } = await db.from('claims').delete().eq('id', claimId).eq('status', 'pending')
+      if (error) console.error('Failed to release claim reservation:', error)
+    },
+  }
 }
 
-/**
- * Record the payout's hash on its reservation before the payout is sent, so a
- * claim interrupted at any point can be checked against the chain later.
- * Throws if it can't be saved: the payout must not go out unrecorded.
- */
-export async function recordClaimTx(claimId: string, txHash: string): Promise<void> {
-  const { error } = await supabase.from('claims').update({ tx_hash: txHash }).eq('id', claimId).eq('status', 'pending')
-  if (error) throw new Error("Couldn't save your claim before sending it, so nothing was sent. Try again.")
-}
+export type ClaimStore = ReturnType<typeof createClaimStore>
 
-/** Pending reservations in a pool, for recovery. */
-export async function getPendingClaims(poolId: string): Promise<ClaimRecord[]> {
-  return (await readClaims(poolId)).filter(c => c.status === 'pending')
-}
-
-export async function markClaimPaid(claimId: string, txHash: string): Promise<void> {
-  const { error } = await supabase.from('claims').update({ status: 'paid', tx_hash: txHash }).eq('id', claimId)
-  // The payout already happened on-chain; a failed status write is logged, not surfaced.
-  if (error) console.error('Failed to mark claim paid:', error)
-}
-
-/** Release a reservation after a failed payout so the share can be claimed again. */
-export async function releaseClaim(claimId: string): Promise<void> {
-  const { error } = await supabase.from('claims').delete().eq('id', claimId).eq('status', 'pending')
-  if (error) console.error('Failed to release claim reservation:', error)
-}
+// The same writes through the browser's public key. Used until the server is set up for them.
+const browserStore = createClaimStore(supabase)
+export const {
+  createClaimPool,
+  getClaimByClaimer,
+  reserveClaimShare,
+  recordClaimTx,
+  getPendingClaims,
+  markClaimPaid,
+  releaseClaim,
+} = browserStore
 
 /**
  * Record a transaction in the database

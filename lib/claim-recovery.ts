@@ -9,6 +9,10 @@
  * - the same claimer opening the link again settles their own, and
  * - a claimer who finds the link full settles everyone's stale ones.
  *
+ * Once the server is set up for claim writes (SUPABASE_SERVICE_ROLE_KEY),
+ * /api/claims runs the same settling with the server's database access, and a
+ * daily job (/api/cron/settle-claims) settles reservations nobody came back to.
+ *
  * Settling asks the chain, never guesses. A recorded payout that landed is
  * marked paid. A reservation is only freed when its payout never went out,
  * or the chain says it doesn't have it long after it could still be included.
@@ -20,7 +24,11 @@
 import type { ClaimRecord } from './injective/types'
 import { checkCosmosHealth } from './injective/health'
 import { payoutOutcome } from './injective/link-broadcast'
-import { getPendingClaims, markClaimPaid, releaseClaim } from './supabase'
+import { getPendingClaims, markClaimPaid, releaseClaim, type ClaimStore } from './supabase'
+
+/** The database calls settling needs. The browser's public ones unless a server store is passed. */
+export type RecoveryStore = Pick<ClaimStore, 'getPendingClaims' | 'markClaimPaid' | 'releaseClaim'>
+const browserStore: RecoveryStore = { getPendingClaims, markClaimPaid, releaseClaim }
 
 /**
  * How old a pending reservation must be before it can be freed: much longer
@@ -35,7 +43,7 @@ export const CLAIM_IN_PROGRESS_MESSAGE =
   'A claim from this address is already under way, maybe in another tab. If you closed the page while claiming, try again in 10 minutes.'
 
 /** Settle one pending reservation against the chain. A paid one is left as it is. */
-export async function settleClaim(claim: ClaimRecord, now: number = Date.now()): Promise<Settled> {
+export async function settleClaim(claim: ClaimRecord, now: number = Date.now(), store: RecoveryStore = browserStore): Promise<Settled> {
   if (claim.status === 'paid') return 'paid'
   const age = claim.createdAt ? now - claim.createdAt.getTime() : 0
 
@@ -44,7 +52,7 @@ export async function settleClaim(claim: ClaimRecord, now: number = Date.now()):
     const live = (await checkCosmosHealth(new Date(now))).ok
     const outcome = await payoutOutcome(claim.txHash, age, live ? STALE_CLAIM_MS : Infinity)
     if (outcome === 'paid') {
-      await markClaimPaid(claim.id, claim.txHash)
+      await store.markClaimPaid(claim.id, claim.txHash)
       return 'paid'
     }
     if (outcome === 'unknown') return 'pending'
@@ -52,13 +60,22 @@ export async function settleClaim(claim: ClaimRecord, now: number = Date.now()):
     // No payout was recorded, so none went out. It may still be on its way in another tab.
     return 'pending'
   }
-  await releaseClaim(claim.id)
+  await store.releaseClaim(claim.id)
   return 'released'
 }
 
 /** Settle a pool's stale reservations. Returns how many shares were freed. */
-export async function freeStaleShares(poolId: string, now: number = Date.now()): Promise<number> {
-  const stale = (await getPendingClaims(poolId)).filter(c => c.createdAt && now - c.createdAt.getTime() > STALE_CLAIM_MS)
-  const settled = await Promise.all(stale.map(c => settleClaim(c, now).catch((): Settled => 'pending')))
-  return settled.filter(s => s === 'released').length
+export async function freeStaleShares(poolId: string, now: number = Date.now(), store: RecoveryStore = browserStore): Promise<number> {
+  const stale = (await store.getPendingClaims(poolId)).filter(c => c.createdAt && now - c.createdAt.getTime() > STALE_CLAIM_MS)
+  return settleAll(stale, now, store)
+}
+
+/** Settle claims a few at a time, so a long list doesn't flood the chain's API. Returns how many were freed. */
+export async function settleAll(claims: ClaimRecord[], now: number, store: RecoveryStore, batch = 5): Promise<number> {
+  let freed = 0
+  for (let i = 0; i < claims.length; i += batch) {
+    const settled = await Promise.all(claims.slice(i, i + batch).map(c => settleClaim(c, now, store).catch((): Settled => 'pending')))
+    freed += settled.filter(s => s === 'released').length
+  }
+  return freed
 }
