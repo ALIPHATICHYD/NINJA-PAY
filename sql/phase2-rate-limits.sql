@@ -14,6 +14,8 @@ create table if not exists public.rate_limits (
 );
 
 alter table public.rate_limits enable row level security;
+-- Keep the table out of the public API schema altogether, not just empty to it.
+revoke all on table public.rate_limits from anon, authenticated;
 
 -- Counts one use of `p_key` in the current fixed window and says whether it is
 -- within `p_limit`. The upsert is atomic, so concurrent requests can't both
