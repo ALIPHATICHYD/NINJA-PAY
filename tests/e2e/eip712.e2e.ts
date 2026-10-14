@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { MsgSend } from '@injectivelabs/sdk-ts'
-import { sendPayroll, signAndBroadcast } from '@/lib/injective/cosmos-transactions'
+import { sendPayroll, sendToken, signAndBroadcast } from '@/lib/injective/cosmos-transactions'
 import { buildPayrollMultiSend } from '@/lib/injective/bank'
 import { createEscrowKey } from '@/lib/injective/claim-escrow'
 import { LINK_CANCELLED_MESSAGE, buildGrantMsgs, cancelMessages, payShareFromGrant, planGrant } from '@/lib/injective/claim-grant'
 import { fetchApprovals } from '@/lib/injective/grants'
-import { CHAIN_ID } from '@/lib/injective/network'
+import { CHAIN_ID, ETHEREUM_SIGNING_CHAIN_ID } from '@/lib/injective/network'
 import { TEST_DENOM } from './local-chain-config'
 import { INJ, balance, feeOf, fund, getAccount, getTx, newAccount, useEvmWallet } from './helpers'
 
@@ -97,6 +97,38 @@ describe('Cosmos messages signed by an EVM wallet over EIP-712, on a local chain
     await expect(signAndBroadcast(msg, CHAIN_ID, '', wallet.signer)).rejects.toThrow("This account doesn't hold enough of that token")
     expect(wallet.signed).toHaveLength(0)
     expect(await balance(employer.inj)).toBe(injBefore)
+  })
+
+  // Phantom can't join Injective's EVM, so it signs under an Ethereum chain id the chain also accepts.
+  it("sends INJ signed under Sepolia's chain id, the way Phantom signs on testnet", async () => {
+    const sender = newAccount()
+    await fund([sender], BigInt(5) * INJ)
+    const wallet = useEvmWallet(sender, sender, ETHEREUM_SIGNING_CHAIN_ID)
+    const recipient = newAccount()
+    const before = await balance(sender.inj)
+
+    const hash = await sendToken(recipient.evm, '1.5', CHAIN_ID, 'INJ', undefined, wallet.signer)
+
+    expect(ETHEREUM_SIGNING_CHAIN_ID).toBe(11155111)
+    expect(wallet.signed).toHaveLength(1)
+    expect(wallet.signed[0].domain.chainId).toBe('0xaa36a7')
+    const tx = await getTx(hash)
+    expect(tx.tx_response.code).toBe(0)
+    expect((await signerInfoOf(hash)).mode_info.single.mode).toBe('SIGN_MODE_EIP712_V2')
+    expect(await balance(recipient.inj)).toBe(BigInt('1500000000000000000'))
+    expect(await balance(sender.inj)).toBe(before - BigInt('1500000000000000000') - feeOf(tx))
+  })
+
+  it("refuses Ethereum mainnet's chain id on a testnet chain, and nothing moves", async () => {
+    const sender = newAccount()
+    await fund([sender], BigInt(5) * INJ)
+    const wallet = useEvmWallet(sender, sender, 1)
+    const recipient = newAccount()
+    const before = await balance(sender.inj)
+
+    await expect(sendToken(recipient.inj, '1', CHAIN_ID, 'INJ', undefined, wallet.signer)).rejects.toThrow(/TypedDataChainID/)
+    expect(await balance(sender.inj)).toBe(before)
+    expect(await balance(recipient.inj)).toBe(BigInt(0))
   })
 
   it('refuses a signature from a different account than the one connected, before broadcasting', async () => {

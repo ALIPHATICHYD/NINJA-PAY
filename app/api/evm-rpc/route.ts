@@ -7,13 +7,16 @@
  * - NEXT_PUBLIC_INJECTIVE_EVM_RPC=/api/evm-rpc, so the app sends reads here.
  *
  * Each request goes to the provider first and to Injective's public RPC if the
- * provider fails. Only the read methods the app needs and
+ * provider fails. After a failure the provider is skipped for 30 seconds, so
+ * while it is down each request goes straight to the public RPC instead of
+ * waiting out a timeout first. Only the read methods the app needs and
  * eth_sendRawTransaction (already signed by the user's wallet) are forwarded.
  * Nothing is logged: requests carry wallet addresses.
  */
 
 import { NextResponse } from 'next/server'
 import { PUBLIC_EVM_RPC } from '@/lib/injective/network'
+import { createCircuitBreaker } from '@/lib/circuit-breaker'
 
 const ALLOWED_METHODS = new Set([
   'eth_chainId',
@@ -38,6 +41,7 @@ const ALLOWED_METHODS = new Set([
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_BATCH = 20
 const UPSTREAM_TIMEOUT_MS = 10_000
+const provider = createCircuitBreaker({ coolDownMs: 30_000 })
 
 type RpcRequest = { jsonrpc?: string; id?: unknown; method?: unknown; params?: unknown }
 
@@ -82,10 +86,12 @@ export async function POST(request: Request) {
     return NextResponse.json(rpcError(refused.id, -32601, 'Method not allowed'), { status: 403 })
   }
 
-  for (const url of [premium, PUBLIC_EVM_RPC]) {
+  const upstreams = provider.allows() ? [premium, PUBLIC_EVM_RPC] : [PUBLIC_EVM_RPC]
+  for (const url of upstreams) {
     try {
       const upstream = await forward(url, text)
       if (upstream.ok) {
+        if (url === premium) provider.succeeded()
         return new NextResponse(upstream.body, {
           status: 200,
           headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
@@ -94,6 +100,7 @@ export async function POST(request: Request) {
     } catch {
       // Try the next endpoint.
     }
+    if (url === premium) provider.failed()
   }
   return NextResponse.json(rpcError(null, -32603, 'Injective EVM RPC unavailable'), { status: 502 })
 }

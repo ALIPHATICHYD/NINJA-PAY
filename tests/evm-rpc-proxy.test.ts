@@ -7,6 +7,7 @@ const call = (body: unknown) => POST(new Request('http://localhost/api/evm-rpc',
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('EVM RPC proxy', () => {
@@ -34,6 +35,30 @@ describe('EVM RPC proxy', () => {
     const response = await call({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber' })
     expect(response.status).toBe(200)
     expect(fetchMock.mock.calls[1][0]).toBe('https://k8s.testnet.json-rpc.injective.network/')
+  })
+
+  it('skips a failed provider for 30 seconds, then tries it again', async () => {
+    // Later than any cool-down an earlier test started.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.UTC(2030, 0, 1, 12))
+    vi.stubEnv('INJECTIVE_EVM_RPC_URL', PREMIUM)
+    const ok = () => new Response('{"jsonrpc":"2.0","id":1,"result":"0x10"}')
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === PREMIUM) throw new Error('down')
+      return ok()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const block = { jsonrpc: '2.0', id: 1, method: 'eth_blockNumber' }
+
+    await call(block)
+    await call(block)
+    // The second request went straight to the public RPC.
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual([PREMIUM, 'https://k8s.testnet.json-rpc.injective.network/', 'https://k8s.testnet.json-rpc.injective.network/'])
+
+    vi.setSystemTime(Date.UTC(2030, 0, 1, 12, 0, 31))
+    fetchMock.mockImplementation(async () => ok())
+    await call(block)
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe(PREMIUM)
   })
 
   it('refuses wallet and admin methods, even inside a batch', async () => {

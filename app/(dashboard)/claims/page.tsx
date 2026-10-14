@@ -7,12 +7,12 @@ import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import {
-  createClaimPool,
   getClaimPoolsByCreator,
   getClaimsForPools,
   isSupabaseConfigured,
   SUPABASE_SETUP_MESSAGE,
 } from '@/lib/supabase'
+import { createPool } from '@/lib/claims-client'
 import { format } from 'date-fns'
 import { KEPLR, signAndBroadcast } from '@/lib/injective/cosmos-transactions'
 import { toInjectiveAddress } from '@/lib/injective/address'
@@ -186,7 +186,7 @@ export default function ClaimsPage() {
         plan = funded
       }
 
-      const pool = await createClaimPool({
+      const pool = await createPool({
         creatorAddress,
         name: claimName.trim(),
         totalAmount: formatBaseUnits(plan.totalBase, TOKEN_DECIMALS[token]),
@@ -195,7 +195,7 @@ export default function ClaimsPage() {
         escrowAddress: escrow.address,
         shares: plan.shares.map(s => ({ amount: formatBaseUnits(s, TOKEN_DECIMALS[token]), amountBase: s.toString() })),
         linkCode,
-      })
+      }, escrow.privateKeyHex)
 
       setCreated(prev => [
         { pool, claimed: 0, link: buildClaimLink(window.location.origin, linkCode, escrow.privateKeyHex, kind), kind, approvals: undefined },
@@ -269,7 +269,7 @@ export default function ClaimsPage() {
     return (
       <div style={{ maxWidth: '520px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div className="alert-warning">
-          Connect a wallet to create and manage claim links: an EVM wallet such as MetaMask, or Keplr or Leap.
+          Connect a wallet to create and manage claim links: an EVM wallet such as MetaMask or Phantom, or Keplr or Leap.
         </div>
         {walletError && <div className="alert-error">{walletError}</div>}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

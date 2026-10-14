@@ -90,5 +90,6 @@ export function useUsdcRelay() {
 
   const reset = useCallback(() => setState({ step: 'idle' }), [])
 
-  return { available: available && !!signer, state, send, reset }
+  // The authorization is bound to Injective's EVM chain id, which Phantom can't sign for.
+  return { available: available && !!signer && !signer.typedDataChainId, state, send, reset }
 }

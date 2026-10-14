@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server'
 import { isHex, type Hex } from 'viem'
 import { parseAuthorization } from '@/lib/injective/usdc-authorization'
 import { relayBackend, relayTransfer, type RelayOutcome } from '@/lib/injective/usdc-relay'
-import { createRateLimiter } from '@/lib/rate-limit'
+import { createSharedRateLimiter } from '@/lib/shared-rate-limit'
 
 export const dynamic = 'force-dynamic'
 // A facilitator waits for the block before answering, then the receipt is checked here.
@@ -20,8 +20,9 @@ export const maxDuration = 60
 
 const MAX_BODY_BYTES = 4 * 1024
 const HOUR_MS = 60 * 60_000
-const perSender = createRateLimiter({ limit: 10, windowMs: HOUR_MS })
-const everyone = createRateLimiter({ limit: 100, windowMs: HOUR_MS })
+// Counted in the database when the server has its key, so the limits hold across instances.
+const perSender = createSharedRateLimiter({ name: 'relay-sender', limit: 10, windowMs: HOUR_MS })
+const everyone = createSharedRateLimiter({ name: 'relay-all', limit: 100, windowMs: HOUR_MS })
 
 export const UNAVAILABLE_MESSAGE = "Sending USDC without INJ isn't set up on this NinjaPay deployment."
 
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
     return answer({ status: 'REFUSED', message: 'This signed transfer is incomplete. Sign it again from NinjaPay.' }, 400)
   }
 
-  if (!perSender.take(authorization.from.toLowerCase()) || !everyone.take('all')) {
+  if (!(await perSender.take(authorization.from.toLowerCase())) || !(await everyone.take('all'))) {
     return answer({ status: 'REFUSED', message: 'NinjaPay has paid the network fee for a lot of transfers in the last hour. Try again later.' }, 429)
   }
 

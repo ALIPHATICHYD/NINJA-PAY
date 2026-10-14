@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Share2 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
+import { usePhantom } from '@/hooks/useEvmSigner'
 import { useBalance } from '@/hooks/useBalance'
 import { CopyButton } from '@/components/CopyButton'
 import { QrCode } from '@/components/QrCode'
@@ -15,6 +16,7 @@ export default function ReceivePage() {
   const { address, isConnected } = useWallet()
   const { inj, usdc, loading: balLoading, refetch } = useBalance(address)
   const injectiveAddress = toInjectiveAddress(address)
+  const phantom = usePhantom()
 
   const [token, setToken] = useState<TokenSymbol>('USDC')
   const [amount, setAmount] = useState('')
@@ -61,7 +63,7 @@ export default function ReceivePage() {
 
   const addresses = [
     { title: 'Injective address', hint: 'For Keplr, Leap and other Cosmos wallets', value: injectiveAddress },
-    { title: 'EVM address', hint: 'For MetaMask and other EVM wallets', value: address },
+    { title: 'EVM address', hint: 'For MetaMask, Phantom and other EVM wallets', value: address },
   ]
 
   return (
@@ -78,6 +80,7 @@ export default function ReceivePage() {
       <div className="alert-warning" style={{ fontSize: '12px', lineHeight: 1.5 }}>
         Ask the sender to use {NETWORK_LABEL}. Tokens sent on another network, such as Ethereum or BNB Chain, don&apos;t arrive
         on Injective and won&apos;t show up here.{!IS_MAINNET && ' Testnet tokens have no value.'}
+        {phantom && ' Phantom shows this same 0x address on Ethereum: a payment sent there lands in Phantom on Ethereum, not on Injective.'}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>

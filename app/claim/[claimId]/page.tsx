@@ -9,15 +9,10 @@ import { useWallet } from '@/hooks/useWallet'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import {
-  getClaimPoolByLink,
-  getClaimsForPools,
-  getClaimByClaimer,
-  reserveClaimShare,
-  markClaimPaid,
-  releaseClaim,
-  isSupabaseConfigured,
-} from '@/lib/supabase'
+import { getClaimPoolByLink, getClaimsForPools, getClaimByClaimer, isSupabaseConfigured } from '@/lib/supabase'
+import { CLAIM_IN_PROGRESS_MESSAGE, type Settled } from '@/lib/claim-recovery'
+import { confirmPaid, freeStale, recordPayout, release, reserveShare, settle } from '@/lib/claims-client'
+import { PAYOUT_UNCERTAIN_MESSAGE, PayoutUncertainError } from '@/lib/injective/link-broadcast'
 import { toInjectiveAddress } from '@/lib/injective/address'
 import {
   escrowAddressFromKey,
@@ -34,6 +29,8 @@ type Status =
   | { type: 'idle' }
   | { type: 'error'; message: string }
   | { type: 'success'; message: string; txHash: string }
+  /** Sent, but not yet seen on chain: the share stays reserved. */
+  | { type: 'pending'; message: string; txHash: string }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -101,21 +98,21 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
       try {
         const p = await getClaimPoolByLink(claimId)
         if (!active) return
-        setPool(p)
         const key = readKeyFromFragment(window.location.hash)
         const linkKind = readKindFromFragment(window.location.hash)
-        setEscrowKey(key)
-        setKind(linkKind)
-        if (p?.escrowAddress && key) setKeyMismatch(escrowAddressFromKey(key) !== p.escrowAddress)
         if (p?.escrowAddress && p.token && linkKind === 'grant') {
           fetchGrantLinkState(p.creatorAddress, p.escrowAddress, p.token)
             .then(state => { if (active) setGrantEnds(state.remaining ? state.expiresAt : null) })
             .catch(() => {}) // Leave it unknown; the claim itself reads the chain again.
         }
-        if (p) {
-          const claims = await getClaimsForPools([p.id])
-          if (active) setClaimedCount(claims.filter(c => c.status === 'paid').length)
-        }
+        // Counted before the pool is set, so settling this claimer's own claim below adds to the count.
+        const claims = p ? await getClaimsForPools([p.id]) : []
+        if (!active) return
+        setPool(p)
+        setEscrowKey(key)
+        setKind(linkKind)
+        if (p?.escrowAddress && key) setKeyMismatch(escrowAddressFromKey(key) !== p.escrowAddress)
+        setClaimedCount(claims.filter(c => c.status === 'paid').length)
       } catch {
         if (active) setPool(null)
       } finally {
@@ -125,9 +122,22 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     return () => { active = false }
   }, [claimId])
 
+  // A claim this address started before: see how it ended, from the chain.
   useEffect(() => {
     if (!pool || !claimerAddress) return
-    getClaimByClaimer(pool.id, claimerAddress).then(c => setAlreadyClaimed(c?.status === 'paid'))
+    let active = true
+    getClaimByClaimer(pool.id, claimerAddress).then(async claim => {
+      if (!claim) return
+      const settled = await settle(claim).catch((): Settled => (claim.status === 'paid' ? 'paid' : 'pending'))
+      if (!active) return
+      if (settled === 'paid') {
+        setAlreadyClaimed(true)
+        if (claim.status !== 'paid') setClaimedCount(n => n + 1)
+      } else if (settled === 'pending' && claim.txHash) {
+        setStatus({ type: 'pending', message: PAYOUT_UNCERTAIN_MESSAGE, txHash: claim.txHash })
+      }
+    })
+    return () => { active = false }
   }, [pool, claimerAddress])
 
   const handleClaim = async () => {
@@ -136,7 +146,28 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     setStatus({ type: 'idle' })
 
     try {
-      const reservation = await reserveClaimShare(pool, claimerAddress)
+      // Finish a claim this address started before, rather than start another.
+      const earlier = await getClaimByClaimer(pool.id, claimerAddress)
+      if (earlier) {
+        const settled = await settle(earlier)
+        if (settled === 'paid') {
+          setAlreadyClaimed(true)
+          if (earlier.status !== 'paid') setClaimedCount(n => n + 1)
+          return
+        }
+        if (settled === 'pending') {
+          setStatus(earlier.txHash
+            ? { type: 'pending', message: PAYOUT_UNCERTAIN_MESSAGE, txHash: earlier.txHash }
+            : { type: 'error', message: CLAIM_IN_PROGRESS_MESSAGE })
+          return
+        }
+      }
+
+      let reservation = await reserveShare(pool, claimerAddress, escrowKey)
+      // The link looks full: free shares left by claims that never finished, then look again.
+      if ('error' in reservation && reservation.error === 'fully-claimed' && (await freeStale(pool.id)) > 0) {
+        reservation = await reserveShare(pool, claimerAddress, escrowKey)
+      }
       if ('error' in reservation) {
         setStatus({
           type: 'error',
@@ -151,21 +182,28 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
       const { record } = reservation
       const share = pool.shares[record.shareIndex]
       if (!share?.amountBase) {
-        await releaseClaim(record.id)
+        await release(record.id, escrowKey)
         throw new Error('This share has no payable amount.')
       }
 
       try {
+        // Each payout's hash is saved on the reservation before it is sent.
+        const onSigned = (hash: string) => recordPayout(record.id, hash, escrowKey)
         const txHash = kind === 'grant'
-          ? await payShareFromGrant(escrowKey, pool.creatorAddress, claimerAddress, pool.token, share.amountBase)
-          : await payShareFromEscrow(escrowKey, claimerAddress, pool.token, share.amountBase)
-        await markClaimPaid(record.id, txHash)
+          ? await payShareFromGrant(escrowKey, pool.creatorAddress, claimerAddress, pool.token, share.amountBase, { onSigned })
+          : await payShareFromEscrow(escrowKey, claimerAddress, pool.token, share.amountBase, { onSigned })
+        await confirmPaid(record, txHash)
         setAlreadyClaimed(true)
         setClaimedCount(n => n + 1)
         setStatus({ type: 'success', message: `You received ${share.amount} ${pool.token}.`, txHash })
       } catch (payoutError) {
+        if (payoutError instanceof PayoutUncertainError) {
+          // It may have landed, so the share stays reserved. Opening the link again settles it.
+          setStatus({ type: 'pending', message: payoutError.message, txHash: payoutError.txHash })
+          return
+        }
         // Nothing was paid, so free the share for someone else.
-        await releaseClaim(record.id)
+        await release(record.id, escrowKey).catch(() => {})
         throw payoutError
       }
     } catch (error) {
@@ -247,6 +285,18 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
               className="mt-2 inline-flex items-center gap-1 text-sm text-ocean-text underline underline-offset-4"
             >
               View on {explorerName(status.txHash)} <ExternalLink size={13} aria-hidden="true" />
+            </a>
+          </div>
+        ) : status.type === 'pending' ? (
+          <div className="rounded-xl border border-line bg-page-2 p-4">
+            <p className="text-[15px] text-ink-2">{status.message}</p>
+            <a
+              href={explorerTxUrl(status.txHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1 text-sm text-ocean-text underline underline-offset-4"
+            >
+              Look it up on {explorerName(status.txHash)} <ExternalLink size={13} aria-hidden="true" />
             </a>
           </div>
         ) : alreadyClaimed ? (

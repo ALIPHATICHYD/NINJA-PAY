@@ -59,10 +59,20 @@ const endpoints = ENDPOINTS
  * - keplr: Keplr or Leap, whichever is installed (Keplr first).
  * - evm: an EVM wallet such as MetaMask. `signTypedData` gets the typed data
  *   as JSON, the way eth_signTypedData_v4 takes it, and returns the 65-byte
- *   signature as hex. The wallet must be on Injective's EVM network, since
- *   wallets refuse typed data for another chain id.
+ *   signature as hex. The wallet must be on the network of the chain id the
+ *   typed data names (Injective's EVM unless `typedDataChainId` says otherwise),
+ *   since wallets refuse typed data for another chain id.
  */
-export type EvmCosmosSigner = { kind: 'evm'; address: string; signTypedData: (typedDataJson: string) => Promise<string> }
+export type EvmCosmosSigner = {
+  kind: 'evm'
+  address: string
+  signTypedData: (typedDataJson: string) => Promise<string>
+  /**
+   * The chain id the typed data is signed under. Defaults to Injective's EVM; a wallet that
+   * can't join it (Phantom) signs under ETHEREUM_SIGNING_CHAIN_ID instead.
+   */
+  typedDataChainId?: number
+}
 export type CosmosSigner = { kind: 'keplr' } | EvmCosmosSigner
 
 export const KEPLR: CosmosSigner = { kind: 'keplr' }
@@ -294,7 +304,7 @@ async function signAndBroadcastOnce(
     return count + (data['@type'] === '/cosmos.bank.v1beta1.MsgMultiSend' ? Math.max(data.outputs?.length ?? 1, 1) : 1)
   }, 0)
   const txApi = new TxRestApi(endpoints.rest)
-  const evmChainId = INJECTIVE_EVM.id as EvmChainId
+  const evmChainId = ((signer.kind === 'evm' && signer.typedDataChainId) || INJECTIVE_EVM.id) as EvmChainId
   const feeFor = (gas: number) => getStdFee({ gas: gas.toString(), gasPrice: gasPriceFor(feeMarket, BigInt(gas)).toString() })
 
   const build = (gas: number, pubKey: string) => {
@@ -384,7 +394,7 @@ async function signAndBroadcastOnce(
 }
 
 /**
- * Send INJ or USDC via Keplr or Leap.
+ * Send INJ or USDC via Keplr or Leap, or via an EVM wallet signing EIP-712 when `signer` is one.
  *
  * @param recipientAddress inj1 or 0x form of the recipient; both are the same account.
  * @param amount human-readable amount (e.g. "1.5"). Converted to base units
@@ -396,6 +406,7 @@ export async function sendToken(
   chainId: string = CHAIN_ID,
   token: 'INJ' | 'USDC' = 'INJ',
   options?: Partial<TransactionOptions>,
+  signer: CosmosSigner = KEPLR,
 ): Promise<string> {
   try {
     const recipient = toInjectiveAddress(recipientAddress)
@@ -408,7 +419,7 @@ export async function sendToken(
       throw new Error('Amount must be greater than zero')
     }
 
-    const sender = await getUserAddress(chainId)
+    const sender = await signerAddress(signer, chainId)
     const msgSend = MsgSend.fromJSON({
       srcInjectiveAddress: sender,
       dstInjectiveAddress: recipient,
@@ -418,7 +429,7 @@ export async function sendToken(
       },
     })
 
-    return await signAndBroadcast(msgSend, chainId, options?.memo)
+    return await signAndBroadcast(msgSend, chainId, options?.memo, signer)
   } catch (error: any) {
     const errorMessage = error?.message || 'Failed to send token'
     console.error(`sendToken error for ${token}:`, error)

@@ -69,10 +69,10 @@ export async function checkCosmosHealth(now?: Date): Promise<RailHealth> {
   }
 }
 
-/** The EVM side, used by INJ sends from MetaMask and other EVM wallets. */
-export async function checkEvmHealth(now?: Date): Promise<RailHealth> {
+/** The EVM side, used by INJ sends from MetaMask and other EVM wallets. On the server, pass an absolute `rpcUrl`. */
+export async function checkEvmHealth(now?: Date, rpcUrl: string = ENDPOINTS.evmRpc): Promise<RailHealth> {
   const rpc = (method: string, params: unknown[] = []) =>
-    getJson<{ result: unknown }>(new URL(ENDPOINTS.evmRpc, typeof window === 'undefined' ? 'http://localhost' : window.location.origin).toString(), {
+    getJson<{ result: unknown }>(new URL(rpcUrl, typeof window === 'undefined' ? 'http://localhost' : window.location.origin).toString(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),

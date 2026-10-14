@@ -101,12 +101,13 @@ export async function useKeplr(account: TestAccount): Promise<{ signatures: () =
  * `signWith` signs with another key instead, like a wallet switched to a
  * different account after connecting.
  */
-export function useEvmWallet(account: TestAccount, signWith: TestAccount = account) {
+export function useEvmWallet(account: TestAccount, signWith: TestAccount = account, typedDataChainId?: number) {
   const key = privateKeyToAccount(`0x${signWith.key}`)
   const signed: { domain: { chainId: string }; message: { context: string; msgs: string } }[] = []
   const signer: CosmosSigner = {
     kind: 'evm',
     address: account.evm,
+    typedDataChainId,
     signTypedData: async json => {
       const typedData = JSON.parse(json)
       signed.push(typedData)
