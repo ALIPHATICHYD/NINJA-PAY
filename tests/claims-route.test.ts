@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/supabase-server', () => ({
+  serviceSupabase: () => null,
   serverClaimStore: () =>
     state.configured
       ? {
@@ -55,10 +56,17 @@ vi.mock('@/lib/injective/link-broadcast', () => ({
 }))
 vi.mock('@/lib/injective/health', () => ({ checkCosmosHealth: async () => ({ ok: true }) }))
 
-const { POST, WRONG_LINK_MESSAGE } = await import('@/app/api/claims/route')
+const { POST, WRONG_LINK_MESSAGE, BUSY_MESSAGE } = await import('@/app/api/claims/route')
 
+// Each test calls from its own address, so the per-network limit starts fresh.
+let ip = 0
+beforeEach(() => { ip += 1 })
 const call = async (body: unknown) => {
-  const response = await POST(new Request('http://localhost/api/claims', { method: 'POST', body: JSON.stringify(body) }))
+  const response = await POST(new Request('http://localhost/api/claims', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'x-forwarded-for': `203.0.113.${ip}, 10.0.0.1` },
+  }))
   return { status: response.status, body: await response.json() }
 }
 
@@ -197,6 +205,13 @@ describe('the claims route', () => {
     state.outcomes.set(HASH, 'paid')
     expect((await call({ action: 'free-stale', poolId: pool.id })).body).toEqual({ freed: 1 })
     expect(state.claims.map(c => [c.shareIndex, c.status])).toEqual([[1, 'paid']])
+  })
+
+  it('slows down one network that floods it, and no one else', async () => {
+    for (let i = 0; i < 200; i++) await call({ action: 'settle', claimId: randomUUID() })
+    expect(await call({ action: 'settle', claimId: randomUUID() })).toEqual({ status: 429, body: { status: 'REFUSED', message: BUSY_MESSAGE } })
+    ip += 1
+    expect((await call({ action: 'settle', claimId: randomUUID() })).status).toBe(200)
   })
 
   it('refuses requests it cannot read', async () => {
