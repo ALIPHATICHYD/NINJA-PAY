@@ -17,6 +17,7 @@
 import { NextResponse } from 'next/server'
 import { PUBLIC_EVM_RPC } from '@/lib/injective/network'
 import { createCircuitBreaker } from '@/lib/circuit-breaker'
+import { createRateLimiter } from '@/lib/rate-limit'
 
 const ALLOWED_METHODS = new Set([
   'eth_chainId',
@@ -43,6 +44,18 @@ const MAX_BATCH = 20
 const UPSTREAM_TIMEOUT_MS = 10_000
 const provider = createCircuitBreaker({ coolDownMs: 30_000 })
 
+// The provider bills per request, so one script shouldn't be able to spend the
+// plan through this proxy. A wallet page polls a few reads every few seconds,
+// and many people in Nigeria share a carrier's IP address, so the limit is
+// generous. Counted in memory: a database round trip on every read would slow
+// the app down more than it is worth.
+export const RPC_LIMIT_PER_MINUTE = 600
+const perNetwork = createRateLimiter({ limit: RPC_LIMIT_PER_MINUTE, windowMs: 60_000 })
+
+function callerNetwork(request: Request): string {
+  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown'
+}
+
 type RpcRequest = { jsonrpc?: string; id?: unknown; method?: unknown; params?: unknown }
 
 function rpcError(id: unknown, code: number, message: string) {
@@ -63,6 +76,12 @@ export async function POST(request: Request) {
   const premium = process.env.INJECTIVE_EVM_RPC_URL?.trim()
   if (!premium) {
     return NextResponse.json(rpcError(null, -32601, 'EVM RPC proxy is not configured'), { status: 404 })
+  }
+  if (!perNetwork.take(callerNetwork(request))) {
+    return NextResponse.json(rpcError(null, -32005, 'Too many requests from your network. Wait a minute and try again.'), {
+      status: 429,
+      headers: { 'retry-after': '60' },
+    })
   }
 
   const text = await request.text()

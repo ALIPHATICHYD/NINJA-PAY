@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Figtree, Geist_Mono, Newsreader } from 'next/font/google'
 import './globals.css'
+import { siteUrl } from '@/lib/site'
 
 // Injective's brand pairs ABC Marist (old-style serif) with TT Commons (geometric sans).
 // Both are commercial, so Newsreader and Figtree stand in. To use licensed files, swap these
@@ -20,7 +21,7 @@ const description =
   'Send INJ and USDC, run payroll, and distribute tokens with claim links on Injective. Non-custodial. Off-ramp and bill payments are not live yet.'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ninjapay.xyz'),
+  metadataBase: new URL(siteUrl()),
   title,
   description,
   openGraph: {
@@ -28,13 +29,12 @@ export const metadata: Metadata = {
     description,
     type: 'website',
     siteName: 'NinjaPay',
-    images: [{ url: '/favicon.png', width: 512, height: 512, alt: 'NinjaPay' }],
   },
+  // The share image comes from app/opengraph-image.tsx and twitter-image.tsx.
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title,
     description,
-    images: ['/favicon.png'],
   },
 }
 

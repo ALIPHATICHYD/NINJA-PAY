@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { POST } from '@/app/api/evm-rpc/route'
+import { POST, RPC_LIMIT_PER_MINUTE } from '@/app/api/evm-rpc/route'
 
 const PREMIUM = 'https://premium.example/rpc?key=secret'
 const call = (body: unknown) => POST(new Request('http://localhost/api/evm-rpc', { method: 'POST', body: JSON.stringify(body) }))
@@ -71,5 +71,21 @@ describe('EVM RPC proxy', () => {
     ])
     expect(response.status).toBe(403)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses a network that sends more than the per-minute limit', async () => {
+    vi.stubEnv('INJECTIVE_EVM_RPC_URL', PREMIUM)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"jsonrpc":"2.0","id":1,"result":"0x10"}')))
+    const from = (ip: string) => POST(new Request('http://localhost/api/evm-rpc', {
+      method: 'POST',
+      headers: { 'x-forwarded-for': ip },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber' }),
+    }))
+    for (let i = 0; i < RPC_LIMIT_PER_MINUTE; i++) expect((await from('203.0.113.9')).status).toBe(200)
+    const refused = await from('203.0.113.9')
+    expect(refused.status).toBe(429)
+    expect(refused.headers.get('retry-after')).toBe('60')
+    // Another network is unaffected.
+    expect((await from('198.51.100.4')).status).toBe(200)
   })
 })
