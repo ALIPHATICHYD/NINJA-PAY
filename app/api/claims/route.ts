@@ -19,6 +19,7 @@ import { freeStaleShares, settleClaim } from '@/lib/claim-recovery'
 import { toInjectiveAddress } from '@/lib/injective/address'
 import { payoutOutcome } from '@/lib/injective/link-broadcast'
 import type { ClaimShare } from '@/lib/injective/types'
+import { createSharedRateLimiter } from '@/lib/shared-rate-limit'
 import { serverClaimStore } from '@/lib/supabase-server'
 import type { ClaimStore } from '@/lib/supabase'
 
@@ -33,6 +34,18 @@ const TX_HASH = /^[0-9A-F]{64}$/i
 const DECIMAL = /^\d+(\.\d+)?$/
 const BASE_UNITS = /^[1-9]\d*$/
 const LINK_CODE = /^[0-9a-z]{6,32}$/
+
+// Each claim makes about four calls here, so this allows roughly 50 claims a
+// minute from one network. It is generous because many people in Nigeria share
+// a mobile carrier's IP address; it is there to stop one script from flooding
+// the database and the chain lookups that settling makes.
+const perNetwork = createSharedRateLimiter({ name: 'claims-ip', limit: 200, windowMs: 60_000 })
+export const BUSY_MESSAGE = 'Too many claim requests from your network in the last minute. Wait a minute and try again.'
+
+/** The caller's IP as Vercel reports it, or one shared bucket when there is none. */
+function callerNetwork(request: Request): string {
+  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown'
+}
 
 export const WRONG_LINK_MESSAGE = "This request wasn't signed by this claim link's key. Open the full link and try again."
 
@@ -83,6 +96,8 @@ async function claimWithPool(store: ClaimStore, claimId: unknown) {
 export async function POST(request: Request) {
   const store = serverClaimStore()
   if (!store) return answer({ status: 'UNAVAILABLE', message: "Claim links aren't booked on the server on this deployment." }, 503)
+
+  if (!(await perNetwork.take(callerNetwork(request)))) return refuse(BUSY_MESSAGE, 429)
 
   const raw = await request.text()
   if (raw.length > MAX_BODY_BYTES) return refuse('Request too large.', 413)

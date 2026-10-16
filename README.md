@@ -522,6 +522,9 @@ Pools created before this design have no escrow and are shown as *unfunded*. The
 - **One optional server key.** Sending USDC without INJ can use a wallet NinjaPay controls (`USDC_RELAYER_PRIVATE_KEY`). It only pays gas: the signed transfers it submits move USDC from the sender to the recipient and can't be redirected or reused. Keep only a little INJ in it. The relay logs no addresses, signatures or the key.
 - **Supabase is public infrastructure here.** The anon key is shipped to clients, so RLS is the only guard. See [Row Level Security](#row-level-security).
 - **A second optional server key.** `SUPABASE_SERVICE_ROLE_KEY` lets the server write claim links and count rate limits. It can read and write every table, so it lives only in the host's settings, and only route handlers import `lib/supabase-server.ts`. The server writes a claim row only for a request signed by that link's key, or when the chain settles it.
+- **Browser protections.** Every response tells browsers not to show NinjaPay inside another site's frame, so no page can lay its own buttons over Send or a signature request. It also turns off content-type guessing and the camera, microphone and location, which NinjaPay never uses (`next.config.ts`).
+- **Server region.** Server routes run in Vercel's Dublin region (`vercel.json`), next to the Supabase project in Ireland and closer to Nigeria than Vercel's default of Washington, D.C. Every claim makes several database calls, so this saves a transatlantic round trip on each.
+- **Claim route limits.** `/api/claims` takes up to 200 requests a minute from one network, enough for about 50 claims, counted in the database when the server key is set. It is generous because many mobile users in Nigeria share one carrier IP address.
 - **Testnet only.** `constants.ts` hardcodes `Network.Testnet`. Moving to mainnet must be a deliberate change, reviewed alongside the fixes below.
 - **No audit.** Nothing in this repository has been security-reviewed or audited.
 
@@ -664,7 +667,7 @@ Conventions:
 
 ## Testing
 
-`npm test` runs the unit tests in `tests/`. They mock the chain.
+`npm test` runs the unit tests in `tests/`. They mock the chain. On GitHub, every pull request and every push to `main` runs the type check, the unit tests and a production build (`.github/workflows/ci.yml`). Lint runs too but doesn't fail the check yet, because of the 33 problems already on `main`.
 
 `npm run test:e2e` runs the paths that move money against a real Injective chain on your machine. `tests/e2e/local-chain.ts` starts a single-validator chain from a fresh genesis and deletes it afterwards. It uses testnet's chain ids (`injective-888`, EVM `1439`), so NinjaPay's testnet settings apply unchanged with the endpoints pointed at `127.0.0.1`. Its minimum gas price is twice injectived's default, with the adaptive base fee on, so a path that paid a fixed gas price would be turned away. Signing goes through NinjaPay's own code: a stand-in for Keplr signs `SIGN_MODE_DIRECT` with a throwaway key, a stand-in for MetaMask signs EIP-712 typed data with viem, and EVM transfers are sent with viem the way wagmi sends them. Keys are made fresh for each run and never written to the repo.
 
