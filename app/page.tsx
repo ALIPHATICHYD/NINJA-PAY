@@ -22,6 +22,7 @@ import { Faq } from '@/components/landing/Faq'
 import { Marquee } from '@/components/landing/Marquee'
 import { CountUp } from '@/components/landing/CountUp'
 import { StatusChip } from '@/components/StatusChip'
+import { siteUrl } from '@/lib/site'
 
 // Network figures as published on injective.com ("Injective by the Numbers").
 // `count` figures roll up once in view; the rest render as written.
@@ -173,9 +174,27 @@ function FeatureCell({
   )
 }
 
+// Structured data so search engines and AI answer engines can describe the app
+// accurately. It states only what the app does today.
+const STRUCTURED_DATA = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'NinjaPay',
+  url: siteUrl(),
+  applicationCategory: 'FinanceApplication',
+  operatingSystem: 'Web',
+  description:
+    'Non-custodial payments on Injective: send INJ and USDC, run batch payroll, and share claim links. Off-ramp and bill payments are not live yet.',
+}
+
 export default function LandingPage() {
   return (
     <div className="min-h-[100dvh] overflow-x-hidden bg-page font-sans text-ink">
+      <script
+        type="application/ld+json"
+        // Static object defined above; nothing user-supplied goes in it.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA).replace(/</g, '\\u003c') }}
+      />
       {/* Navbar */}
       <nav className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_srgb,var(--bg-primary)_86%,transparent)] backdrop-blur-lg">
         <div className={`${container} flex h-16 items-center justify-between`}>
