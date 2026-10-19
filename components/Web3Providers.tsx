@@ -13,6 +13,7 @@ import { WagmiProvider, fallback, http } from 'wagmi'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import '@rainbow-me/rainbowkit/styles.css'
 import { ENDPOINTS, INJECTIVE_EVM, PUBLIC_EVM_RPC } from '@/lib/injective/network'
+import { WalletAvatar } from '@/components/WalletAvatar'
 
 // Reads go to the configured EVM RPC (a premium provider or the /api/evm-rpc
 // proxy) and fall back to Injective's public RPC if it fails.
@@ -45,6 +46,7 @@ export function Web3Providers({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
+          avatar={WalletAvatar}
           theme={darkTheme({
             accentColor: '#4d3dff',
             accentColorForeground: '#eeefff',
