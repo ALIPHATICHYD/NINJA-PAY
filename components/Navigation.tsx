@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { User } from 'lucide-react'
+import { WalletAvatar } from '@/components/WalletAvatar'
 import { usePhantom } from '@/hooks/useEvmSigner'
 
 const NAV_LINKS = [
@@ -196,9 +196,7 @@ export function Navigation() {
                       (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-light)'
                     }}
                   >
-                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                      <User size={13} strokeWidth={2.5} />
-                    </div>
+                    <WalletAvatar address={account.address} ensImage={account.ensAvatar} size={20} />
                     {account.displayName}
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ color: 'var(--text-muted)', marginLeft: '2px' }}>
                       <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
