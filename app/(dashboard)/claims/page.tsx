@@ -288,7 +288,8 @@ export default function ClaimsPage() {
     <div style={{ maxWidth: '720px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Claims</h1>
+          <p className="kicker" style={{ marginBottom: '10px' }}>[Claim links]</p>
+          <h1 className="page-title">Claims</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Fund a link that splits tokens equally across a group.</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary" style={{ fontSize: '13px', padding: '9px 16px' }}>
@@ -304,7 +305,7 @@ export default function ClaimsPage() {
 
       {showForm && (
         <div className="card" style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Create Claim Pool</h3>
+          <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Create Claim Pool</h3>
 
           <div>
             <label className="label" htmlFor="claim-name">Claim Name</label>
@@ -355,10 +356,10 @@ export default function ClaimsPage() {
           </div>
 
           {preview && (
-            <div style={{ padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: '9px', border: '1px solid var(--border)' }}>
+            <div style={{ padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 0, border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Each recipient receives</span>
-                <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{preview.perShare} {token}</span>
+                <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{preview.perShare} {token}</span>
               </div>
               {preview.note && <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>{preview.note}</p>}
             </div>
@@ -403,7 +404,7 @@ export default function ClaimsPage() {
       {/* Claims list */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
             Claim Pools ({created.length})
           </h3>
         </div>
@@ -436,7 +437,7 @@ export default function ClaimsPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{pool.name || `Claim ${pool.linkCode.slice(0, 4)}`}</p>
+                      <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{pool.name || `Claim ${pool.linkCode.slice(0, 4)}`}</p>
                       <span className={`badge badge-${legacy ? 'error' : fullyClaimed || ended ? 'neutral' : 'success'}`}>
                         {legacy ? 'unfunded' : fullyClaimed ? 'fully claimed' : ended ? 'ended' : 'active'}
                       </span>

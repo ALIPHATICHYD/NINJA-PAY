@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react'
 import Image from 'next/image'
+import { Dither } from '@/components/Dither'
 import Link from 'next/link'
 import { AlertCircle, ArrowRight, ExternalLink, Printer } from 'lucide-react'
 import { format } from 'date-fns'
@@ -20,14 +21,19 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-[100dvh] flex-col bg-page text-ink">
       <header className="border-b border-line print:hidden">
         <div className="mx-auto flex h-16 max-w-3xl items-center px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/brand/ninja-mark.svg" alt="" width={32} height={32} className="rounded-md" />
-            <span className="text-[17px] font-bold tracking-tight">NinjaPay</span>
+          <Link href="/" className="flex items-center gap-2.5">
+            <Image src="/brand/ninja-mark.svg" alt="" width={28} height={28} />
+            <span className="text-[17px] font-semibold tracking-tight">NinjaPay</span>
           </Link>
         </div>
       </header>
       <main className="flex flex-1 items-start justify-center px-4 py-12 sm:py-16">
-        <div className="w-full max-w-lg rounded-2xl border border-line bg-surface p-6 sm:p-8">{children}</div>
+        <div className="w-full max-w-lg border border-line bg-surface">
+          <div className="h-14 border-b border-line bg-page-2 print:hidden">
+            <Dither field="flow" width={240} height={28} />
+          </div>
+          <div className="p-6 sm:p-8">{children}</div>
+        </div>
       </main>
     </div>
   )
@@ -36,8 +42,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1 border-t border-line py-3 sm:flex-row sm:justify-between sm:gap-6">
-      <dt className="shrink-0 text-[13px] text-ink-3">{label}</dt>
-      <dd className="min-w-0 break-all text-[13px] text-ink sm:text-right">{children}</dd>
+      <dt className="mono-label shrink-0 pt-0.5">{label}</dt>
+      <dd className="min-w-0 break-all font-mono text-[13px] text-ink sm:text-right">{children}</dd>
     </div>
   )
 }
@@ -105,16 +111,16 @@ export default function ReceiptPage({ params }: { params: Promise<{ hash: string
     <Shell>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[13px] text-ink-3">{receipt.transfers.length ? 'Payment receipt' : 'Transaction receipt'}</p>
+          <p className="kicker">{receipt.transfers.length ? '[Payment receipt]' : '[Transaction receipt]'}</p>
           {single && (
-            <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{formatCoin(relabel(single, tokens), 6)}</p>
+            <p className="num mt-3 text-4xl">{formatCoin(relabel(single, tokens), 6)}</p>
           )}
         </div>
         <StatusChip state={receipt.status === 'pending' ? 'pending' : receipt.status} />
       </div>
 
       {receipt.status === 'failed' && receipt.failure && (
-        <p className="mt-4 rounded-lg border border-line bg-page p-3 text-[13px] leading-relaxed text-ink-2">
+        <p className="mt-4 border border-line bg-page p-3 text-[13px] leading-relaxed text-ink-2">
           This transaction failed, so nothing moved. {describeTransferError(receipt.failure).slice(0, 300)}
         </p>
       )}

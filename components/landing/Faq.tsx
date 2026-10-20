@@ -2,7 +2,7 @@
 
 import { useId, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronDown } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 type FaqItem = { q: string; a: string }
 
@@ -26,14 +26,13 @@ export function Faq({ items }: { items: FaqItem[] }) {
                 aria-expanded={isOpen}
                 aria-controls={panelId}
                 onClick={() => setOpen(isOpen ? null : idx)}
-                className="flex w-full items-center justify-between gap-6 py-5 text-left text-base font-medium text-ink transition-colors hover:text-ocean-text"
+                className="flex w-full items-center justify-between gap-6 py-5 text-left text-[17px] font-medium text-ink transition-colors hover:text-ocean-text"
               >
                 {item.q}
-                <ChevronDown
+                <Plus
                   size={18}
-                  strokeWidth={1.75}
                   aria-hidden="true"
-                  className={`shrink-0 text-ink-3 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+                  className={`shrink-0 text-ink-3 transition-transform duration-300 ${isOpen ? 'rotate-45 text-ocean-text' : ''}`}
                 />
               </button>
             </h3>

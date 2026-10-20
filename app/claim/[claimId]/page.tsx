@@ -4,7 +4,8 @@ import { use, useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { Gift, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
+import { CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react'
+import { Dither } from '@/components/Dither'
 import { useWallet } from '@/hooks/useWallet'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
@@ -23,7 +24,7 @@ import {
 } from '@/lib/injective/claim-escrow'
 import { LINK_CANCELLED_MESSAGE, fetchGrantLinkState, payShareFromGrant } from '@/lib/injective/claim-grant'
 import type { ClaimPool } from '@/lib/injective/types'
-import { explorerName, explorerTxUrl } from '@/lib/injective/network'
+import { NETWORK_LABEL, explorerName, explorerTxUrl } from '@/lib/injective/network'
 
 type Status =
   | { type: 'idle' }
@@ -36,15 +37,25 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-page text-ink">
       <header className="border-b border-line">
-        <div className="mx-auto flex h-16 max-w-3xl items-center px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/brand/ninja-mark.svg" alt="" width={32} height={32} className="rounded-md" />
-            <span className="text-[17px] font-bold tracking-tight">NinjaPay</span>
+        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5">
+            <Image src="/brand/ninja-mark.svg" alt="" width={28} height={28} />
+            <span className="text-[17px] font-semibold tracking-tight">NinjaPay</span>
           </Link>
+          <span className="inline-flex items-center gap-2 border border-[color-mix(in_srgb,var(--success)_25%,transparent)] px-2.5 py-1.5 font-mono text-[10.5px] tracking-[0.1em] text-lime">
+            <span aria-hidden="true" className="size-1.5 bg-lime" />
+            {NETWORK_LABEL.toUpperCase()}
+          </span>
         </div>
       </header>
-      <main className="flex flex-1 items-start justify-center px-4 py-12 sm:py-20">
-        <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 sm:p-8">{children}</div>
+      <main className="flex flex-1 items-start justify-center px-4 py-10 sm:py-16">
+        <div className="w-full max-w-md border border-line bg-surface">
+          <div className="relative h-52 border-b border-line bg-page-2 sm:h-60">
+            <Dither field="coin" width={180} height={120} label="A dithered coin, turning" />
+            <span className="kicker absolute left-4 top-3.5">[Claim link]</span>
+          </div>
+          <div className="p-6 sm:p-8">{children}</div>
+        </div>
       </main>
     </div>
   )
@@ -54,7 +65,7 @@ function Notice({ title, body }: { title: string; body: string }) {
   return (
     <Shell>
       <AlertCircle size={28} strokeWidth={1.75} className="text-coral" aria-hidden="true" />
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">{title}</h1>
+      <h1 className="mt-4 text-2xl font-medium tracking-tight">{title}</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{body}</p>
     </Shell>
   )
@@ -249,10 +260,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
 
   return (
     <Shell>
-      <span className="inline-flex size-12 items-center justify-center rounded-full bg-ocean-subtle text-ocean-text">
-        <Gift size={22} strokeWidth={1.75} aria-hidden="true" />
-      </span>
-      <h1 className="mt-5 text-2xl font-semibold tracking-tight">{pool.name || 'You have tokens to claim'}</h1>
+      <h1 className="text-[1.75rem] font-medium leading-tight tracking-[-0.025em]">{pool.name || 'You have tokens to claim'}</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-ink-2">
         {total === 1 ? 'One share' : `${total} equal shares`} of {pool.totalAmount} {pool.token} on Injective.
         {kind === 'grant' && (
@@ -260,20 +268,20 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
         )}
       </p>
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl border border-line bg-page-2 p-4">
-        <div className="flex flex-col-reverse">
-          <dt className="mt-1 text-sm text-ink-3">Your share</dt>
-          <dd className="font-mono text-xl font-medium">{shareAmount} {pool.token}</dd>
+      <dl className="mt-6 grid grid-cols-2 border-l border-t border-line">
+        <div className="flex flex-col-reverse border-b border-r border-line p-4">
+          <dt className="mono-label mt-2">Your share</dt>
+          <dd className="num text-2xl">{shareAmount} {pool.token}</dd>
         </div>
-        <div className="flex flex-col-reverse">
-          <dt className="mt-1 text-sm text-ink-3">Shares left</dt>
-          <dd className="font-mono text-xl font-medium">{remaining} of {total}</dd>
+        <div className="flex flex-col-reverse border-b border-r border-line p-4">
+          <dt className="mono-label mt-2">Shares left</dt>
+          <dd className="num text-2xl">{remaining} of {total}</dd>
         </div>
       </dl>
 
       <div className="mt-6">
         {status.type === 'success' ? (
-          <div className="rounded-xl border border-line bg-page-2 p-4">
+          <div className="border border-line bg-page-2 p-4">
             <p className="flex items-center gap-2 font-semibold text-ink">
               <CheckCircle2 size={18} strokeWidth={1.75} className="text-[var(--success)]" aria-hidden="true" />
               {status.message}
@@ -288,7 +296,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
             </a>
           </div>
         ) : status.type === 'pending' ? (
-          <div className="rounded-xl border border-line bg-page-2 p-4">
+          <div className="border border-line bg-page-2 p-4">
             <p className="text-[15px] text-ink-2">{status.message}</p>
             <a
               href={explorerTxUrl(status.txHash)}
@@ -300,18 +308,18 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
             </a>
           </div>
         ) : alreadyClaimed ? (
-          <p className="rounded-xl border border-line bg-page-2 p-4 text-[15px] text-ink-2">
+          <p className="border border-line bg-page-2 p-4 text-[15px] text-ink-2">
             This address has already claimed its share.
           </p>
         ) : remaining === 0 ? (
-          <p className="rounded-xl border border-line bg-page-2 p-4 text-[15px] text-ink-2">All shares have been claimed.</p>
+          <p className="border border-line bg-page-2 p-4 text-[15px] text-ink-2">All shares have been claimed.</p>
         ) : !claimerAddress ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-ink-2">Connect the wallet that should receive your share.</p>
             <button
               onClick={initializeWallet}
               disabled={cosmosLoading}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-ocean px-6 py-3 text-[15px] font-semibold text-snow transition hover:bg-ocean-hover active:scale-[0.98] disabled:opacity-50"
+              className="btn-primary py-3.5 text-[15px]"
             >
               {cosmosLoading ? 'Connecting…' : 'Connect Keplr or Leap'}
             </button>
@@ -326,7 +334,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
           <button
             onClick={handleClaim}
             disabled={claiming || !chainHealth.canSend}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-ocean px-6 py-3.5 text-[15px] font-semibold text-snow transition hover:bg-ocean-hover active:scale-[0.98] disabled:opacity-50"
+            className="btn-primary w-full py-3.5 text-[15px]"
           >
             {claiming ? <><span className="spinner" /> Claiming…</> : `Claim ${shareAmount} ${pool.token}`}
           </button>

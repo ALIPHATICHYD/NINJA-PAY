@@ -93,7 +93,8 @@ export default function BeneficiariesPage() {
     <div style={{ maxWidth: '660px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Beneficiaries</h1>
+          <p className="kicker" style={{ marginBottom: '10px' }}>[Beneficiaries]</p>
+          <h1 className="page-title">Beneficiaries</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Save wallet addresses for quick access when sending.</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary" style={{ fontSize: '13px', padding: '9px 16px' }}>
@@ -108,7 +109,7 @@ export default function BeneficiariesPage() {
       {/* Add form */}
       {showForm && (
         <div className="card" style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Add New Beneficiary</h3>
+          <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Add New Beneficiary</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label className="label">Name / Label</label>
@@ -151,7 +152,7 @@ export default function BeneficiariesPage() {
       {/* List */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
-          <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
             Saved ({filtered.length})
           </p>
         </div>
@@ -176,7 +177,7 @@ export default function BeneficiariesPage() {
                   style={{
                     width: '38px', height: '38px', borderRadius: '50%', flexShrink: 0,
                     background: getAvatarColor(b.name), display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: '#fff',
+                    justifyContent: 'center', fontSize: '13px', fontWeight: '600', color: '#fff',
                   }}
                 >
                   {getInitials(b.name)}
@@ -187,7 +188,7 @@ export default function BeneficiariesPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
                     <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{b.name}</p>
                     {b.tag && tagStyle && (
-                      <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', background: tagStyle.bg, color: tagStyle.color }}>{b.tag}</span>
+                      <span style={{ padding: '2px 8px', borderRadius: 0, fontSize: '11px', fontWeight: '600', background: tagStyle.bg, color: tagStyle.color }}>{b.tag}</span>
                     )}
                   </div>
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -207,7 +208,7 @@ export default function BeneficiariesPage() {
                     href={`/send?to=${b.address}`}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px',
-                      borderRadius: '7px', fontSize: '12px', fontWeight: '600',
+                      borderRadius: 0, fontSize: '12px', fontWeight: '600',
                       background: 'var(--accent-subtle)', color: 'var(--accent-text)',
                       border: '1px solid var(--accent-border)', transition: 'all 0.15s',
                     }}

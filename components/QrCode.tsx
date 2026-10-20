@@ -23,7 +23,7 @@ export function QrCode({ value, label, size = 176 }: { value: string; label: str
       width={size}
       height={size}
       shapeRendering="crispEdges"
-      style={{ display: 'block', maxWidth: '100%', height: 'auto', background: '#fff', borderRadius: '8px' }}
+      style={{ display: 'block', maxWidth: '100%', height: 'auto', background: '#fff', borderRadius: 0 }}
     >
       <rect width={cells} height={cells} fill="#fff" />
       <path d={path} fill="#000" />

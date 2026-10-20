@@ -56,7 +56,7 @@ export function PayrollRuns({ onReuse }: { onReuse: (run: PayrollRun) => void })
   return (
     <section style={{ marginTop: '32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div>
-        <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Past runs</h2>
+        <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>Past runs</h2>
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
           Saved on this device only, and checked against each run&rsquo;s transaction on Injective.
         </p>
@@ -71,7 +71,7 @@ export function PayrollRuns({ onReuse }: { onReuse: (run: PayrollRun) => void })
           <div key={run.id} className="card-sm" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{run.name}</p>
+                <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{run.name}</p>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                   {format(new Date(run.paidAt), 'd MMM yyyy, HH:mm')} · {run.rows.length} recipient{run.rows.length === 1 ? '' : 's'} · {total} {run.token}
                 </p>

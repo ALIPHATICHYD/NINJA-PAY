@@ -3,230 +3,157 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  BarChart3,
+  CheckSquare,
+  ChevronDown,
+  Contact,
+  LayoutGrid,
+  Link2,
+  ListOrdered,
+  Receipt,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
 import { WalletAvatar } from '@/components/WalletAvatar'
 import { usePhantom } from '@/hooks/useEvmSigner'
+import { INJECTIVE_EVM, NETWORK_LABEL } from '@/lib/injective/network'
 
-const NAV_LINKS = [
-  { label: 'Send',          href: '/send' },
-  { label: 'Receive',       href: '/receive' },
-  { label: 'Bills',         href: '/bills' },
-  { label: 'Claims',        href: '/claims' },
-  { label: 'Beneficiaries', href: '/beneficiaries' },
-  { label: 'Payroll',       href: '/payroll' },
-  { label: 'Transactions',  href: '/transactions' },
-  { label: 'Analytics',     href: '/analytics' },
-  { label: 'Approvals',     href: '/approvals' },
+type NavLink = { label: string; href: string; icon: LucideIcon; notLive?: boolean }
+
+const NAV_LINKS: NavLink[] = [
+  { label: 'Home',          href: '/home',          icon: LayoutGrid },
+  { label: 'Send',          href: '/send',          icon: ArrowUpRight },
+  { label: 'Receive',       href: '/receive',       icon: ArrowDownLeft },
+  { label: 'Claim links',   href: '/claims',        icon: Link2 },
+  { label: 'Payroll',       href: '/payroll',       icon: Users },
+  { label: 'Beneficiaries', href: '/beneficiaries', icon: Contact },
+  { label: 'Transactions',  href: '/transactions',  icon: ListOrdered },
+  { label: 'Analytics',     href: '/analytics',     icon: BarChart3 },
+  { label: 'Approvals',     href: '/approvals',     icon: CheckSquare },
+  { label: 'Bills',         href: '/bills',         icon: Receipt, notLive: true },
 ]
 
-export function Navigation() {
+function useIsActive() {
   const pathname = usePathname()
+  return (href: string) => pathname === href || pathname.startsWith(`${href}/`)
+}
+
+function Brand() {
+  return (
+    <Link href="/" className="flex items-center gap-2.5 text-[16px] font-semibold tracking-tight text-ink">
+      {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVG, no optimisation needed */}
+      <img src="/brand/ninja-mark.svg" alt="" width={26} height={26} className="block" />
+      NinjaPay
+    </Link>
+  )
+}
+
+/** Desktop side rail: brand, every app section with its icon, and the one honest "not live" note. */
+export function AppRail() {
+  const isActive = useIsActive()
+  return (
+    <aside className="sticky top-0 hidden h-[100dvh] flex-col gap-7 overflow-y-auto border-r border-line px-4 py-5 lg:flex">
+      <div className="px-2 pt-1">
+        <Brand />
+      </div>
+      <nav aria-label="App" className="flex flex-col gap-0.5">
+        {NAV_LINKS.map(({ label, href, icon: Icon, notLive }) => (
+          <Link key={href} href={href} className="rail-link" aria-current={isActive(href) ? 'page' : undefined}>
+            <Icon size={17} aria-hidden="true" />
+            <span className="flex-1">{label}</span>
+            {notLive && <span className="font-mono text-[10px] tracking-[0.1em] text-coral">SOON</span>}
+          </Link>
+        ))}
+      </nav>
+      <div className="mt-auto flex flex-col gap-1.5 border border-dashed border-line-strong p-3.5">
+        <span className="font-mono text-[10.5px] tracking-[0.1em] text-coral">NOT LIVE YET</span>
+        <span className="text-[13px] leading-snug text-ink-2">Naira cash-out and bills. They launch only with a licensed partner.</span>
+      </div>
+    </aside>
+  )
+}
+
+function WalletControl() {
   // Phantom stays on its own Ethereum network and signs Injective transfers from there.
   const phantom = usePhantom()
-
-  const isActive = (href: string) => {
-    if (href === '/') return pathname === '/'
-    return pathname.startsWith(href)
-  }
-
   return (
-    <nav
-      className="navbar-glass"
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        borderBottom: '1px solid var(--border)',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          padding: '0 24px',
-          height: '62px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          position: 'relative',
-        }}
-      >
-        {/* Logo */}
-        <Link
-          href="/"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            flexShrink: 0,
-            textDecoration: 'none',
-          }}
-        >
-          <img
-            src="/brand/ninja-mark.svg"
-            alt="NinjaPay"
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '6px',
-              objectFit: 'contain',
-            }}
-          />
-          <span
-            style={{
-              fontWeight: '700',
-              fontSize: '17px',
-              color: 'var(--text-primary)',
-              letterSpacing: '-0.02em',
-            }}
+    <ConnectButton.Custom>
+      {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+        const connected = mounted && account && chain
+        if (!mounted) {
+          return (
+            <button className="btn-primary" style={{ minWidth: 148, opacity: 0 }} aria-hidden="true" tabIndex={-1}>
+              Connect wallet
+            </button>
+          )
+        }
+        if (!connected) {
+          return (
+            <button onClick={openConnectModal} className="btn-primary" style={{ minWidth: 148 }}>
+              Connect wallet
+            </button>
+          )
+        }
+        if (chain.unsupported && !phantom) {
+          return (
+            <button onClick={openChainModal} className="btn-danger">
+              Wrong network
+            </button>
+          )
+        }
+        return (
+          <button
+            onClick={openAccountModal}
+            className="flex items-center gap-2.5 border border-line py-1.5 pl-1.5 pr-3 font-mono text-[13px] text-ink transition-colors hover:border-line-strong hover:bg-surface"
           >
-            NinjaPay
-          </span>
-        </Link>
+            <WalletAvatar address={account.address} ensImage={account.ensAvatar} size={24} />
+            {account.displayName}
+            <ChevronDown size={13} aria-hidden="true" className="text-ink-3" />
+          </button>
+        )
+      }}
+    </ConnectButton.Custom>
+  )
+}
 
-        {/* Centered Nav Links — desktop */}
-        <div
-          className="hidden md:flex"
-          style={{
-            position: 'absolute',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            gap: '2px',
-            alignItems: 'center',
-          }}
-        >
-          {NAV_LINKS.map(link => {
-            const active = isActive(link.href)
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                style={{
-                  position: 'relative',
-                  padding: '6px 11px',
-                  borderRadius: '7px',
-                  fontSize: '13.5px',
-                  fontWeight: active ? '600' : '400',
-                  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  transition: 'color 0.15s, background 0.15s',
-                  textDecoration: 'none',
-                  background: active ? 'var(--accent-subtle)' : 'transparent',
-                  whiteSpace: 'nowrap',
-                }}
-                onMouseEnter={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-primary)'
-                    ;(e.currentTarget as HTMLAnchorElement).style.background = 'var(--bg-hover)'
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-secondary)'
-                    ;(e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
-                  }
-                }}
-              >
-                {link.label}
-                {active && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      bottom: '-1px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: '16px',
-                      height: '2px',
-                      background: 'var(--accent)',
-                      borderRadius: '2px',
-                    }}
-                  />
-                )}
-              </Link>
-            )
-          })}
+/** Top bar: network chip and wallet on every width; brand and a swipeable link row on phones. */
+export function AppTopBar() {
+  const isActive = useIsActive()
+  return (
+    <header className="app-topbar sticky top-0 z-40 border-b border-line">
+      <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="lg:hidden">
+          <Brand />
         </div>
-
-        {/* Connect Wallet */}
-        <div style={{ flexShrink: 0 }}>
-          <ConnectButton.Custom>
-            {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
-              const connected = mounted && account && chain
-              if (!mounted) {
-                return (
-                  <button className="btn-primary" style={{ minWidth: '140px', opacity: 0 }} aria-hidden="true">
-                    Connect Wallet
-                  </button>
-                )
-              }
-              if (!connected) {
-                return (
-                  <button onClick={openConnectModal} className="btn-primary" style={{ minWidth: '140px' }}>
-                    Connect Wallet
-                  </button>
-                )
-              }
-              if (chain.unsupported && !phantom) {
-                return (
-                  <button onClick={openChainModal} className="alert-error" style={{ border: 'none', cursor: 'pointer', padding: '10px 14px', borderRadius: '8px', fontWeight: '600' }}>
-                    Wrong Network
-                  </button>
-                )
-              }
-              return (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={openAccountModal}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 14px',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border-light)',
-                      borderRadius: '8px',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      transition: 'border-color 0.15s',
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-muted)'
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-light)'
-                    }}
-                  >
-                    <WalletAvatar address={account.address} ensImage={account.ensAvatar} size={20} />
-                    {account.displayName}
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ color: 'var(--text-muted)', marginLeft: '2px' }}>
-                      <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </div>
-              )
-            }}
-          </ConnectButton.Custom>
+        <span className="hidden font-mono text-[11px] tracking-[0.1em] text-lime sm:inline-flex sm:items-center sm:gap-2 sm:border sm:border-[color-mix(in_srgb,var(--success)_25%,transparent)] sm:px-3 sm:py-2 lg:ml-0">
+          <span aria-hidden="true" className="size-1.5 bg-lime" />
+          {NETWORK_LABEL.toUpperCase()} · {INJECTIVE_EVM.id}
+        </span>
+        <div className="ml-auto shrink-0">
+          <WalletControl />
         </div>
       </div>
-
-      {/* Phones: the same links as a swipeable row under the header */}
-      <div className="no-scrollbar flex gap-1 overflow-x-auto px-4 pb-2.5 md:hidden">
-        {NAV_LINKS.map(link => {
-          const active = isActive(link.href)
+      <nav aria-label="App" className="no-scrollbar flex gap-1 overflow-x-auto border-t border-line px-3 py-2 lg:hidden">
+        {NAV_LINKS.map(({ label, href, notLive }) => {
+          const active = isActive(href)
           return (
             <Link
-              key={link.href}
-              href={link.href}
+              key={href}
+              href={href}
               aria-current={active ? 'page' : undefined}
-              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] transition-colors ${
-                active ? 'bg-ocean-subtle font-semibold text-ink' : 'text-ink-2 hover:bg-surface-hover hover:text-ink'
+              className={`shrink-0 whitespace-nowrap border px-3 py-1.5 text-[13px] transition-colors ${
+                active ? 'border-line bg-surface text-ink' : 'border-transparent text-ink-2 hover:text-ink'
               }`}
             >
-              {link.label}
+              {label}
+              {notLive && <span className="ml-1.5 font-mono text-[10px] text-coral">SOON</span>}
             </Link>
           )
         })}
-      </div>
-    </nav>
+      </nav>
+    </header>
   )
 }

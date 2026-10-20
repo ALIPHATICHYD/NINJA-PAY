@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useWallet } from '@/hooks/useWallet'
+import { Dither } from '@/components/Dither'
 import { useBalance } from '@/hooks/useBalance'
 import {
   useEstimateGas,
@@ -248,8 +249,9 @@ export default function SendPage() {
   return (
     <div style={{ maxWidth: '540px', margin: '0 auto' }}>
       <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
-          Send &amp; Off-Ramp
+        <p className="kicker" style={{ marginBottom: '10px' }}>[Send]</p>
+        <h1 className="page-title">
+          Send
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
           Transfer INJ or USDC on Injective. Off-ramp to NGN is not live yet.
@@ -271,6 +273,9 @@ export default function SendPage() {
       {/* ─── Send Tokens tab ─── */}
       {tab === 'send' && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ margin: '-24px -24px 0', height: '64px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+            <Dither field="flow" width={220} height={28} />
+          </div>
           {requested && (
             <div className="alert-warning" style={{ fontSize: '12px', lineHeight: 1.5 }}>
               This link asks you to send {requested.amount} {requested.token}. NinjaPay doesn&apos;t know who made it, so check the
@@ -298,17 +303,17 @@ export default function SendPage() {
           </div>
 
           {/* Balance info */}
-          <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: 0, display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
             <div>
               <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Available Balance</p>
-              <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              <p style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
                 {balLoading ? '—' : formatBaseUnits(tokenBalance, decimals, sendToken === 'USDC' ? 2 : 4)} {sendToken}
               </p>
             </div>
             {sendToken === 'USDC' && (
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>INJ for fees</p>
-                <p style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                <p style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-secondary)' }}>
                   {balLoading ? '—' : formatBaseUnits(injBalance, INJ.decimals, 6)} INJ
                 </p>
               </div>
@@ -369,7 +374,7 @@ export default function SendPage() {
             <label className="label">Amount ({sendToken})</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
-                className="input"
+                className="input input-amount"
                 type="number"
                 placeholder="0.00"
                 value={amount}
@@ -382,7 +387,7 @@ export default function SendPage() {
                 onClick={() => setAmount(formatBaseUnits(maxBase, decimals))}
                 title={sendToken === 'INJ' ? 'Your INJ balance minus room for the network fee' : undefined}
                 className="btn-ghost"
-                style={{ border: '1px solid var(--border)', borderRadius: '9px', fontSize: '12px', fontWeight: '600', padding: '0 14px', flexShrink: 0 }}
+                style={{ border: '1px solid var(--border)', borderRadius: 0, fontSize: '12px', fontWeight: '600', padding: '0 14px', flexShrink: 0 }}
               >
                 Max
               </button>

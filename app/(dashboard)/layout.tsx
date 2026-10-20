@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Navigation } from '@/components/Navigation'
+import { AppRail, AppTopBar } from '@/components/Navigation'
 import { Web3Providers } from '@/components/Web3Providers'
 import { LivePayments } from '@/components/LivePayments'
 
@@ -12,39 +12,20 @@ export default function DashboardLayout({
 }) {
   return (
     <Web3Providers>
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
-      <Navigation />
-
-      <main
-        style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          padding: '40px 24px 80px',
-        }}
-      >
-        {children}
-      </main>
-
-      <footer style={{ borderTop: '1px solid var(--border)' }}>
-        <div
-          style={{
-            maxWidth: '1280px',
-            margin: '0 auto',
-            padding: '20px 24px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            © 2026 NinjaPay · Built on Injective
-          </p>
+      <div className="min-h-[100dvh] bg-page lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
+        <AppRail />
+        <div className="flex min-h-[100dvh] min-w-0 flex-col">
+          <AppTopBar />
+          <main className="mx-auto w-full max-w-[1180px] flex-1 px-4 pb-20 pt-8 sm:px-6 lg:px-8 lg:pt-10">{children}</main>
+          <footer className="border-t border-line">
+            <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center justify-between gap-3 px-4 py-5 font-mono text-[11px] tracking-[0.08em] text-ink-3 sm:px-6 lg:px-8">
+              <span>© 2026 NINJAPAY · BUILT ON INJECTIVE</span>
+              <span>NON-CUSTODIAL · YOUR KEYS, YOUR FUNDS</span>
+            </div>
+          </footer>
         </div>
-      </footer>
+      </div>
       <LivePayments />
-    </div>
     </Web3Providers>
   )
 }
