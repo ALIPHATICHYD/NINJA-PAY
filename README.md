@@ -320,6 +320,7 @@ Variables prefixed `NEXT_PUBLIC_` are **bundled into client JavaScript and visib
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes, for claims and analytics | `lib/supabase.ts` | Publishable anon key. Protect tables with RLS. |
 | `SUPABASE_SERVICE_ROLE_KEY` | No (server-only) | `lib/supabase-server.ts` | Supabase → Project Settings → API keys → `service_role` (secret). With it, the server writes claim links (`/api/claims`) and counts the relay's limits in the database, so the database can refuse writes from browsers. It skips Row Level Security, so set it only in the host's environment settings, never with a `NEXT_PUBLIC_` prefix. See [Locking claim writes](#locking-claim-writes). |
 | `CRON_SECRET` | No (server-only) | `app/api/cron/settle-claims/route.ts` | Any long random string. Vercel sends it to the daily claim-settling job, which refuses calls without it. |
+| `ALERT_WEBHOOK_URL` | No (server-only) | `lib/alerts.ts` | A Slack or Discord incoming webhook. Server errors, page errors, a low relayer balance and a failed daily job are posted to it as well as logged. See [docs/operations.md](docs/operations.md). |
 | `NEXT_PUBLIC_INJECTIVE_NETWORK` | No | `lib/injective/network.ts` | `mainnet` to target mainnet. Defaults to testnet. |
 | `NEXT_PUBLIC_INJECTIVE_GRPC` / `NEXT_PUBLIC_INJECTIVE_REST` / `NEXT_PUBLIC_INJECTIVE_INDEXER` / `NEXT_PUBLIC_INJECTIVE_EXPLORER` | No | `lib/injective/network.ts` | Chain gRPC-web, LCD, indexer and indexer explorer URLs from a premium provider. Default to Injective's shared public endpoints, which its [docs](https://docs.injective.network/infra/public-endpoints) don't recommend for production traffic. |
 | `NEXT_PUBLIC_INJECTIVE_EVM_WS` | No | `lib/injective/live.ts` | EVM WebSocket (`wss://`) for live payment updates. Used in the browser, so it must be keyless. Defaults to Injective's public WebSocket endpoint from the [EVM network information](https://docs.injective.network/developers-evm/network-information) page. |
@@ -533,6 +534,8 @@ To report a vulnerability, open a private security advisory on the GitHub reposi
 ---
 
 ## Failures and recovery
+
+Rolling back, backups, alerts, spend and the live database are in [docs/operations.md](docs/operations.md).
 
 NinjaPay is a website, a few server routes on Vercel, a Supabase database for claim links, and Injective. Money only ever moves on Injective, signed by the user's wallet or by a claim link's key, so when a part fails the aim is that a payment either happens once or clearly doesn't, and that the person is told which.
 

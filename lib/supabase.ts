@@ -82,35 +82,50 @@ export async function pingDatabase(): Promise<boolean> {
 
 // Postgres error codes surfaced by PostgREST
 const UNIQUE_VIOLATION = '23505'
-const NO_ROWS = 'PGRST116'
 
-export async function getClaimPoolByLink(linkCode: string): Promise<ClaimPool | null> {
+/** A pool row with its claims embedded by PostgREST, joined on claims.pool_id. */
+type ClaimPoolWithClaimsRow = ClaimPoolRow & { claims: ClaimRow[] | null }
+
+export type ClaimPoolWithClaims = { pool: ClaimPool; claims: ClaimRecord[] }
+
+// One query instead of a pool read followed by a claims read.
+const POOL_WITH_CLAIMS = '*, claims(*)'
+
+export function toClaimPoolWithClaims(row: ClaimPoolWithClaimsRow): ClaimPoolWithClaims {
+  return { pool: toClaimPool(row), claims: (row.claims ?? []).map(toClaimRecord) }
+}
+
+/** A claim link's pool and its claims, in one query. Null when no pool has this link code. */
+export async function getClaimPoolByLink(linkCode: string): Promise<ClaimPoolWithClaims | null> {
   const { data, error } = await supabase
     .from('claim_pools')
-    .select()
+    .select(POOL_WITH_CLAIMS)
     .eq('link_code', linkCode)
-    .single()
+    .maybeSingle()
 
   if (error) {
-    if (error.code === NO_ROWS) return null
     console.error('Failed to get claim pool:', error)
     throw error
   }
-  return toClaimPool(data)
+  return data ? toClaimPoolWithClaims(data) : null
 }
 
-export async function getClaimPoolsByCreator(creatorAddress: string): Promise<ClaimPool[]> {
+/**
+ * A creator's pools, newest first, each with its claims, in one query.
+ * Throws when the read fails: an unreadable list is not an empty one.
+ */
+export async function getClaimPoolsByCreator(creatorAddress: string): Promise<ClaimPoolWithClaims[]> {
   const { data, error } = await supabase
     .from('claim_pools')
-    .select()
+    .select(POOL_WITH_CLAIMS)
     .eq('creator_address', creatorAddress)
     .order('created_at', { ascending: false })
 
   if (error) {
     console.error('Failed to get claim pools:', error)
-    return []
+    throw new Error("Couldn't load your claim links. Try again.")
   }
-  return (data || []).map(toClaimPool)
+  return (data || []).map(toClaimPoolWithClaims)
 }
 
 /**
@@ -151,23 +166,13 @@ function toClaimRecord(row: ClaimRow): ClaimRecord {
   }
 }
 
-export async function getClaimsForPools(poolIds: string[]): Promise<ClaimRecord[]> {
-  if (poolIds.length === 0) return []
-  const { data, error } = await supabase.from('claims').select().in('pool_id', poolIds)
-  if (error) {
-    console.error('Failed to load claims:', error)
-    return []
-  }
-  return (data || []).map(toClaimRecord)
-}
-
 /**
  * Claim-link writes, and the reads they depend on, against one Supabase
  * client: the browser's public one below, or the server's service-role one
  * (lib/supabase-server.ts), which /api/claims uses once it is set up.
  */
 export function createClaimStore(db: SupabaseClient) {
-  /** Like getClaimsForPools, but a failed read throws: reserving must not mistake it for an empty pool. */
+  /** A pool's claims. A failed read throws: reserving must not mistake it for an empty pool. */
   async function readClaims(poolId: string): Promise<ClaimRecord[]> {
     const { data, error } = await db.from('claims').select().eq('pool_id', poolId)
     if (error) throw new Error(error.message || "Couldn't read this link's claims. Try again.")
@@ -300,6 +305,20 @@ export function createClaimStore(db: SupabaseClient) {
       if (error) console.error('Failed to mark claim paid:', error)
     },
 
+    /** Mark many claims paid in one write. Their recorded hashes are the payouts that landed. */
+    async markClaimsPaid(claimIds: string[]): Promise<void> {
+      if (claimIds.length === 0) return
+      const { error } = await db.from('claims').update({ status: 'paid' }).in('id', claimIds)
+      if (error) console.error('Failed to mark claims paid:', error)
+    },
+
+    /** Release many reservations in one write. Only ones still pending are removed. */
+    async releaseClaims(claimIds: string[]): Promise<void> {
+      if (claimIds.length === 0) return
+      const { error } = await db.from('claims').delete().in('id', claimIds).eq('status', 'pending')
+      if (error) console.error('Failed to release claim reservations:', error)
+    },
+
     /** Release a reservation after a failed payout so the share can be claimed again. */
     async releaseClaim(claimId: string): Promise<void> {
       const { error } = await db.from('claims').delete().eq('id', claimId).eq('status', 'pending')
@@ -319,7 +338,9 @@ export const {
   recordClaimTx,
   getPendingClaims,
   markClaimPaid,
+  markClaimsPaid,
   releaseClaim,
+  releaseClaims,
 } = browserStore
 
 /**

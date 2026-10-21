@@ -9,6 +9,7 @@ import {
   type TransferCheck,
 } from '@/lib/injective/transfer-checks'
 import { TOKENS, type TokenSymbol } from '@/lib/injective/tokens'
+import { mapUnique } from '@/lib/concurrency'
 
 /**
  * Pre-send checks for a payroll run, which goes out as one MsgMultiSend, or
@@ -35,7 +36,7 @@ export function usePayrollChecks(
       const [circuit, permissions, history] = await Promise.all([
         checkCircuitBreaker(typeUrls),
         token === 'INJ' ? null : checkTokenPermissionsForMany(denom, symbol, sender!, to),
-        Promise.all(to.map(checkRecipientHistory)),
+        mapUnique(to, checkRecipientHistory),
       ])
       const row = (i: number, check: TransferCheck): TransferCheck => ({ ...check, message: `Row ${i + 1}: ${check.message}` })
       return [

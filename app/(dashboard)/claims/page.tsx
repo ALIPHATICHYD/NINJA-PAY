@@ -8,7 +8,6 @@ import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import {
   getClaimPoolsByCreator,
-  getClaimsForPools,
   isSupabaseConfigured,
   SUPABASE_SETUP_MESSAGE,
 } from '@/lib/supabase'
@@ -90,20 +89,19 @@ export default function ClaimsPage() {
   const loadClaims = useCallback(async (address: string) => {
     setLoading(true)
     try {
-      const pools = await getClaimPoolsByCreator(address)
-      const [claims, given] = await Promise.all([
-        getClaimsForPools(pools.map(p => p.id)),
+      const [pools, given] = await Promise.all([
+        getClaimPoolsByCreator(address),
         // Links paid from this wallet are approvals it gave. Unreadable is not the same as none.
         fetchApprovals(address).then(a => a.given).catch(() => undefined),
       ])
       setCreated(
-        pools.map(pool => {
+        pools.map(({ pool, claims }) => {
           const stored = loadEscrowKey(pool.linkCode)
           const approvals = given?.filter(a => a.grantee === pool.escrowAddress)
           const kind: ClaimLinkKind = stored?.kind ?? (approvals?.length ? 'grant' : 'escrow')
           return {
             pool,
-            claimed: claims.filter(c => c.poolId === pool.id && c.status === 'paid').length,
+            claimed: claims.filter(c => c.status === 'paid').length,
             link: stored ? buildClaimLink(window.location.origin, pool.linkCode, stored.privateKeyHex, kind) : null,
             kind,
             approvals,

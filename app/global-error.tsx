@@ -1,8 +1,12 @@
 'use client'
 
+import { useEffect } from 'react'
+import { reportClientError } from '@/lib/report-client-error'
+
 // Last resort when the root layout itself fails, so it brings its own <html>
 // and plain styles: the app's stylesheet may be what failed.
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => reportClientError(error), [error])
   return (
     <html lang="en">
       <body style={{ margin: 0, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#eeefff', fontFamily: 'system-ui, sans-serif', padding: 24 }}>

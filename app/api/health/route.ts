@@ -13,6 +13,7 @@ import { INJECTIVE_EVM } from '@/lib/injective/network'
 import { MAX_RELAY_FEE, relayBackend, serverEvmRpc } from '@/lib/injective/usdc-relay'
 import { isSupabaseConfigured, pingDatabase } from '@/lib/supabase'
 import { serviceSupabase } from '@/lib/supabase-server'
+import { alertOperator } from '@/lib/alerts'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,9 +30,10 @@ async function relayCheck(): Promise<Check> {
   try {
     const client = createPublicClient({ chain: INJECTIVE_EVM, transport: http(serverEvmRpc(), { timeout: 10_000 }) })
     const balance = await client.getBalance({ address: privateKeyToAccount(backend.privateKey).address })
-    return balance >= RELAYER_LOW
-      ? { ok: true, detail: 'on' }
-      : { ok: false, detail: 'on, but the relayer wallet is low on INJ for gas. Top it up.' }
+    if (balance >= RELAYER_LOW) return { ok: true, detail: 'on' }
+    // Sent when an uptime monitor polls this, at most every six hours.
+    await alertOperator('relayer:low', 'The USDC relayer wallet can pay for fewer than 20 more transfers. Top it up with INJ.', { everyMs: 6 * 60 * 60_000 })
+    return { ok: false, detail: 'on, but the relayer wallet is low on INJ for gas. Top it up.' }
   } catch {
     return { ok: false, detail: "on, but the relayer wallet's balance couldn't be read" }
   }

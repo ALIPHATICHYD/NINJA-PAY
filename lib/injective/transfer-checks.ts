@@ -23,6 +23,7 @@
  */
 
 import { ENDPOINTS } from './network'
+import { mapUnique } from '../concurrency'
 
 export type TransferCheck = { level: 'block' | 'warn'; message: string }
 
@@ -134,7 +135,7 @@ export async function checkTokenPermissionsForMany(
     roles.some(role => ((permissions.get(role) ?? 0) & ACTION_BITS[action]) !== 0)
 
   try {
-    const [fromRoles, ...toRoles] = await Promise.all([from, ...to].map(actor => rolesOf(denom, actor)))
+    const [fromRoles, ...toRoles] = await mapUnique([from, ...to], actor => rolesOf(denom, actor))
     return {
       sender: can(fromRoles, 'SEND') ? [] : [rule(`Your account isn't allowed to send ${symbol}.`)],
       recipients: toRoles.map(roles => (can(roles, 'RECEIVE') ? [] : [rule(`This address isn't allowed to receive ${symbol}.`)])),
