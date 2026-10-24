@@ -4,7 +4,7 @@ What to do when something breaks, and the settings that only the owner can chang
 
 ## Alerts and error tracking
 
-Every server error (`instrumentation.ts`) and every error a visitor's page can't render past (`app/error.tsx`, `app/global-error.tsx` → `/api/errors`) is written as one JSON log line. Find them in Vercel → the project → Logs, filtered on `"level":"error"`.
+Every server error (`instrumentation.ts`) and every error a visitor's page can't render past (`app/error.tsx`, `app/global-error.tsx` → `/api/errors`) is written as one JSON log line. Find them in Vercel → the project → Logs, filtered on `"level":"error"`. Each line carries `requestId`, Vercel's `x-vercel-id` for that request; search the logs for it to see the whole request. A failed upstream behind `/api/evm-rpc` is a `"level":"warn"` line with `"event":"rpc-upstream-failed"`, saying which endpoint failed (`premium` or `public`), how, and how long it took. If most failures name one endpoint, that endpoint is the problem.
 
 Set `ALERT_WEBHOOK_URL` in Vercel (production only) to a Slack or Discord incoming webhook to be told as well. `lib/alerts.ts` sends:
 
@@ -15,6 +15,7 @@ Set `ALERT_WEBHOOK_URL` in Vercel (production only) to a Slack or Discord incomi
 | Relayer out of INJ | A relayed transfer failed for lack of gas | Once an hour |
 | Claim-settling job failed | `/api/cron/settle-claims` threw | Once an hour |
 | Claim-settling backlog | The job found a full batch (100) of stale reservations | Once a day |
+| Premium RPC failing over | `/api/evm-rpc` got an error or timeout from `INJECTIVE_EVM_RPC_URL` and served the request from Injective's public RPC | Once an hour |
 
 Each server instance sends at most 30 alerts an hour in all, so a flood of errors can't flood the channel. Alerts and logs never carry keys, signatures, request bodies, query strings or URL fragments (where a claim link keeps its key).
 

@@ -10,6 +10,8 @@
  * Alerts never carry keys, signatures, request bodies or the webhook's URL.
  */
 
+import 'server-only'
+
 export const MAX_PER_HOUR = 30
 const HOUR_MS = 60 * 60_000
 

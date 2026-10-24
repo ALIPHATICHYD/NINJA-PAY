@@ -10,6 +10,7 @@
  * HMACs, never as the addresses they count.
  */
 
+import 'server-only'
 import { createHmac } from 'node:crypto'
 import { createRateLimiter } from './rate-limit'
 import { serviceSupabase } from './supabase-server'

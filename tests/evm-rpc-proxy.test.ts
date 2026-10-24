@@ -37,6 +37,40 @@ describe('EVM RPC proxy', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://k8s.testnet.json-rpc.injective.network/')
   })
 
+  it('logs which upstream failed and alerts once, without the URL or the request', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.UTC(2029, 0, 1, 12))
+    vi.stubEnv('INJECTIVE_EVM_RPC_URL', PREMIUM)
+    vi.stubEnv('ALERT_WEBHOOK_URL', 'https://hooks.example/alert')
+    const posted: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === PREMIUM) return new Response('busy', { status: 503 })
+      if (url === 'https://hooks.example/alert') {
+        posted.push(String(init?.body))
+        return new Response(null, { status: 204 })
+      }
+      return new Response('{"jsonrpc":"2.0","id":1,"result":"0x10"}')
+    }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const balance = { jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: ['0x00000000000000000000000000000000000000aa', 'latest'] }
+
+    expect((await call(balance)).status).toBe(200)
+    vi.setSystemTime(Date.UTC(2029, 0, 1, 12, 0, 31))
+    expect((await call(balance)).status).toBe(200)
+
+    const lines = warn.mock.calls.map(c => JSON.parse(String(c[0])))
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatchObject({ event: 'rpc-upstream-failed', upstream: 'premium', failure: 'HTTP 503' })
+    // Alerted the first time only, within the hour.
+    expect(posted).toHaveLength(1)
+    const everything = [...warn.mock.calls, ...error.mock.calls].flat().join(' ') + posted.join(' ')
+    expect(everything).not.toContain('secret')
+    expect(everything).not.toContain('00aa')
+    warn.mockRestore()
+    error.mockRestore()
+  })
+
   it('skips a failed provider for 30 seconds, then tries it again', async () => {
     // Later than any cool-down an earlier test started.
     vi.useFakeTimers({ toFake: ['Date'] })

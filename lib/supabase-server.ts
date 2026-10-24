@@ -2,12 +2,14 @@
  * Supabase with the service role key, for server routes only. The key skips
  * Row Level Security, so it must never reach the browser: it is read from
  * SUPABASE_SERVICE_ROLE_KEY, which has no NEXT_PUBLIC_ prefix, and only route
- * handlers import this file.
+ * handlers import this file. The `server-only` import makes the build fail if
+ * a browser component ever imports it.
  *
  * Unset, everything here returns null and NinjaPay keeps writing claim links
  * from the browser with the public key, as before.
  */
 
+import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_URL } from './injective/constants'
 import { createClaimStore, type ClaimStore } from './supabase'

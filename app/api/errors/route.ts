@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     message: body.message,
     digest: typeof body.digest === 'string' ? body.digest : undefined,
     path: typeof body.path === 'string' ? body.path : undefined,
+    requestId: request.headers.get('x-vercel-id') ?? undefined,
   })
   return done()
 }

@@ -26,6 +26,7 @@
  *   0.0.1 implements it: https://docs.injective.network/developers-ai/x402
  */
 
+import 'server-only'
 import {
   BaseError,
   RpcRequestError,

@@ -10,7 +10,7 @@ const send = (body: string, ip = '1.1.1.1') =>
 describe('browser error reports', () => {
   it('reports the message, digest and path', async () => {
     expect((await send(JSON.stringify({ message: 'boom', digest: 'd1', path: '/send' }))).status).toBe(204)
-    expect(reported).toEqual([{ source: 'browser', message: 'boom', digest: 'd1', path: '/send' }])
+    expect(reported).toEqual([{ source: 'browser', message: 'boom', digest: 'd1', path: '/send', requestId: undefined }])
   })
 
   it('refuses bodies that are too large or not reports', async () => {

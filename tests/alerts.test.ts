@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_PER_HOUR, alertOperator, resetAlerts } from '@/lib/alerts'
-import { cleanErrorEvent, pathOnly } from '@/lib/error-report'
+import { cleanErrorEvent, pathOnly, requestIdFrom } from '@/lib/error-report'
 
 const HOOK = 'https://hooks.example/abc'
 const sent: { url: string; body: { text: string; content: string } }[] = []
@@ -59,5 +59,13 @@ describe('cleaning error reports', () => {
     expect(event.message.length).toBe(300)
     expect(event.message).not.toContain('\n')
     expect(event.path).toBe('/send')
+  })
+
+  it("keeps Vercel's request id and drops anything that isn't one", () => {
+    expect(cleanErrorEvent({ source: 'server', message: 'm', requestId: 'iad1:iad1::dub1::9cxpt-1792857639228-c5818d90fb66' }).requestId)
+      .toBe('iad1:iad1::dub1::9cxpt-1792857639228-c5818d90fb66')
+    expect(cleanErrorEvent({ source: 'server', message: 'm', requestId: 'a b<script>' }).requestId).toBeUndefined()
+    expect(requestIdFrom(['dub1::abc', 'other'])).toBe('dub1::abc')
+    expect(requestIdFrom(undefined)).toBeUndefined()
   })
 })
