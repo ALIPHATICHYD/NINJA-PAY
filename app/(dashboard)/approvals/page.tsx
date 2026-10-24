@@ -8,6 +8,8 @@ import { useWallet } from '@/hooks/useWallet'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
 import { useEvmSigner } from '@/hooks/useEvmSigner'
 import { TxStatus } from '@/components/TxStatus'
+import { ChainHealthNotice } from '@/components/ChainHealthNotice'
+import { useChainHealth } from '@/hooks/useChainHealth'
 import type { ChainState } from '@/components/StatusChip'
 import { CHAIN_ID, NETWORK_LABEL } from '@/lib/injective/network'
 import { shortAddress, toInjectiveAddress } from '@/lib/injective/address'
@@ -26,6 +28,8 @@ export default function ApprovalsPage() {
   const evmSigner = useEvmSigner()
   const queryClient = useQueryClient()
   const [revoking, setRevoking] = useState<Revoking | null>(null)
+  // Revokes are Cosmos transactions, whichever wallet signs them.
+  const chainHealth = useChainHealth('cosmos')
 
   // Keplr or Leap signs for its account; the EVM wallet signs for its own
   // account as EIP-712 typed data. Only the account that gave an approval can revoke it.
@@ -110,6 +114,11 @@ export default function ApprovalsPage() {
         </div>
       )}
       {cosmosError && <div className="alert-error" style={{ marginBottom: '20px' }}>{cosmosError}</div>}
+      {(chainHealth.upgrade || chainHealth.health?.ok === false) && (
+        <div style={{ marginBottom: '20px' }}>
+          <ChainHealthNotice state={chainHealth} />
+        </div>
+      )}
       {revoking?.state === 'confirmed' && (
         <div style={{ marginBottom: '20px' }}>
           <TxStatus state="confirmed" message={revoking.message} hash={revoking.hash} />
@@ -146,7 +155,7 @@ export default function ApprovalsPage() {
                           canSign={canSign}
                           claimLink={claimLinks?.get(approval.grantee)?.poolName ?? null}
                           revoking={revoking?.key === keyOf(approval) ? revoking : null}
-                          busy={revoking?.state === 'awaiting-signature'}
+                          busy={revoking?.state === 'awaiting-signature' || !chainHealth.canSend}
                           onRevoke={() => void revoke(approval)}
                         />
                       ))}

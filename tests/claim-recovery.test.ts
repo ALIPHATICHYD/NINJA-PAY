@@ -8,15 +8,22 @@ const state = vi.hoisted(() => ({
   staleAfter: [] as number[],
   paid: [] as [string, string][],
   released: [] as string[],
+  healthChecks: 0,
+  writes: 0,
 }))
 
 vi.mock('@/lib/supabase', () => ({
   getPendingClaims: async () => state.pending,
   markClaimPaid: async (id: string, hash: string) => { state.paid.push([id, hash]) },
   releaseClaim: async (id: string) => { state.released.push(id) },
+  markClaimsPaid: async (ids: string[]) => { state.writes++; state.paid.push(...ids.map((id): [string, string] => [id, 'batch'])) },
+  releaseClaims: async (ids: string[]) => { state.writes++; state.released.push(...ids) },
 }))
 vi.mock('@/lib/injective/health', () => ({
-  checkCosmosHealth: async () => (state.live ? { ok: true } : { ok: false, reason: 'stalled' }),
+  checkCosmosHealth: async () => {
+    state.healthChecks++
+    return state.live ? { ok: true } : { ok: false, reason: 'stalled' }
+  },
 }))
 vi.mock('@/lib/injective/link-broadcast', () => ({
   payoutOutcome: async (hash: string, ageMs: number, staleAfterMs: number) => {
@@ -26,7 +33,7 @@ vi.mock('@/lib/injective/link-broadcast', () => ({
   },
 }))
 
-const { STALE_CLAIM_MS, freeStaleShares, settleClaim } = await import('@/lib/claim-recovery')
+const { STALE_CLAIM_MS, freeStaleShares, settleAll, settleClaim } = await import('@/lib/claim-recovery')
 
 const NOW = Date.UTC(2026, 9, 13, 12)
 const claim = (id: string, ageMs: number, txHash: string | null = null): ClaimRecord => ({
@@ -40,6 +47,8 @@ beforeEach(() => {
   state.staleAfter = []
   state.paid = []
   state.released = []
+  state.healthChecks = 0
+  state.writes = 0
 })
 
 describe('settling a pending claim', () => {
@@ -88,6 +97,38 @@ describe('freeing stale shares when a link looks full', () => {
     ]
     expect(await freeStaleShares('pool', NOW)).toBe(2)
     expect(state.released.sort()).toEqual(['abandoned', 'lost'])
-    expect(state.paid).toEqual([['landed', 'LANDED']])
+    expect(state.paid).toEqual([['landed', 'batch']])
+  })
+})
+
+describe('settling a long list', () => {
+  it('asks the chain about its health once and writes once per kind, not once per claim', async () => {
+    state.outcomes.set('LANDED', 'paid')
+    const claims = Array.from({ length: 12 }, (_, i) => claim(`lost${i}`, STALE_CLAIM_MS + 1, `LOST${i}`))
+    claims.push(claim('landed', STALE_CLAIM_MS + 1, 'LANDED'), claim('abandoned', STALE_CLAIM_MS + 1))
+    const store = {
+      getPendingClaims: async () => [],
+      markClaimPaid: async () => { throw new Error('one write per claim') },
+      releaseClaim: async () => { throw new Error('one write per claim') },
+      markClaimsPaid: async (ids: string[]) => { state.writes++; state.paid.push(...ids.map((id): [string, string] => [id, 'batch'])) },
+      releaseClaims: async (ids: string[]) => { state.writes++; state.released.push(...ids) },
+    }
+    expect(await settleAll(claims, NOW, store)).toBe(13)
+    expect(state.healthChecks).toBe(1)
+    expect(state.writes).toBe(2)
+    expect(state.paid).toEqual([['landed', 'batch']])
+  })
+
+  it('leaves a claim pending when the chain cannot be asked about it', async () => {
+    const store = {
+      getPendingClaims: async () => [],
+      markClaimPaid: async () => {},
+      releaseClaim: async () => {},
+      markClaimsPaid: async () => {},
+      releaseClaims: async (ids: string[]) => { state.released.push(...ids) },
+    }
+    state.outcomes.set('H', 'unknown')
+    expect(await settleAll([claim('c1', 60_000, 'H')], NOW, store)).toBe(0)
+    expect(state.released).toEqual([])
   })
 })

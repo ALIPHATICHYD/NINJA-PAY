@@ -16,7 +16,10 @@ import { CHAIN_ID, ENDPOINTS, INJECTIVE_EVM, NETWORK_LABEL } from './network'
 /** A block older than this means the chain (or the endpoint) has stalled. Blocks normally land in under a second. */
 export const MAX_BLOCK_AGE_MS = 60_000
 
-export type RailHealth = { ok: true } | { ok: false; reason: string }
+export type RailHealth =
+  | { ok: true }
+  /** `haltedAt` is the last block's height when the chain has stopped producing blocks. */
+  | { ok: false; reason: string; haltedAt?: number }
 
 export type UpgradePlan = { name: string; height: number }
 
@@ -27,9 +30,9 @@ function ago(ms: number): string {
   return `${Math.round(minutes / 60)} hours ago`
 }
 
-/** Judge one rail from its reported chain id and latest block time. */
+/** Judge one rail from its reported chain id, latest block time and (when known) height. */
 export function assessChain(
-  reported: { chainId: string | number; blockTime: Date },
+  reported: { chainId: string | number; blockTime: Date; height?: number },
   expectedChainId: string | number,
   now: Date = new Date(),
 ): RailHealth {
@@ -44,9 +47,22 @@ export function assessChain(
     return {
       ok: false,
       reason: `${NETWORK_LABEL}'s last block was ${ago(age)}, so sending is paused. This usually means a network upgrade or an outage.`,
+      ...(Number.isFinite(reported.height) && { haltedAt: reported.height }),
     }
   }
   return { ok: true }
+}
+
+/**
+ * The message to show while sends are paused. A chain stops at the block
+ * before a scheduled upgrade's height, so a halt there is the upgrade, not an
+ * outage, and the message can say so.
+ */
+export function pauseReason(health: Extract<RailHealth, { ok: false }>, upgrade: UpgradePlan | null): string {
+  if (upgrade && health.haltedAt !== undefined && health.haltedAt >= upgrade.height - 1) {
+    return `${NETWORK_LABEL} is upgrading (${upgrade.name}), so sending is paused. Your funds stay in your wallet, and sending resumes by itself once new blocks arrive.`
+  }
+  return health.reason
 }
 
 const UNREACHABLE: RailHealth = { ok: false, reason: `Can't reach ${NETWORK_LABEL} right now, so sending is paused. Try again shortly.` }
@@ -60,10 +76,11 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
 /** The Cosmos side, used by Keplr/Leap sends, payroll and claim links. */
 export async function checkCosmosHealth(now?: Date): Promise<RailHealth> {
   try {
-    const { block } = await getJson<{ block: { header: { chain_id: string; time: string } } }>(
+    const { block } = await getJson<{ block: { header: { chain_id: string; time: string; height: string } } }>(
       `${ENDPOINTS.rest}/cosmos/base/tendermint/v1beta1/blocks/latest`,
     )
-    return assessChain({ chainId: block.header.chain_id, blockTime: new Date(block.header.time) }, CHAIN_ID, now)
+    const { chain_id, time, height } = block.header
+    return assessChain({ chainId: chain_id, blockTime: new Date(time), height: Number(height) }, CHAIN_ID, now)
   } catch {
     return UNREACHABLE
   }
@@ -79,8 +96,12 @@ export async function checkEvmHealth(now?: Date, rpcUrl: string = ENDPOINTS.evmR
     }).then(r => r.result)
   try {
     const [chainId, block] = await Promise.all([rpc('eth_chainId'), rpc('eth_getBlockByNumber', ['latest', false])])
-    const timestamp = Number(BigInt((block as { timestamp: string }).timestamp)) * 1000
-    return assessChain({ chainId: Number(BigInt(chainId as string)), blockTime: new Date(timestamp) }, INJECTIVE_EVM.id, now)
+    const { timestamp, number } = block as { timestamp: string; number: string }
+    return assessChain(
+      { chainId: Number(BigInt(chainId as string)), blockTime: new Date(Number(BigInt(timestamp)) * 1000), height: Number(BigInt(number)) },
+      INJECTIVE_EVM.id,
+      now,
+    )
   } catch {
     return UNREACHABLE
   }

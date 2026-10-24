@@ -26,6 +26,7 @@
  *   0.0.1 implements it: https://docs.injective.network/developers-ai/x402
  */
 
+import 'server-only'
 import {
   BaseError,
   RpcRequestError,
@@ -49,6 +50,7 @@ import { ENDPOINTS, INJECTIVE_EVM, PUBLIC_EVM_RPC } from './network'
 import { USDC } from './tokens'
 import { networkFee, withGasHeadroom } from './fees'
 import { HOOK_RESTRICTION_MESSAGE, errorMessage, isHookRestriction, isInsufficientFee } from './transfer-errors'
+import { alertOperator } from '../alerts'
 import {
   AUTHORIZATION_LIFETIME_SECONDS,
   USDC_EIP712_NAME,
@@ -396,7 +398,7 @@ export async function relayTransfer(auth: TransferAuthorization, signature: Hex,
   if ('refused' in sent) return sent.refused
   if ('rejected' in sent) {
     if (/insufficient funds|balance < tx cost/i.test(sent.rejected)) {
-      console.warn('The USDC relayer wallet is out of INJ for gas. Top it up with INJ.')
+      await alertOperator('relayer:out-of-gas', 'The USDC relayer wallet is out of INJ for gas, so sending USDC without INJ is failing. Top it up with INJ.')
     }
     return { status: 'FAILED', message: failureText(new Error(sent.rejected)) }
   }

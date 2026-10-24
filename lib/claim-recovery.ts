@@ -24,11 +24,11 @@
 import type { ClaimRecord } from './injective/types'
 import { checkCosmosHealth } from './injective/health'
 import { payoutOutcome } from './injective/link-broadcast'
-import { getPendingClaims, markClaimPaid, releaseClaim, type ClaimStore } from './supabase'
+import { getPendingClaims, markClaimPaid, markClaimsPaid, releaseClaim, releaseClaims, type ClaimStore } from './supabase'
 
 /** The database calls settling needs. The browser's public ones unless a server store is passed. */
-export type RecoveryStore = Pick<ClaimStore, 'getPendingClaims' | 'markClaimPaid' | 'releaseClaim'>
-const browserStore: RecoveryStore = { getPendingClaims, markClaimPaid, releaseClaim }
+export type RecoveryStore = Pick<ClaimStore, 'getPendingClaims' | 'markClaimPaid' | 'markClaimsPaid' | 'releaseClaim' | 'releaseClaims'>
+const browserStore: RecoveryStore = { getPendingClaims, markClaimPaid, markClaimsPaid, releaseClaim, releaseClaims }
 
 /**
  * How old a pending reservation must be before it can be freed: much longer
@@ -42,26 +42,34 @@ export type Settled = 'paid' | 'released' | 'pending'
 export const CLAIM_IN_PROGRESS_MESSAGE =
   'A claim from this address is already under way, maybe in another tab. If you closed the page while claiming, try again in 10 minutes.'
 
-/** Settle one pending reservation against the chain. A paid one is left as it is. */
-export async function settleClaim(claim: ClaimRecord, now: number = Date.now(), store: RecoveryStore = browserStore): Promise<Settled> {
+/** Whether the chain is making blocks, so a payout it hasn't seen can be called lost. */
+async function chainLive(now: number): Promise<boolean> {
+  return (await checkCosmosHealth(new Date(now))).ok
+}
+
+/** How a pending reservation stands on the chain. Writes nothing. */
+async function outcomeOf(claim: ClaimRecord, now: number, isLive: () => Promise<boolean>): Promise<Settled> {
   if (claim.status === 'paid') return 'paid'
   const age = claim.createdAt ? now - claim.createdAt.getTime() : 0
 
   if (claim.txHash) {
     // A chain that's stalled can't say a payout is lost, only that it hasn't seen it yet.
-    const live = (await checkCosmosHealth(new Date(now))).ok
-    const outcome = await payoutOutcome(claim.txHash, age, live ? STALE_CLAIM_MS : Infinity)
-    if (outcome === 'paid') {
-      await store.markClaimPaid(claim.id, claim.txHash)
-      return 'paid'
-    }
+    const outcome = await payoutOutcome(claim.txHash, age, (await isLive()) ? STALE_CLAIM_MS : Infinity)
+    if (outcome === 'paid') return 'paid'
     if (outcome === 'unknown') return 'pending'
   } else if (age <= STALE_CLAIM_MS) {
     // No payout was recorded, so none went out. It may still be on its way in another tab.
     return 'pending'
   }
-  await store.releaseClaim(claim.id)
   return 'released'
+}
+
+/** Settle one pending reservation against the chain. A paid one is left as it is. */
+export async function settleClaim(claim: ClaimRecord, now: number = Date.now(), store: RecoveryStore = browserStore): Promise<Settled> {
+  const settled = await outcomeOf(claim, now, () => chainLive(now))
+  if (settled === 'paid' && claim.status !== 'paid' && claim.txHash) await store.markClaimPaid(claim.id, claim.txHash)
+  if (settled === 'released') await store.releaseClaim(claim.id)
+  return settled
 }
 
 /** Settle a pool's stale reservations. Returns how many shares were freed. */
@@ -70,12 +78,26 @@ export async function freeStaleShares(poolId: string, now: number = Date.now(), 
   return settleAll(stale, now, store)
 }
 
-/** Settle claims a few at a time, so a long list doesn't flood the chain's API. Returns how many were freed. */
+/**
+ * Settle claims a few at a time, so a long list doesn't flood the chain's API.
+ * The chain's health is asked once for the whole list, and the results are
+ * written in one update and one delete rather than one write per claim.
+ * Returns how many were freed.
+ */
 export async function settleAll(claims: ClaimRecord[], now: number, store: RecoveryStore, batch = 5): Promise<number> {
-  let freed = 0
+  let live: Promise<boolean> | undefined
+  const isLive = () => (live ??= chainLive(now))
+  const paid: string[] = []
+  const released: string[] = []
   for (let i = 0; i < claims.length; i += batch) {
-    const settled = await Promise.all(claims.slice(i, i + batch).map(c => settleClaim(c, now, store).catch((): Settled => 'pending')))
-    freed += settled.filter(s => s === 'released').length
+    const slice = claims.slice(i, i + batch)
+    const settled = await Promise.all(slice.map(c => outcomeOf(c, now, isLive).catch((): Settled => 'pending')))
+    slice.forEach((claim, j) => {
+      if (settled[j] === 'paid' && claim.status !== 'paid') paid.push(claim.id)
+      if (settled[j] === 'released') released.push(claim.id)
+    })
   }
-  return freed
+  await store.markClaimsPaid(paid)
+  await store.releaseClaims(released)
+  return released.length
 }

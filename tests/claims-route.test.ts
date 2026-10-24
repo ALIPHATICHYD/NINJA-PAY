@@ -45,6 +45,12 @@ vi.mock('@/lib/supabase-server', () => ({
           async releaseClaim(id: string) {
             state.claims = state.claims.filter(c => !(c.id === id && c.status === 'pending'))
           },
+          async markClaimsPaid(ids: string[]) {
+            for (const c of state.claims) if (ids.includes(c.id)) c.status = 'paid'
+          },
+          async releaseClaims(ids: string[]) {
+            state.claims = state.claims.filter(c => !(ids.includes(c.id) && c.status === 'pending'))
+          },
         }
       : null,
 }))

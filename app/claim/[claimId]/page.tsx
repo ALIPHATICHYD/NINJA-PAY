@@ -9,7 +9,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useChainHealth } from '@/hooks/useChainHealth'
 import { ChainHealthNotice } from '@/components/ChainHealthNotice'
 import { useCosmosTransaction } from '@/hooks/useCosmosTransaction'
-import { getClaimPoolByLink, getClaimsForPools, getClaimByClaimer, isSupabaseConfigured } from '@/lib/supabase'
+import { getClaimPoolByLink, getClaimByClaimer, isSupabaseConfigured } from '@/lib/supabase'
 import { CLAIM_IN_PROGRESS_MESSAGE, type Settled } from '@/lib/claim-recovery'
 import { confirmPaid, freeStale, recordPayout, release, reserveShare, settle } from '@/lib/claims-client'
 import { PAYOUT_UNCERTAIN_MESSAGE, PayoutUncertainError } from '@/lib/injective/link-broadcast'
@@ -96,8 +96,10 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
     let active = true
     ;(async () => {
       try {
-        const p = await getClaimPoolByLink(claimId)
+        // The pool and its claims come back from one query.
+        const found = await getClaimPoolByLink(claimId)
         if (!active) return
+        const p = found?.pool ?? null
         const key = readKeyFromFragment(window.location.hash)
         const linkKind = readKindFromFragment(window.location.hash)
         if (p?.escrowAddress && p.token && linkKind === 'grant') {
@@ -106,8 +108,7 @@ export default function PublicClaimPage({ params }: { params: Promise<{ claimId:
             .catch(() => {}) // Leave it unknown; the claim itself reads the chain again.
         }
         // Counted before the pool is set, so settling this claimer's own claim below adds to the count.
-        const claims = p ? await getClaimsForPools([p.id]) : []
-        if (!active) return
+        const claims = found?.claims ?? []
         setPool(p)
         setEscrowKey(key)
         setKind(linkKind)

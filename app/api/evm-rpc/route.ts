@@ -11,11 +11,18 @@
  * while it is down each request goes straight to the public RPC instead of
  * waiting out a timeout first. Only the read methods the app needs and
  * eth_sendRawTransaction (already signed by the user's wallet) are forwarded.
- * Nothing is logged: requests carry wallet addresses.
+ *
+ * Requests carry wallet addresses, so they are never logged. A failed upstream
+ * is: one line saying which endpoint (premium or public), how it failed and
+ * how long it took, so a provider that keeps failing shows up in the logs
+ * instead of hiding behind the fallback. The first failover in an hour also
+ * alerts the operator (lib/alerts.ts). The provider's URL holds its key and is
+ * never logged.
  */
 
 import { NextResponse } from 'next/server'
 import { PUBLIC_EVM_RPC } from '@/lib/injective/network'
+import { alertOperator } from '@/lib/alerts'
 import { createCircuitBreaker } from '@/lib/circuit-breaker'
 import { createRateLimiter } from '@/lib/rate-limit'
 
@@ -60,6 +67,13 @@ type RpcRequest = { jsonrpc?: string; id?: unknown; method?: unknown; params?: u
 
 function rpcError(id: unknown, code: number, message: string) {
   return { jsonrpc: '2.0', id: id ?? null, error: { code, message } }
+}
+
+type Upstream = 'premium' | 'public'
+
+/** Log a failed upstream call, never its URL or the request. */
+function logUpstreamFailure(upstream: Upstream, startedAt: number, failure: string) {
+  console.warn(JSON.stringify({ level: 'warn', event: 'rpc-upstream-failed', upstream, failure, ms: Date.now() - startedAt, at: new Date().toISOString() }))
 }
 
 async function forward(url: string, body: string): Promise<Response> {
@@ -107,19 +121,28 @@ export async function POST(request: Request) {
 
   const upstreams = provider.allows() ? [premium, PUBLIC_EVM_RPC] : [PUBLIC_EVM_RPC]
   for (const url of upstreams) {
+    const name: Upstream = url === premium ? 'premium' : 'public'
+    const startedAt = Date.now()
+    let failure: string
     try {
       const upstream = await forward(url, text)
       if (upstream.ok) {
-        if (url === premium) provider.succeeded()
+        if (name === 'premium') provider.succeeded()
         return new NextResponse(upstream.body, {
           status: 200,
           headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
         })
       }
-    } catch {
-      // Try the next endpoint.
+      failure = `HTTP ${upstream.status}`
+    } catch (err) {
+      // A timeout or a network error; its message could carry the URL, so only its kind is kept.
+      failure = err instanceof Error && err.name === 'TimeoutError' ? 'timeout' : 'network error'
     }
-    if (url === premium) provider.failed()
+    logUpstreamFailure(name, startedAt, failure)
+    if (name === 'premium') {
+      provider.failed()
+      await alertOperator('rpc:premium-failover', `The premium EVM RPC failed (${failure}), so reads are going to Injective's public RPC. It is retried every 30 seconds.`)
+    }
   }
   return NextResponse.json(rpcError(null, -32603, 'Injective EVM RPC unavailable'), { status: 502 })
 }

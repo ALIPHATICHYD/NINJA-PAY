@@ -1,0 +1,9 @@
+# Findings the secret scan (CI, "Secret scan") may skip. Each line is a
+# gitleaks fingerprint: commit:file:rule:line. Add one only after checking the
+# match is not a secret, and say why here.
+
+# Circle's CCTP contract addresses: public, from Circle's docs.
+d453643d2b2643e12da4873ccede4cebb7e4f45b:lib/injective/cctp.ts:generic-api-key:30
+d453643d2b2643e12da4873ccede4cebb7e4f45b:lib/injective/cctp.ts:generic-api-key:32
+d453643d2b2643e12da4873ccede4cebb7e4f45b:lib/injective/cctp.ts:generic-api-key:36
+d453643d2b2643e12da4873ccede4cebb7e4f45b:lib/injective/cctp.ts:generic-api-key:38
