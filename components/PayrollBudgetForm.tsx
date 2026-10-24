@@ -74,7 +74,7 @@ export function PayrollBudgetForm({ owner, signer }: { owner: string | null; sig
     <section style={{ marginTop: '32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Let someone else run payroll</h2>
+          <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>Let someone else run payroll</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
             Give another account a payroll budget: it can pay staff from this account up to a total, until a date. It signs and pays the network fee for each run.
           </p>

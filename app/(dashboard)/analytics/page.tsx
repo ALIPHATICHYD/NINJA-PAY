@@ -50,7 +50,8 @@ export default function AnalyticsPage() {
     <div style={{ maxWidth: '820px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Analytics</h1>
+          <p className="kicker" style={{ marginBottom: '10px' }}>[Analytics]</p>
+          <h1 className="page-title">Analytics</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
             Your {NETWORK_LABEL} activity from {format(summary.start, 'd MMM yyyy')} to today, read directly from the chain.
           </p>
@@ -92,7 +93,7 @@ export default function AnalyticsPage() {
 
       {loading && items.length === 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
-          {[0, 1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: '84px', borderRadius: '10px' }} />)}
+          {[0, 1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: '84px', borderRadius: 0 }} />)}
         </div>
       ) : (
         <>
@@ -105,7 +106,7 @@ export default function AnalyticsPage() {
             ].map(stat => (
               <div key={stat.label} className="card-sm">
                 <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '10px' }}>{stat.label}</p>
-                <p style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', fontFamily: 'var(--font-geist-mono), monospace' }}>
+                <p style={{ fontSize: '20px', fontWeight: '500', color: 'var(--text-primary)', letterSpacing: '-0.02em', fontFamily: 'var(--font-geist-mono), monospace' }}>
                   {stat.value}
                 </p>
               </div>
@@ -120,7 +121,7 @@ export default function AnalyticsPage() {
 
           <div className="card" style={{ marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Volume (USD)</h3>
+              <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Volume (USD)</h3>
               <span className="badge badge-accent">{period === '7D' ? 'Daily' : 'Weekly'}</span>
             </div>
 
@@ -137,9 +138,9 @@ export default function AnalyticsPage() {
                   >
                     <div
                       style={{
-                        fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)',
+                        fontSize: '11px', fontWeight: '600', color: 'var(--text-primary)',
                         background: 'var(--bg-hover)', border: '1px solid var(--border-light)',
-                        borderRadius: '5px', padding: '2px 7px',
+                        borderRadius: 0, padding: '2px 7px',
                         opacity: hovered ? 1 : 0, transition: 'opacity 0.15s', whiteSpace: 'nowrap',
                       }}
                     >
@@ -152,7 +153,7 @@ export default function AnalyticsPage() {
                           height: `${height}px`,
                           background: hovered ? 'var(--accent)' : 'var(--accent-subtle)',
                           border: `1px solid ${hovered ? 'transparent' : 'var(--accent-border)'}`,
-                          borderRadius: '5px 5px 0 0',
+                          borderRadius: 0,
                           transition: 'background 0.2s',
                         }}
                       />
@@ -167,7 +168,7 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="card" style={{ marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>By token</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '16px' }}>By token</h3>
             {summary.tokens.length === 0 ? (
               <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Nothing sent or received in this period.</p>
             ) : (
@@ -201,7 +202,7 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="card">
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '20px' }}>Transaction Breakdown</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '20px' }}>Transaction Breakdown</h3>
             {summary.breakdown.length === 0 ? (
               <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No transactions in this period.</p>
             ) : (

@@ -7,7 +7,7 @@ export default function Loading() {
         <div
           key={i}
           className="animate-pulse"
-          style={{ height, width: i === 0 ? '40%' : '100%', borderRadius: 12, background: 'var(--bg-card)' }}
+          style={{ height, width: i === 0 ? '40%' : '100%', borderRadius: 0, background: 'var(--bg-card)' }}
         />
       ))}
     </div>

@@ -52,7 +52,8 @@ export default function BillsPage() {
   return (
     <div style={{ maxWidth: '540px', margin: '0 auto' }}>
       <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+        <p className="kicker" style={{ marginBottom: '10px' }}>[Bills]</p>
+        <h1 className="page-title">
           Pay Bills
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
@@ -102,7 +103,7 @@ export default function BillsPage() {
                     alignItems: 'center',
                     gap: '8px',
                     padding: '14px 8px',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
                     background: active ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
                     cursor: 'pointer',

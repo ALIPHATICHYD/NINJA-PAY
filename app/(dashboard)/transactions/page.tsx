@@ -66,7 +66,8 @@ export default function TransactionsPage() {
     <div style={{ maxWidth: '820px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', gap: '12px', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Transactions</h1>
+          <p className="kicker" style={{ marginBottom: '10px' }}>[Transactions]</p>
+          <h1 className="page-title">Transactions</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Your {NETWORK_LABEL} transfers, read directly from the chain.</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -124,7 +125,7 @@ export default function TransactionsPage() {
       ) : (
         groups.map(group => (
           <div key={group.label} style={{ marginBottom: '24px' }}>
-            <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '10px' }}>{group.label}</p>
+            <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '10px' }}>{group.label}</p>
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               {group.txs.map((tx, i) => (
                 <div
@@ -148,7 +149,7 @@ export default function TransactionsPage() {
                       {tx.direction === 'out' ? 'To' : 'From'} {shorten(tx.counterparty)}, {format(tx.timestamp, 'HH:mm')}
                     </p>
                   </div>
-                  <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-geist-mono), monospace', textAlign: 'right' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', fontFamily: 'var(--font-geist-mono), monospace', textAlign: 'right' }}>
                     {tx.direction === 'out' ? '−' : '+'}
                     {tx.coins.map(c => formatCoin(c)).join(' + ')}
                   </p>

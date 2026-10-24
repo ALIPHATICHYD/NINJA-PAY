@@ -235,7 +235,8 @@ export default function PayrollPage() {
   return (
     <div style={{ maxWidth: '680px', margin: '0 auto' }}>
       <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Payroll</h1>
+        <p className="kicker" style={{ marginBottom: '10px' }}>[Payroll]</p>
+        <h1 className="page-title">Payroll</h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Batch-pay your team in one on-chain transaction, from your account or from a payroll budget you were given.</p>
       </div>
 
@@ -273,7 +274,7 @@ export default function PayrollPage() {
       {/* ── Step 1: Configure ── */}
       {step === 1 && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Step 1 — Configure Payroll</h3>
+          <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Step 1 — Configure Payroll</h3>
           <div>
             <label className="label">Payroll Name</label>
             <input className="input" placeholder="e.g. March 2026 Team Pay" value={payrollName} onChange={e => setPayrollName(e.target.value)} />
@@ -312,7 +313,7 @@ export default function PayrollPage() {
                       style={{
                         textAlign: 'left',
                         padding: '10px 12px',
-                        borderRadius: '9px',
+                        borderRadius: 0,
                         border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
                         background: selected ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
                         color: 'var(--text-primary)',
@@ -362,7 +363,7 @@ export default function PayrollPage() {
       {step === 2 && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Step 2 — Add Recipients</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Step 2 — Add Recipients</h3>
             <button onClick={addRecipient} disabled={recipients.length >= MAX_PAYROLL_RECIPIENTS} title={recipients.length >= MAX_PAYROLL_RECIPIENTS ? `Up to ${MAX_PAYROLL_RECIPIENTS} recipients per run` : undefined} className="btn-ghost" style={{ fontSize: '12px', padding: '5px 10px' }}>
               <Plus size={13} /> Add Row
             </button>
@@ -371,7 +372,7 @@ export default function PayrollPage() {
           {/* Column headers */}
           <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 120px 38px', gap: '8px', paddingLeft: '2px' }}>
             {['Label (opt.)', 'Address or .inj Name', `Amount (${token})`, ''].map(h => (
-              <p key={h} style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</p>
+              <p key={h} style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</p>
             ))}
           </div>
 
@@ -433,9 +434,9 @@ export default function PayrollPage() {
           )}
 
           {/* Running total */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: '9px', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 0, border: '1px solid var(--border)' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Total — {recipients.length} recipients</span>
-            <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            <span style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
               {totalAmount} <span style={{ fontWeight: '400', fontSize: '13px', color: 'var(--text-muted)' }}>{token}</span>
             </span>
           </div>
@@ -452,10 +453,10 @@ export default function PayrollPage() {
       {/* ── Step 3: Review ── */}
       {step === 3 && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Step 3 — Review & Dispatch</h3>
+          <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Step 3 — Review & Dispatch</h3>
 
           {/* Summary */}
-          <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+          <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: 0, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
               <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Payroll Name</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{payrollName}</span>
@@ -476,7 +477,7 @@ export default function PayrollPage() {
             </div>
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-secondary)' }}>Total Disbursement</span>
-              <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              <span style={{ fontSize: '18px', fontWeight: '500', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
                 {totalAmount} {token}
               </span>
             </div>
@@ -487,7 +488,7 @@ export default function PayrollPage() {
           </div>
 
           {!cosmosReady && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 0 }}>
               <span style={{ flex: 1, minWidth: '180px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 Your EVM wallet signs this payroll. It shows the payments as a block of text to approve, not as a usual transaction.
               </span>
@@ -519,7 +520,7 @@ export default function PayrollPage() {
           {/* Recipient list preview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {recipients.map((r, i) => (
-              <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 0, border: '1px solid var(--border)' }}>
                 <div>
                   <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '2px' }}>{r.label || `Recipient ${i + 1}`}</p>
                   <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
@@ -527,7 +528,7 @@ export default function PayrollPage() {
                     {shortAddress(accounts[i] ?? r.address, 14)}
                   </p>
                 </div>
-                <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{r.amount} {token}</p>
+                <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{r.amount} {token}</p>
               </div>
             ))}
           </div>

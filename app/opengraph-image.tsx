@@ -20,22 +20,27 @@ export default function OpengraphImage() {
           flexDirection: 'column',
           justifyContent: 'space-between',
           padding: 80,
-          background: '#000000',
-          color: '#EEEFFF',
+          background: '#08080A',
+          color: '#EDEBE6',
           fontFamily: 'sans-serif',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <img src={MARK} width={96} height={96} alt="" />
-          <div style={{ fontSize: 48, fontWeight: 700 }}>NinjaPay</div>
+          <div style={{ fontSize: 48, fontWeight: 600 }}>NinjaPay</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={{ fontSize: 72, fontWeight: 700, lineHeight: 1.1, maxWidth: 980 }}>
+          <div style={{ fontSize: 76, fontWeight: 500, lineHeight: 1.02, letterSpacing: -3, maxWidth: 1000 }}>
             Payments and payroll in USDC and INJ
           </div>
-          <div style={{ fontSize: 34, color: '#B3B4C8' }}>On Injective. Non-custodial: you keep your keys.</div>
+          <div style={{ fontSize: 34, color: '#A3A1A8' }}>On Injective. Non-custodial: you keep your keys.</div>
         </div>
-        <div style={{ display: 'flex', height: 12, width: 240, background: '#4D3DFF', borderRadius: 6 }} />
+        <div style={{ display: 'flex', gap: 6 }}>
+          {Array.from({ length: 24 }, (_, i) => (
+            // A dithered bar: squares thin out to the right, echoing the site's 1-bit texture.
+            <div key={i} style={{ width: 12, height: 12, background: '#5B4BFF', opacity: i % 2 === 0 || i < 10 ? 1 - i / 30 : 0 }} />
+          ))}
+        </div>
       </div>
     ),
     size,
