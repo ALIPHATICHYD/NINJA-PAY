@@ -38,8 +38,10 @@ const ANSWER_TIMEOUT_MS = 15_000
 /** RainbowKit's phone modal swallows connection errors, so say on a phone what went wrong. */
 function report(name: string, error: unknown) {
   if (rejected(error) || !isMobileDevice()) return
-  const e = error as { shortMessage?: string; message?: string } | undefined
-  window.alert(`${name} couldn't connect: ${e?.shortMessage || e?.message || String(error)}`)
+  const e = error as { shortMessage?: string; message?: string; code?: number } | undefined
+  // The wallet's error code tells a refusal from an unsupported request when someone reports it.
+  const code = typeof e?.code === 'number' ? ` (code ${e.code})` : ''
+  window.alert(`${name} couldn't connect: ${e?.shortMessage || e?.message || String(error)}${code}`)
 }
 
 /** Whether the user turned the request down in the wallet (EIP-1193 code 4001), however wagmi wrapped it. */
@@ -96,16 +98,21 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
           shimDisconnect: false,
           target: () => ({ id, name, provider: () => walletEvmProvider(id) as never }),
         })(config)
+        // Whether NinjaPay has asked the wallet for its account in this visit. wagmi's connect()
+        // reads the chain itself, and from then on a wrong answer would skip the network switch.
+        let asked = false
         return {
           ...base,
           ...walletDetails,
-          // RainbowKit reads the chain before connecting; without a provider that would throw
-          // before connect() could open Keplr or explain what's missing.
-          // A wallet that never answers would leave the button doing nothing, so give up and say so.
+          // RainbowKit reads the chain before connecting, and an error there stops it from ever
+          // calling connect(). With no provider, connect() opens Keplr or explains what's missing.
+          // A wallet may refuse eth_chainId from a page it hasn't connected to yet (Leap's phone
+          // browser answered "Request has been rejected" without asking the user), so before
+          // connecting a failure just means "not known yet": connect() reads it again afterwards.
           getChainId: async function (this: unknown) {
             if (!walletEvmProvider(id)) return config.chains[0].id
-            return withTimeout(base.getChainId.call(this), ANSWER_TIMEOUT_MS, `${name} didn't answer. Open ${name}, unlock it, and try again.`)
-              .catch(error => { report(name, error); throw error })
+            const answer = withTimeout(base.getChainId.call(this), ANSWER_TIMEOUT_MS, `${name} didn't answer. Open ${name}, unlock it, and try again.`)
+            return asked ? answer : answer.catch(() => config.chains[0].id)
           },
           // wagmi adds a chain only when the wallet answers code 4902, which Keplr doesn't, so the
           // account stayed on Keplr's own network ("Wrong Network"). Add Injective's EVM on any
@@ -140,6 +147,7 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
               }
               throw new Error(`${name} isn't available in this browser.`)
             }
+            asked = true
             try {
               return await withTimeout(
                 base.connect.call(this, params),
@@ -147,10 +155,15 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
                 `${name} didn't answer. Open ${name}, unlock it, and try again.`,
               )
             } catch (error) {
+              asked = false
               report(name, error)
               throw error
             }
           } as typeof base.connect,
+          disconnect: async function (this: unknown) {
+            asked = false
+            return base.disconnect.call(this)
+          },
         }
       }),
     }

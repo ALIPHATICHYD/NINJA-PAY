@@ -124,4 +124,38 @@ describe('wallet in-app browsers', () => {
     await expect(config.connectors[0].switchChain!({ chainId: INJECTIVE_EVM.id })).rejects.toThrow()
     expect(keplrEth.request.mock.calls.map(([a]) => a.method)).not.toContain('wallet_addEthereumChain')
   }, 30_000)
+
+  it("still connects when Leap refuses eth_chainId before the page is connected", async () => {
+    let approved = false
+    const leapEth = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_requestAccounts') { approved = true; return ['0x8147EB724E4e07593FA3C073E5337FA9BDfC677f'] }
+        if (!approved) throw Object.assign(new Error('Request has been rejected'), { code: -32603 })
+        if (method === 'eth_chainId') return '0x59f'
+        if (method === 'eth_accounts') return ['0x8147EB724E4e07593FA3C073E5337FA9BDfC677f']
+        return null
+      }),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    vi.stubGlobal('window', { navigator: { userAgent: ANDROID }, leap: { ethereum: leapEth }, keplr: {}, alert: vi.fn() })
+    vi.stubGlobal('navigator', { userAgent: ANDROID })
+    const { createConfig, http } = await import('wagmi')
+    const { INJECTIVE_EVM } = await import('@/lib/injective/network')
+    const { leapWallet } = await import('@/lib/cosmos-evm-wallets')
+    const wallet = leapWallet({ projectId: 'test', appName: 'test' } as never)
+    const config = createConfig({
+      chains: [INJECTIVE_EVM],
+      transports: { [INJECTIVE_EVM.id]: http() } as never,
+      connectors: [wallet.createConnector({ rkDetails: {} } as never)],
+      multiInjectedProviderDiscovery: false,
+      storage: null,
+    })
+    const connector = config.connectors[0]
+    // RainbowKit asks for the chain first; a refusal there must not stop the connection.
+    expect(await connector.getChainId()).toBe(INJECTIVE_EVM.id)
+    const result = await connector.connect({ chainId: INJECTIVE_EVM.id })
+    expect(result.accounts).toEqual(['0x8147EB724E4e07593FA3C073E5337FA9BDfC677f'])
+    expect(result.chainId).toBe(INJECTIVE_EVM.id)
+  }, 30_000)
 })
