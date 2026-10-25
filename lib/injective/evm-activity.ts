@@ -134,6 +134,16 @@ export async function fetchEvmTxPage(evmAddress: string, mine: ReadonlySet<strin
   }
 }
 
+/**
+ * The hash of the transaction `evmAddress` sent with `nonce`, or null when Blockscout doesn't
+ * list it yet. Used when a wallet sent a transaction but never told the page its hash.
+ */
+export async function findSentTx(evmAddress: string, nonce: number): Promise<string | null> {
+  const page = await getPage<BlockscoutTx & { nonce?: number | null }>(`/addresses/${evmAddress}/transactions?filter=from`, null)
+  const tx = (page.items ?? []).find(item => item.nonce === nonce && item.from?.hash?.toLowerCase() === evmAddress.toLowerCase())
+  return tx?.hash ?? null
+}
+
 /** One page of ERC-20 transfers to or from an EVM address. */
 export async function fetchEvmTokenPage(evmAddress: string, mine: ReadonlySet<string>, cursor: string | null): Promise<ActivityPage> {
   const page = await getPage<BlockscoutTokenTransfer>(`/addresses/${evmAddress}/token-transfers?type=ERC-20`, cursor)

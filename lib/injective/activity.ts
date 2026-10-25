@@ -152,11 +152,19 @@ export function parseExplorerTx(tx: ExplorerTx, mine: ReadonlySet<string>): Acti
   return drafts
 }
 
+const INDEXER_RETRY_MS = 1_500
+
 /** One page of an account's Cosmos transactions from Injective's indexer. `cursor` is the number to skip. */
 export async function fetchCosmosPage(address: string, mine: ReadonlySet<string>, cursor: string | null): Promise<ActivityPage> {
   const skip = Number(cursor ?? 0)
   const api = new IndexerRestExplorerApi(`${ENDPOINTS.explorer}/api/explorer/v1`)
-  const { transactions } = await api.fetchAccountTransactions({ account: address, params: { skip, limit: ACTIVITY_PAGE_SIZE } })
+  const read = () => api.fetchAccountTransactions({ account: address, params: { skip, limit: ACTIVITY_PAGE_SIZE } })
+  // The testnet indexer fails a request now and then (seen on a phone, fine a minute later), so
+  // try once more before the page says it couldn't load.
+  const { transactions } = await read().catch(async () => {
+    await new Promise(resolve => setTimeout(resolve, INDEXER_RETRY_MS))
+    return read()
+  })
   const txs = transactions as ExplorerTx[]
   const times = txs.map(tx => parseTimestamp(tx.blockTimestamp)).filter((t): t is Date => t !== null)
   return {
