@@ -14,6 +14,7 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import '@rainbow-me/rainbowkit/styles.css'
 import { ENDPOINTS, INJECTIVE_EVM, PUBLIC_EVM_RPC } from '@/lib/injective/network'
 import { WalletAvatar } from '@/components/WalletAvatar'
+import { hiddenInWalletBrowsers, keplrWallet, leapWallet, outsideWalletBrowsers } from '@/lib/cosmos-evm-wallets'
 
 // Reads go to the configured EVM RPC (a premium provider or the /api/evm-rpc
 // proxy) and fall back to Injective's public RPC if it fails.
@@ -28,10 +29,20 @@ const config = getDefaultConfig({
   // shared id kept only so local development works; set NEXT_PUBLIC_WALLETCONNECT_ID
   // for every deployment.
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_ID || 'b56e18d47c72ab683b10814fe9495694',
-  // RainbowKit's default list, plus Phantom. Phantom can't join Injective's EVM, so it signs
-  // Injective transfers as EIP-712 typed data instead (hooks/useEvmSigner.ts).
+  // RainbowKit's default list, plus Phantom, Keplr and Leap. Phantom can't join Injective's EVM,
+  // so it signs Injective transfers as EIP-712 typed data instead (hooks/useEvmSigner.ts).
+  // Inside Keplr's or Leap's own browser only that wallet (and any wallet injected there) is
+  // listed: the others open WalletConnect or app links, which those browsers can't follow.
   wallets: [
-    { groupName: 'Popular', wallets: [metaMaskWallet, phantomWallet, rainbowWallet, safeWallet, baseAccount, walletConnectWallet] },
+    {
+      groupName: 'Popular',
+      wallets: [
+        keplrWallet,
+        leapWallet,
+        ...[metaMaskWallet, phantomWallet, rainbowWallet].map(outsideWalletBrowsers),
+        ...[safeWallet, baseAccount, walletConnectWallet].map(hiddenInWalletBrowsers),
+      ],
+    },
   ],
   // Injective's native EVM (1439 testnet, 1776 mainnet), not the deprecated inEVM.
   chains: [INJECTIVE_EVM],
