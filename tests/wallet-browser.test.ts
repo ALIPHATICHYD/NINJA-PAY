@@ -48,20 +48,80 @@ describe('wallet in-app browsers', () => {
       .toBe('https://deeplink.keplr.app/web-browser?url=https%3A%2F%2Fninja-pay-ten.vercel.app%2Fsend%3Fto%3Dinj1x')
   })
 
-  it("lists only the host wallet inside Keplr's browser", async () => {
+  it("offers Keplr inside Keplr's browser and not Leap", async () => {
     vi.stubGlobal('window', { navigator: { userAgent: ANDROID }, keplr: { ethereum: provider() } })
     vi.stubGlobal('navigator', { userAgent: ANDROID })
-    const { hiddenInWalletBrowsers, keplrWallet, leapWallet, outsideWalletBrowsers } = await import('@/lib/cosmos-evm-wallets')
+    const { keplrWallet, leapWallet } = await import('@/lib/cosmos-evm-wallets')
     const params = { projectId: 'test', appName: 'test' } as never
     const keplr = keplrWallet(params)
     expect(keplr.installed).toBe(true)
-    expect(keplr.hidden?.()).toBe(false)
-    expect(leapWallet(params).hidden?.()).toBe(true)
-    const walletConnectOnly = outsideWalletBrowsers(() => ({ ...keplr, id: 'metaMask', installed: undefined }))(params)
-    expect(walletConnectOnly.hidden?.()).toBe(true)
-    const injectedHere = outsideWalletBrowsers(() => ({ ...keplr, id: 'phantom', installed: true, hidden: undefined }))(params)
-    expect(injectedHere.hidden?.()).toBe(false)
-    const popupWallet = hiddenInWalletBrowsers(() => ({ ...keplr, id: 'baseAccount', installed: true, hidden: undefined }))(params)
-    expect(popupWallet.hidden?.()).toBe(true)
-  })
+    expect(keplr.iconUrl).toBe('/wallets/keplr.svg')
+    expect(leapWallet(params).installed).toBe(false)
+  }, 30_000)
+
+  it("adds Injective's EVM when Keplr refuses to switch without code 4902", async () => {
+    const calls: string[] = []
+    let chainId = '0x1'
+    const keplrEth = {
+      request: vi.fn(async ({ method, params }: { method: string; params?: unknown }) => {
+        calls.push(method)
+        if (method === 'eth_chainId') return chainId
+        if (method === 'wallet_switchEthereumChain') {
+          const target = (params as { chainId: string }[])[0].chainId
+          if (!calls.includes('wallet_addEthereumChain')) throw Object.assign(new Error('Unknown chain'), { code: -32603 })
+          chainId = target
+          return null
+        }
+        if (method === 'wallet_addEthereumChain') return null
+        throw new Error(method)
+      }),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    vi.stubGlobal('window', { navigator: { userAgent: ANDROID }, keplr: { ethereum: keplrEth } })
+    vi.stubGlobal('navigator', { userAgent: ANDROID })
+    const { createConfig, http } = await import('wagmi')
+    const { INJECTIVE_EVM } = await import('@/lib/injective/network')
+    const { keplrWallet } = await import('@/lib/cosmos-evm-wallets')
+    const wallet = keplrWallet({ projectId: 'test', appName: 'test' } as never)
+    const config = createConfig({
+      chains: [INJECTIVE_EVM],
+      transports: { [INJECTIVE_EVM.id]: http() } as never,
+      connectors: [wallet.createConnector({ rkDetails: {} } as never)],
+      multiInjectedProviderDiscovery: false,
+      storage: null,
+    })
+    const chain = await config.connectors[0].switchChain!({ chainId: INJECTIVE_EVM.id })
+    expect(chain.id).toBe(INJECTIVE_EVM.id)
+    expect(calls).toContain('wallet_addEthereumChain')
+    const added = keplrEth.request.mock.calls.find(([a]) => a.method === 'wallet_addEthereumChain')![0]
+    expect((added.params as { chainId: string; rpcUrls: string[] }[])[0]).toMatchObject({ chainId: '0x59f', rpcUrls: [INJECTIVE_EVM.rpcUrls.default.http[0]] })
+  }, 30_000)
+
+  it("doesn't add the chain when the user turns the switch down", async () => {
+    const keplrEth = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'wallet_switchEthereumChain') throw Object.assign(new Error('rejected'), { code: 4001 })
+        return null
+      }),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    vi.stubGlobal('window', { navigator: { userAgent: ANDROID }, keplr: { ethereum: keplrEth } })
+    vi.stubGlobal('navigator', { userAgent: ANDROID })
+    const { createConfig, http } = await import('wagmi')
+    const { INJECTIVE_EVM } = await import('@/lib/injective/network')
+    const { keplrWallet } = await import('@/lib/cosmos-evm-wallets')
+    const wallet = keplrWallet({ projectId: 'test', appName: 'test' } as never)
+    const config = createConfig({
+      chains: [INJECTIVE_EVM],
+      transports: { [INJECTIVE_EVM.id]: http() } as never,
+      connectors: [wallet.createConnector({ rkDetails: {} } as never)],
+      multiInjectedProviderDiscovery: false,
+      storage: null,
+    })
+    await expect(config.connectors[0].switchChain!({ chainId: INJECTIVE_EVM.id })).rejects.toThrow()
+    expect(keplrEth.request.mock.calls.map(([a]) => a.method)).not.toContain('wallet_addEthereumChain')
+  }, 30_000)
 })

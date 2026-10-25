@@ -10,34 +10,31 @@
  */
 
 import type { Wallet, WalletList } from '@rainbow-me/rainbowkit'
+import { numberToHex } from 'viem'
 import { createConnector } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { hostWallet, isMobileDevice, keplrBrowserLink, walletEvmProvider, type HostWallet } from '@/lib/wallet-browser'
 
 type CreateWalletFn = WalletList[number]['wallets'][number]
 
-const svg = (body: string) => `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${body}</svg>`,
-)}`
-
+// The wallets' own app icons (Keplr's from @web3icons/core, Leap's from @cosmos-kit/leap-extension).
 const ICONS: Record<HostWallet, string> = {
-  keplr: svg(
-    '<defs><linearGradient id="k" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1fd1ff"/><stop offset="1" stop-color="#7a2bf9"/></linearGradient></defs>'
-      + '<rect width="64" height="64" rx="14" fill="url(#k)"/>'
-      + '<path d="M22 16h7v14l12-14h9L36 31.5 51 48h-9.5L29 33.5V48h-7z" fill="#fff"/>',
-  ),
-  leap: svg(
-    '<rect width="64" height="64" rx="14" fill="#32da6d"/>'
-      + '<circle cx="22" cy="24" r="8" fill="#fff"/><circle cx="42" cy="24" r="8" fill="#fff"/>'
-      + '<circle cx="22" cy="24" r="3.5" fill="#0f2316"/><circle cx="42" cy="24" r="3.5" fill="#0f2316"/>'
-      + '<path d="M14 38c5 8 31 8 36 0" stroke="#0f2316" stroke-width="4" fill="none" stroke-linecap="round"/>',
-  ),
+  keplr: '/wallets/keplr.svg',
+  leap: '/wallets/leap.svg',
+}
+
+/** Whether the user turned the request down in the wallet (EIP-1193 code 4001), however wagmi wrapped it. */
+function rejected(error: unknown): boolean {
+  for (let e = error as { code?: number; cause?: unknown } | undefined; e; e = e.cause as typeof e) {
+    if (e.code === 4001) return true
+  }
+  return false
 }
 
 const DETAILS: Record<HostWallet, Pick<Wallet, 'name' | 'iconBackground' | 'downloadUrls'>> = {
   keplr: {
     name: 'Keplr',
-    iconBackground: '#3b82f6',
+    iconBackground: '#14afeb',
     downloadUrls: {
       android: 'https://play.google.com/store/apps/details?id=com.chainapsis.keplr',
       ios: 'https://apps.apple.com/app/keplr-wallet/id1567851089',
@@ -48,7 +45,7 @@ const DETAILS: Record<HostWallet, Pick<Wallet, 'name' | 'iconBackground' | 'down
   },
   leap: {
     name: 'Leap',
-    iconBackground: '#32da6d',
+    iconBackground: '#c5ffce',
     downloadUrls: {
       mobile: 'https://www.leapwallet.io/download',
       chrome: 'https://chromewebstore.google.com/detail/leap-cosmos-wallet/fcfcfllfndlomdhbehjjcoimbgofdncg',
@@ -68,12 +65,10 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
       id,
       ...DETAILS[id],
       iconUrl: ICONS[id],
-      installed: !!provider || opensInKeplr,
-      // Inside one wallet's browser, the other can't be reached.
-      hidden: () => {
-        const host = hostWallet()
-        return host !== null && host !== id
-      },
+      // A wallet that isn't here isn't listed on a phone. Inside Leap's browser Leap also answers
+      // to window.keplr, so Keplr is left out there. (A `hidden` check would move these entries
+      // to the end of RainbowKit's list.)
+      installed: (!!provider && hostWallet() !== (id === 'keplr' ? 'leap' : 'keplr')) || opensInKeplr,
       createConnector: (walletDetails) => createConnector((config) => {
         const base = injected({
           target: () => ({ id, name, provider: () => walletEvmProvider(id) as never }),
@@ -86,6 +81,29 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
           getChainId: async function (this: unknown) {
             return walletEvmProvider(id) ? base.getChainId.call(this) : config.chains[0].id
           },
+          // wagmi adds a chain only when the wallet answers code 4902, which Keplr doesn't, so the
+          // account stayed on Keplr's own network ("Wrong Network"). Add Injective's EVM on any
+          // refusal other than the user's, then switch again.
+          switchChain: async function (this: unknown, params) {
+            try {
+              return await base.switchChain!.call(this, params)
+            } catch (error) {
+              const provider = walletEvmProvider(id)
+              const chain = config.chains.find(c => c.id === params.chainId)
+              if (rejected(error) || !provider || !chain) throw error
+              await provider.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: numberToHex(chain.id),
+                  chainName: chain.name,
+                  nativeCurrency: chain.nativeCurrency,
+                  rpcUrls: [chain.rpcUrls.default.http[0]],
+                  blockExplorerUrls: chain.blockExplorers ? [chain.blockExplorers.default.url] : undefined,
+                }],
+              })
+              return base.switchChain!.call(this, params)
+            }
+          } as NonNullable<typeof base.switchChain>,
           connect: async function (this: unknown, params) {
             if (!walletEvmProvider(id)) {
               if (id === 'keplr' && isMobileDevice() && !hostWallet()) {
@@ -106,26 +124,3 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
 
 export const keplrWallet = cosmosEvmWallet('keplr')
 export const leapWallet = cosmosEvmWallet('leap')
-
-/**
- * Hides a wallet inside Keplr's or Leap's browser unless it is injected there too (MetaMask,
- * Phantom). Otherwise it would be reached through a WalletConnect or app link, which those
- * browsers can't open.
- */
-export function outsideWalletBrowsers(wallet: CreateWalletFn): CreateWalletFn {
-  return (params) => {
-    const created = wallet(params)
-    return {
-      ...created,
-      hidden: () => (created.hidden?.() ?? false) || (hostWallet() !== null && created.installed !== true),
-    }
-  }
-}
-
-/** Hides a wallet inside Keplr's or Leap's browser: it is never injected there (Base Account, Safe, WalletConnect). */
-export function hiddenInWalletBrowsers(wallet: CreateWalletFn): CreateWalletFn {
-  return (params) => {
-    const created = wallet(params)
-    return { ...created, hidden: () => (created.hidden?.() ?? false) || hostWallet() !== null }
-  }
-}
