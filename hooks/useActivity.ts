@@ -27,8 +27,8 @@ const fetchPages = (targets: Source[], cursors: Record<string, string | null>) =
   Promise.allSettled(targets.map(s => s.load(cursors[s.key] ?? null)))
 
 const FAILURE: Record<Source['kind'], string> = {
-  cosmos: "Couldn't load transfers made with Keplr or Leap from Injective's indexer.",
-  evm: "Couldn't load transfers made from your EVM wallet from Blockscout.",
+  cosmos: "Couldn't load transfers made with Keplr or Leap from Injective's indexer. Tap Refresh to try again.",
+  evm: "Couldn't load transfers made from your EVM wallet from Blockscout. Tap Refresh to try again.",
 }
 
 /**

@@ -7,6 +7,12 @@ import type { EvmCosmosSigner } from '@/lib/injective/cosmos-transactions'
 import { ETHEREUM_SIGNING_CHAIN_ID, INJECTIVE_EVM } from '@/lib/injective/network'
 import { isPhantomConnector } from '@/lib/injective/phantom'
 
+/** How long to wait for the wallet's signature before saying it didn't come back. */
+export const SIGNATURE_TIMEOUT_MS = 3 * 60_000
+
+export const SIGNATURE_LOST =
+  "Your wallet didn't send the signature back to NinjaPay, so nothing was sent. Try again, or open NinjaPay in your wallet's own browser."
+
 type Eip1193 = { request: (args: { method: string; params: unknown[] }) => Promise<unknown> }
 
 /** Whether the connected EVM wallet is Phantom, which can't join Injective's EVM network. */
@@ -50,7 +56,14 @@ export function useEvmSigner(): EvmCosmosSigner | null {
         } else if (chainId !== INJECTIVE_EVM.id) {
           await switchChainAsync({ chainId: INJECTIVE_EVM.id })
         }
-        return (await provider.request({ method: 'eth_signTypedData_v4', params: [address, typedDataJson] })) as string
+        // A wallet opened in another app (MetaMask from Leap's browser, say) can sign and never send
+        // the signature back, which left "Approving…" spinning. Nothing is broadcast without it.
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const lost = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(SIGNATURE_LOST)), SIGNATURE_TIMEOUT_MS)
+        })
+        const signature = provider.request({ method: 'eth_signTypedData_v4', params: [address, typedDataJson] })
+        return (await Promise.race([signature, lost]).finally(() => clearTimeout(timer))) as string
       },
     }
   }, [address, chainId, connector, phantom, switchChainAsync])

@@ -13,7 +13,7 @@ import {
   useWriteContract,
 } from 'wagmi'
 import { encodeFunctionData, erc20Abi } from 'viem'
-import { Send, ArrowLeftRight, AlertCircle } from 'lucide-react'
+import { Send, ArrowLeftRight, AlertCircle, ScanLine } from 'lucide-react'
 import { OfframpUnavailable } from '@/components/OfframpUnavailable'
 import { SwapQuote } from '@/components/SwapQuote'
 import { TxStatus } from '@/components/TxStatus'
@@ -22,6 +22,8 @@ import { useChainHealth } from '@/hooks/useChainHealth'
 import { useTransferChecks } from '@/hooks/useTransferChecks'
 import { useRecipient } from '@/hooks/useRecipients'
 import { useUsdcRelay } from '@/hooks/useUsdcRelay'
+import { useLostTransaction } from '@/hooks/useLostTransaction'
+import { QrScanner } from '@/components/QrScanner'
 import { useCosmosGasPrice } from '@/hooks/useCosmosGasPrice'
 import { useEvmSigner, usePhantom } from '@/hooks/useEvmSigner'
 import { sendToken as sendWithSigner } from '@/lib/injective/cosmos-transactions'
@@ -60,6 +62,7 @@ export default function SendPage() {
   const [tab, setTab] = useState<'send' | 'offramp'>('send')
   const [sendToken, setSendToken] = useState<'INJ' | 'USDC'>('USDC')
   const [recipient, setRecipient] = useState('')
+  const [scanning, setScanning] = useState(false)
 
   const [amount, setAmount] = useState('')
   // A payment-request link (/send?to=…&token=…&amount=…) from someone's Receive page.
@@ -86,7 +89,10 @@ export default function SendPage() {
   const relay = useUsdcRelay()
   const relayedHash = sendToken === 'USDC' && (relay.state.step === 'sent' || relay.state.step === 'reverted') ? relay.state.hash : undefined
   const relayBusy = relay.state.step === 'signing' || relay.state.step === 'sending'
-  const txHash = relayedHash ?? tx.data
+  // The wallet may send it without ever answering the page (see useLostTransaction).
+  const lostHash = useLostTransaction(tx.isPending, address, tx.submittedAt)
+  const awaitingWallet = tx.isPending && !lostHash
+  const txHash = relayedHash ?? tx.data ?? lostHash
 
   // Phantom can't send on Injective's EVM, so it signs a Cosmos bank transfer of the same
   // INJ or USDC as EIP-712 typed data (hooks/useEvmSigner.ts). It returns once the chain has it.
@@ -181,7 +187,9 @@ export default function SendPage() {
       if (phantomSend.step === 'sent') return { state: 'confirmed', message: `${phantomSend.token} sent and confirmed on chain.`, hash: phantomSend.hash }
       return null
     }
-    if (tx.isPending) return { state: 'awaiting-signature', message: 'Confirm the transfer in your wallet.' }
+    if (awaitingWallet) {
+      return { state: 'awaiting-signature', message: 'Confirm the transfer in your wallet. Already confirmed it? NinjaPay will find it on chain.' }
+    }
     if (relay.state.step === 'signing') return { state: 'awaiting-signature', message: "Sign the transfer in your wallet. Signing isn't a transaction, so it costs nothing." }
     if (relay.state.step === 'sending') return { state: 'pending', message: 'Signed. NinjaPay is sending it and paying the network fee.' }
     if (!txHash) return null
@@ -328,16 +336,39 @@ export default function SendPage() {
           {/* Recipient */}
           <div>
             <label className="label">Recipient</label>
-            <input
-              className="input input-mono"
-              type="text"
-              placeholder="inj1…, 0x… or name.inj"
-              value={recipient}
-              onChange={e => setRecipient(e.target.value)}
-              autoCapitalize="none"
-              spellCheck={false}
-              style={{ fontSize: '12px' }}
-            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                className="input input-mono"
+                type="text"
+                placeholder="inj1…, 0x… or name.inj"
+                value={recipient}
+                onChange={e => setRecipient(e.target.value)}
+                autoCapitalize="none"
+                spellCheck={false}
+                style={{ fontSize: '12px', flex: 1, minWidth: 0 }}
+              />
+              <button
+                type="button"
+                onClick={() => setScanning(true)}
+                className="btn-secondary"
+                aria-label="Scan a QR code"
+                title="Scan a QR code"
+                style={{ padding: '0 14px', flexShrink: 0 }}
+              >
+                <ScanLine size={16} />
+              </button>
+            </div>
+            {scanning && (
+              <QrScanner
+                onClose={() => setScanning(false)}
+                onScan={scanned => {
+                  setScanning(false)
+                  setRecipient(scanned.to)
+                  if (scanned.token) setSendToken(scanned.token)
+                  if (scanned.token && scanned.amount) setAmount(scanned.amount)
+                }}
+              />
+            )}
             {target.resolving && (
               <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>Looking up {target.name}…</p>
             )}
@@ -436,11 +467,11 @@ export default function SendPage() {
 
           <button
             onClick={handleSend}
-            disabled={!canSend || tx.isPending || isConfirming || relayBusy || phantomBusy}
+            disabled={!canSend || awaitingWallet || isConfirming || relayBusy || phantomBusy}
             className="btn-primary"
             style={{ width: '100%', padding: '13px', fontSize: '15px' }}
           >
-            {(tx.isPending || isConfirming || relayBusy || phantomBusy)
+            {(awaitingWallet || isConfirming || relayBusy || phantomBusy)
               ? <><span className="spinner" /> Processing…</>
               : <><Send size={15} /> {relayOffer ? 'Send without INJ' : `Send ${sendToken}`}</>}
           </button>

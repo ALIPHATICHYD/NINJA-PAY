@@ -23,6 +23,25 @@ const ICONS: Record<HostWallet, string> = {
   leap: '/wallets/leap.svg',
 }
 
+/** How long a wallet has to answer a connection request before NinjaPay says so. */
+const CONNECT_TIMEOUT_MS = 90_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms) })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+/** How long a wallet has to answer a quick question (its chain) before NinjaPay says so. */
+const ANSWER_TIMEOUT_MS = 15_000
+
+/** RainbowKit's phone modal swallows connection errors, so say on a phone what went wrong. */
+function report(name: string, error: unknown) {
+  if (rejected(error) || !isMobileDevice()) return
+  const e = error as { shortMessage?: string; message?: string } | undefined
+  window.alert(`${name} couldn't connect: ${e?.shortMessage || e?.message || String(error)}`)
+}
+
 /** Whether the user turned the request down in the wallet (EIP-1193 code 4001), however wagmi wrapped it. */
 function rejected(error: unknown): boolean {
   for (let e = error as { code?: number; cause?: unknown } | undefined; e; e = e.cause as typeof e) {
@@ -71,6 +90,10 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
       installed: (!!provider && hostWallet() !== (id === 'keplr' ? 'leap' : 'keplr')) || opensInKeplr,
       createConnector: (walletDetails) => createConnector((config) => {
         const base = injected({
+          // wagmi's disconnect shim asks for wallet_requestPermissions on every connect. A wallet
+          // browser that never answers it (Leap's, on the user's phone) left the button doing
+          // nothing, so connect with eth_requestAccounts alone.
+          shimDisconnect: false,
           target: () => ({ id, name, provider: () => walletEvmProvider(id) as never }),
         })(config)
         return {
@@ -78,8 +101,11 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
           ...walletDetails,
           // RainbowKit reads the chain before connecting; without a provider that would throw
           // before connect() could open Keplr or explain what's missing.
+          // A wallet that never answers would leave the button doing nothing, so give up and say so.
           getChainId: async function (this: unknown) {
-            return walletEvmProvider(id) ? base.getChainId.call(this) : config.chains[0].id
+            if (!walletEvmProvider(id)) return config.chains[0].id
+            return withTimeout(base.getChainId.call(this), ANSWER_TIMEOUT_MS, `${name} didn't answer. Open ${name}, unlock it, and try again.`)
+              .catch(error => { report(name, error); throw error })
           },
           // wagmi adds a chain only when the wallet answers code 4902, which Keplr doesn't, so the
           // account stayed on Keplr's own network ("Wrong Network"). Add Injective's EVM on any
@@ -114,7 +140,16 @@ function cosmosEvmWallet(id: HostWallet): CreateWalletFn {
               }
               throw new Error(`${name} isn't available in this browser.`)
             }
-            return base.connect.call(this, params)
+            try {
+              return await withTimeout(
+                base.connect.call(this, params),
+                CONNECT_TIMEOUT_MS,
+                `${name} didn't answer. Open ${name}, unlock it, and try again.`,
+              )
+            } catch (error) {
+              report(name, error)
+              throw error
+            }
           } as typeof base.connect,
         }
       }),
