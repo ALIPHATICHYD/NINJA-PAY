@@ -4,8 +4,8 @@
  * A page opened inside Keplr or Leap on a phone runs in the wallet's own web view. The wallet
  * is already there (window.keplr, window.leap, and their Ethereum providers), but the web view
  * can't open another app's link: WalletConnect and MetaMask links such as keplrwallet://wcV2/…
- * fail with net::ERR_UNKNOWN_URL_SCHEME. So inside those browsers NinjaPay connects to the
- * wallet that hosts the page and hides the wallets that would have to leave it.
+ * fail with net::ERR_UNKNOWN_URL_SCHEME in Keplr's. So NinjaPay lists the wallet that hosts the
+ * page first and connects to it directly.
  */
 
 export type HostWallet = 'keplr' | 'leap'
