@@ -13,7 +13,7 @@ export function Marquee({ items }: { items: string[] }) {
             {items.map(item => (
               <li
                 key={item}
-                className="flex items-center gap-6 whitespace-nowrap py-5 pl-6 font-display text-2xl text-ink-2 after:size-[7px] after:rotate-45 after:bg-ocean after:content-['']"
+                className="flex items-center gap-8 whitespace-nowrap py-4 pl-8 font-mono text-[13px] uppercase tracking-[0.14em] text-ink-3 after:size-[6px] after:bg-ocean after:content-['']"
               >
                 {item}
               </li>

@@ -23,13 +23,13 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
           aria-hidden="true"
           style={{
             width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600,
             background: done ? 'var(--success-subtle)' : 'var(--accent-subtle)', color: done ? 'var(--success)' : 'var(--accent-text)',
           }}
         >
           {done ? <CheckCircle2 size={14} /> : n}
         </span>
-        <h2 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h2>
+        <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h2>
       </div>
       {children}
     </div>
@@ -82,7 +82,8 @@ export default function SetupPage() {
   return (
     <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ marginBottom: '8px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+        <p className="kicker" style={{ marginBottom: '10px' }}>[Setup]</p>
+        <h1 className="page-title">
           Set up your wallet
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>

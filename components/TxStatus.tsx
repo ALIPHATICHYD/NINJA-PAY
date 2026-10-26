@@ -14,7 +14,7 @@ export function TxStatus({ state, message, hash }: { state: ChainState; message:
       role="status"
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px 12px', flexWrap: 'wrap',
-        padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-secondary)',
+        padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 0, background: 'var(--bg-secondary)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0 }}>

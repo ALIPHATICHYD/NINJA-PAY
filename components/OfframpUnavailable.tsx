@@ -16,7 +16,7 @@ export function OfframpUnavailable({ className = 'card' }: { className?: string 
           <ArrowLeftRight size={16} />
         </div>
         <div>
-          <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Off-ramp to NGN</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>Off-ramp to NGN</p>
           <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Not available yet</p>
         </div>
       </div>

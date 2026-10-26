@@ -1,20 +1,13 @@
 import type { Metadata, Viewport } from 'next'
-import { Figtree, Geist_Mono, Newsreader } from 'next/font/google'
+import { Geist, Geist_Mono, Silkscreen } from 'next/font/google'
 import './globals.css'
 import { siteUrl } from '@/lib/site'
 
-// Injective's brand pairs ABC Marist (old-style serif) with TT Commons (geometric sans).
-// Both are commercial, so Newsreader and Figtree stand in. To use licensed files, swap these
-// two for next/font/local and keep the same `variable` names; nothing else changes.
-const display = Newsreader({
-  subsets: ['latin'],
-  variable: '--font-display-face',
-  display: 'swap',
-  style: ['normal', 'italic'],
-  axes: ['opsz'],
-})
-const ui = Figtree({ subsets: ['latin'], variable: '--font-ui-face', display: 'swap' })
+// "Dithered Ledger": Geist for text, Geist Mono for every amount and address, Silkscreen (a pixel
+// face) only for short section codes like [02] PRODUCT.
+const ui = Geist({ subsets: ['latin'], variable: '--font-ui-face', display: 'swap' })
 const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' })
+const pixel = Silkscreen({ subsets: ['latin'], weight: '400', variable: '--font-pixel-face', display: 'swap' })
 
 const title = 'NinjaPay | Crypto Payments & Payroll on Injective'
 const description =
@@ -39,7 +32,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#000000',
+  themeColor: '#08080A',
   colorScheme: 'dark',
 }
 
@@ -52,7 +45,7 @@ export default function RootLayout({
     // suppressHydrationWarning: browser extensions add attributes before React hydrates, to <html>
     // (QuillBot's data-qb-installed) and to <body> (Grammarly's data-gr-ext-installed). This only
     // silences attribute diffs on these two elements, not on their children.
-    <html lang="en" className={`${display.variable} ${ui.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${ui.variable} ${mono.variable} ${pixel.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {children}
       </body>

@@ -42,7 +42,7 @@ export function SwapQuote() {
   return (
     <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <div>
-        <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
           INJ <ArrowRight size={13} aria-hidden="true" /> USDC quote
         </p>
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: '4px' }}>
@@ -81,10 +81,10 @@ export function SwapQuote() {
             </p>
           )}
           {q.amountOut !== null && q.minOut !== null && (
-            <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+            <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Orderbook quote</span>
-                <span style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                   {formatBaseUnits(q.amountOut, USDC.decimals, 2)} USDC
                 </span>
               </div>

@@ -105,13 +105,12 @@ function Notice({ notice, tokens, onDismiss }: NoticeProps) {
     <div
       style={{
         pointerEvents: 'auto', display: 'flex', gap: '12px', alignItems: 'flex-start', padding: '14px 14px 14px 16px',
-        background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px',
-        boxShadow: '0 8px 24px var(--shadow-tint)',
+        background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 0,
       }}
     >
       <ArrowDownLeft size={18} aria-hidden="true" style={{ color: 'var(--success)', flexShrink: 0, marginTop: '2px' }} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Payment received</p>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Payment received</p>
         <p style={{ fontSize: '13px', color: 'var(--text-primary)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
           +{coins.join(', +')}
         </p>

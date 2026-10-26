@@ -54,11 +54,11 @@ export function Web3Providers({ children }: { children: React.ReactNode }) {
         <RainbowKitProvider
           avatar={WalletAvatar}
           theme={darkTheme({
-            accentColor: '#4d3dff',
-            accentColorForeground: '#eeefff',
-            borderRadius: 'medium',
+            accentColor: '#5b4bff',
+            accentColorForeground: '#ffffff',
+            borderRadius: 'none',
             fontStack: 'system',
-            overlayBlur: 'small',
+            overlayBlur: 'none',
           })}
         >
           {children}

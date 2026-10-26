@@ -66,7 +66,7 @@ export function WalletButton() {
             padding: '8px 14px',
             background: 'var(--bg-card)',
             border: '1px solid var(--border-light)',
-            borderRadius: '8px',
+            borderRadius: 0,
             color: 'var(--text-primary)',
             fontSize: '14px',
             fontWeight: '500',
@@ -118,7 +118,7 @@ export function WalletButton() {
               width: '180px',
               background: 'var(--bg-card)',
               border: '1px solid var(--border-light)',
-              borderRadius: '10px',
+              borderRadius: 0,
               overflow: 'hidden',
               boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
               zIndex: 50,
@@ -238,7 +238,7 @@ export function WalletButton() {
                 style={{
                   background: 'var(--bg-hover)',
                   border: '1px solid var(--border)',
-                  borderRadius: '6px',
+                  borderRadius: 0,
                   width: '32px',
                   height: '32px',
                   display: 'flex',
@@ -268,7 +268,7 @@ export function WalletButton() {
                     padding: '14px 16px',
                     background: 'var(--bg-secondary)',
                     border: '1px solid var(--border)',
-                    borderRadius: '10px',
+                    borderRadius: 0,
                     cursor: loading ? 'not-allowed' : 'pointer',
                     transition: 'border-color 0.15s, background 0.15s',
                     opacity: loading ? 0.6 : 1,
@@ -291,7 +291,7 @@ export function WalletButton() {
                     style={{
                       width: '38px',
                       height: '38px',
-                      borderRadius: '8px',
+                      borderRadius: 0,
                       background: 'var(--bg-hover)',
                       border: '1px solid var(--border-light)',
                       display: 'flex',
@@ -299,7 +299,7 @@ export function WalletButton() {
                       justifyContent: 'center',
                       flexShrink: 0,
                       color: 'var(--text-secondary)',
-                      fontWeight: '700',
+                      fontWeight: '600',
                       fontSize: '13px',
                     }}
                   >

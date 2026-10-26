@@ -69,7 +69,8 @@ export default function ReceivePage() {
   return (
     <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
-        <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+        <p className="kicker" style={{ marginBottom: '10px' }}>[Receive]</p>
+        <h1 className="page-title">
           Receive
         </h1>
         <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
@@ -87,7 +88,7 @@ export default function ReceivePage() {
         {addresses.map(a => (
           <div key={a.title} className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             <div style={{ alignSelf: 'stretch' }}>
-              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{a.title}</p>
+              <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{a.title}</p>
               <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{a.hint}</p>
             </div>
             <QrCode value={a.value} label={`QR code for ${a.title.toLowerCase()} ${a.value}`} />
@@ -104,7 +105,7 @@ export default function ReceivePage() {
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div>
-          <p style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Ask for a set amount</p>
+          <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Ask for a set amount</p>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Make a link that opens NinjaPay&apos;s Send page with your address and the amount filled in. Share it only with the person paying you.
           </p>
@@ -141,7 +142,7 @@ export default function ReceivePage() {
           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <QrCode value={request.url} label={`QR code for a request of ${request.amount} ${request.token}`} size={160} />
             <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <p style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
                 {request.amount} {request.token} to {NETWORK_LABEL}
               </p>
               <p style={{ fontSize: '11px', fontFamily: 'var(--font-geist-mono), monospace', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>

@@ -94,7 +94,8 @@ export default function ApprovalsPage() {
     <div style={{ maxWidth: '760px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ minWidth: 0 }}>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>Approvals</h1>
+          <p className="kicker" style={{ marginBottom: '10px' }}>[Approvals]</p>
+          <h1 className="page-title">Approvals</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)', maxWidth: '560px', lineHeight: 1.6 }}>
             Permissions your accounts have given other accounts on {NETWORK_LABEL}: to act for you, or to pay network fees from
             your INJ. Read from the chain.
@@ -131,13 +132,13 @@ export default function ApprovalsPage() {
           const canSign = signerFor(account.address) !== null
           return (
             <section key={account.address}>
-              <h2 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{account.label}</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{account.label}</h2>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-geist-mono), monospace', overflowWrap: 'anywhere', marginBottom: '12px' }}>
                 {account.address}
               </p>
 
               {result?.isLoading ? (
-                <div className="skeleton" style={{ height: '84px', borderRadius: '10px' }} />
+                <div className="skeleton" style={{ height: '84px', borderRadius: 0 }} />
               ) : result?.error ? (
                 <div className="alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
                   <span>Couldn&rsquo;t read this account&rsquo;s approvals from Injective.</span>
@@ -165,7 +166,7 @@ export default function ApprovalsPage() {
                   )}
                   {!!result?.data?.received.length && (
                     <>
-                      <h3 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', margin: '18px 0 10px' }}>Given to this account</h3>
+                      <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', margin: '18px 0 10px' }}>Given to this account</h3>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {result.data.received.map(approval => (
                           <ApprovalCard key={keyOf(approval)} approval={approval} side="received" claimLink={null} canSign={false} revoking={null} busy={false} onRevoke={() => {}} />
